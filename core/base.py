@@ -1,0 +1,188 @@
+"""
+core/base.py
+------------
+Core abstractions for the AI Safety Guardrails framework.
+All guardrail modules inherit from GuardrailBase.
+"""
+
+from __future__ import annotations
+
+import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Optional
+import uuid
+
+
+# ---------------------------------------------------------------------------
+# Enums
+# ---------------------------------------------------------------------------
+
+class Severity(str, Enum):
+    """How serious a guardrail finding is."""
+    INFO = "info"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class Action(str, Enum):
+    """What action to take when a check fires."""
+    ALLOW = "allow"       # Pass through unchanged
+    FLAG = "flag"         # Pass through but annotate
+    REDACT = "redact"     # Sanitize and pass through
+    BLOCK = "block"       # Hard stop — return rejection_message
+    HUMAN = "human"       # Route to human review queue
+
+
+class GuardrailStage(str, Enum):
+    INPUT = "input"
+    PROCESSING = "processing"
+    OUTPUT = "output"
+    POLICY = "policy"
+
+
+# ---------------------------------------------------------------------------
+# Result objects
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Finding:
+    """A single finding from a guardrail check."""
+    guard_name: str
+    severity: Severity
+    category: str
+    description: str
+    span: Optional[tuple[int, int]] = None   # character span in content
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass
+class CheckResult:
+    """
+    The result of running content through one guardrail module.
+
+    Attributes:
+        passed:             True if content should proceed.
+        action:             What the pipeline should do with the content.
+        sanitized_content:  The (possibly modified) content after redaction/cleanup.
+        findings:           List of individual findings (even if passed=True for audit).
+        rejection_message:  User-facing message when action=BLOCK.
+        latency_ms:         Time taken for this check.
+        check_id:           UUID for correlation with audit logs.
+    """
+    passed: bool
+    action: Action = Action.ALLOW
+    sanitized_content: Optional[str] = None
+    findings: list[Finding] = field(default_factory=list)
+    rejection_message: Optional[str] = None
+    latency_ms: float = 0.0
+    check_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    metadata: dict = field(default_factory=dict)
+
+    @property
+    def blocked(self) -> bool:
+        return self.action == Action.BLOCK
+
+    @property
+    def requires_human(self) -> bool:
+        return self.action == Action.HUMAN
+
+    def highest_severity(self) -> Optional[Severity]:
+        if not self.findings:
+            return None
+        order = [Severity.INFO, Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL]
+        return max(self.findings, key=lambda f: order.index(f.severity)).severity
+
+
+@dataclass
+class PipelineResult:
+    """
+    Aggregated result from running content through all guardrails in a stage.
+    """
+    stage: GuardrailStage
+    original_content: str
+    final_content: str
+    passed: bool
+    blocked: bool
+    checks: list[CheckResult] = field(default_factory=list)
+    rejection_message: Optional[str] = None
+    total_latency_ms: float = 0.0
+    pipeline_run_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+
+    @property
+    def sanitized_output(self) -> str:
+        return self.final_content
+
+    @property
+    def all_findings(self) -> list[Finding]:
+        return [f for c in self.checks for f in c.findings]
+
+
+# ---------------------------------------------------------------------------
+# Base class
+# ---------------------------------------------------------------------------
+
+class GuardrailBase(ABC):
+    """
+    Abstract base class for all guardrail modules.
+
+    Subclasses implement `check()` and optionally `setup()`.
+
+    Example:
+        class MyGuard(GuardrailBase):
+            name = "my_guard"
+            stage = GuardrailStage.INPUT
+
+            async def check(self, content: str, context: dict) -> CheckResult:
+                # ... your logic ...
+                return CheckResult(passed=True)
+    """
+
+    name: str = "unnamed_guard"
+    stage: GuardrailStage = GuardrailStage.INPUT
+    description: str = ""
+    version: str = "1.0.0"
+
+    def __init__(self, enabled: bool = True, **kwargs: Any):
+        self.enabled = enabled
+        self._config = kwargs
+        self.setup(**kwargs)
+
+    def setup(self, **kwargs: Any) -> None:
+        """Optional setup hook for subclasses (e.g., loading models)."""
+        pass
+
+    @abstractmethod
+    async def check(self, content: str, context: dict) -> CheckResult:
+        """
+        Run the guardrail check.
+
+        Args:
+            content: The text to evaluate (prompt or response).
+            context: Runtime context (user_id, session_id, role, etc.)
+
+        Returns:
+            CheckResult with pass/fail, action, and findings.
+        """
+        ...
+
+    async def __call__(self, content: str, context: dict | None = None) -> CheckResult:
+        """Callable interface — wraps check() with timing."""
+        if not self.enabled:
+            return CheckResult(passed=True, action=Action.ALLOW, sanitized_content=content)
+
+        ctx = context or {}
+        start = time.perf_counter()
+        result = await self.check(content, ctx)
+        result.latency_ms = (time.perf_counter() - start) * 1000
+
+        if result.sanitized_content is None:
+            result.sanitized_content = content
+
+        return result
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(name={self.name!r}, enabled={self.enabled})"

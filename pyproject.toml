@@ -1,0 +1,179 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project.scripts]
+# After `pip install ai-safety-guardrails`, these commands are available globally:
+#   euaiact-lint src/
+#   euaiact-lint src/ --format sarif --output results.sarif
+#   euaiact-lint --staged            # in pre-commit
+euaiact-lint = "devtools.euaiact_lint:main"
+#   misalignment-check src/
+#   misalignment-check --staged      # in pre-commit
+misalignment-check = "devtools.misalignment_check:main"
+
+[project]
+name = "ai-safety-guardrails"
+version = "0.1.0"
+description = "Production-ready, modular AI safety guardrails for any LLM pipeline"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+
+keywords = ["AI safety", "guardrails", "LLM", "EU AI Act", "prompt injection", "PII"]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "pyyaml>=6.0",
+    "aiohttp>=3.9",
+]
+
+[project.optional-dependencies]
+# PII detection (Presidio)
+presidio = [
+    "presidio-analyzer>=2.2",
+    "presidio-anonymizer>=2.2",
+    "spacy>=3.7",
+]
+
+# LangChain integration
+langchain = [
+    "langchain>=0.3",
+    "langchain-core>=0.3",
+]
+
+# FastAPI integration
+fastapi = [
+    "fastapi>=0.110",
+    "starlette>=0.37",
+]
+
+# Anthropic integration
+anthropic = [
+    "anthropic>=0.40",
+]
+
+# LLM safety judges
+# - LlamaGuard via Groq/Together/Ollama uses only aiohttp (already a core dep)
+# - HuggingFace local inference requires the extras below
+llamaguard = [
+    "transformers>=4.40",
+    "torch>=2.2",
+    "accelerate>=0.30",
+]
+
+# OpenAI Moderation API judge (uses only aiohttp — no extra packages needed)
+# Listed here for discoverability; no actual extra deps required.
+openai-mod = []
+
+# Settings / .env file support
+settings = [
+    "pydantic-settings>=2.0",
+]
+
+# Claude judge (uses anthropic SDK)
+claude-judge = [
+    "anthropic>=0.40",
+]
+
+# All LLM judges
+llm-judges = [
+    "ai-safety-guardrails[anthropic]",
+]
+
+# NVIDIA NeMo Guardrails integration
+nemo = [
+    "nemoguardrails>=0.9",
+]
+
+# OpenTelemetry observability
+otel = [
+    "opentelemetry-api>=1.24",
+    "opentelemetry-sdk>=1.24",
+    "opentelemetry-exporter-otlp>=1.24",
+]
+
+# Prometheus metrics
+metrics = [
+    "prometheus-client>=0.20",
+]
+
+# Lint / static analysis only (no runtime deps needed)
+lint = []
+
+# Pre-commit companion tools
+precommit = [
+    "pre-commit>=3.7",
+    "detect-secrets>=1.4",
+]
+
+# Full install (everything)
+all = [
+    "ai-safety-guardrails[presidio,langchain,fastapi,anthropic,otel,metrics,lint,precommit,llm-judges,settings,nemo]",
+]
+
+# Development
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "black>=24.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "httpx>=0.27",          # FastAPI middleware tests
+    "pre-commit>=3.7",      # Local hook testing
+    "detect-secrets>=1.4",  # Secret scanning companion
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "modules*", "integrations*", "devtools*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]   # line length handled by formatter
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+exclude = ["tests/fixtures/"]   # fixtures contain intentionally bad code
+
+# -------------------------------------------------------
+# euaiact-lint configuration
+# -------------------------------------------------------
+# These settings are read by devtools/euaiact_lint.py
+# when invoked with no explicit flags.
+[tool.euaiact-lint]
+paths = ["modules", "integrations", "examples", "devtools"]
+exclude = ["tests/fixtures", "__pycache__", ".venv", "dist"]
+format = "terminal"
+errors_only = false         # set true to only report Art.5 / security errors
+fail_on_warnings = false    # set true for strict CI enforcement
+
+# -------------------------------------------------------
+# misalignment-check configuration
+# -------------------------------------------------------
+# These settings are read by devtools/misalignment_check.py
+# when invoked with no explicit flags.
+[tool.misalignment-check]
+paths = ["modules", "integrations", "examples", "devtools"]
+exclude = ["tests/fixtures", "__pycache__", ".venv", "dist"]
+format = "terminal"
+errors_only = false         # set true to hard-block on ALIGN-001/005/006/008 only
+fail_on_warnings = false    # set true for strict PR enforcement

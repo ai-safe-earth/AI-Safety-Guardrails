@@ -1,0 +1,75 @@
+# .pre-commit-config.yaml
+# -------------------------------------------------------
+# EU AI Act Code Compliance — Pre-commit Hook
+# -------------------------------------------------------
+# Install:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Run manually on all files:
+#   pre-commit run euaiact-lint --all-files
+#
+# Run on staged files only (what git commit does automatically):
+#   pre-commit run euaiact-lint
+#
+# Skip for one commit (use sparingly):
+#   git commit --no-verify -m "wip"
+
+repos:
+  # -------------------------------------------------------
+  # EU AI Act compliance linter (this repository)
+  # -------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: euaiact-lint
+        name: EU AI Act Compliance Check
+        language: python
+        entry: python devtools/euaiact_lint.py
+        args:
+          - --staged             # Only scan staged files
+          - --errors-only        # Block commit only on ERROR severity
+          # To also block on warnings, add: --fail-on-warnings
+        types: [python]
+        pass_filenames: false    # We handle file selection ourselves (--staged)
+        always_run: false
+        verbose: true
+
+      - id: misalignment-check
+        name: AI Misalignment Control
+        language: python
+        entry: python devtools/misalignment_check.py
+        args:
+          - --staged             # Only scan staged files
+          - --errors-only        # Block commit on ALIGN-001/005/006/008 (ERROR rules)
+          # To also block on warnings, add: --fail-on-warnings
+        types: [python]
+        pass_filenames: false
+        always_run: false
+        verbose: true
+
+  # -------------------------------------------------------
+  # Recommended companion hooks
+  # -------------------------------------------------------
+
+  # Secret detection — supports EU-AIA-015c (hardcoded API keys)
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        name: Detect hardcoded secrets (EU-AIA-015c)
+        args: ["--baseline", ".secrets.baseline"]
+
+  # Standard Python quality hooks
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Safety check for vulnerable dependencies
+  - repo: https://github.com/pypa/pip-audit
+    rev: v2.7.3
+    hooks:
+      - id: pip-audit
+        name: Audit dependencies for security (EU-AIA-015 cybersecurity)

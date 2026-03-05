@@ -1,0 +1,127 @@
+# config/default.yaml
+# -------------------------------------------------------
+# AI Safety Guardrails — Default Pipeline Configuration
+# -------------------------------------------------------
+# All modules are optional. Set enabled: false to skip any.
+# Override per environment: production.yaml, eu_high_risk.yaml, etc.
+
+pipeline:
+  mode: async
+  parallel_checks: true        # Run input checks in parallel for lower latency
+  fail_open: false             # If true, guardrail errors allow traffic through (NOT recommended for prod)
+
+# ① INPUT GUARDRAILS
+input:
+  pii_detector:
+    enabled: true
+    action: redact             # redact | block | flag
+    entities:
+      - EMAIL
+      - PHONE_US
+      - PHONE_INTL
+      - SSN
+      - CREDIT_CARD
+      - IP_ADDRESS
+    use_presidio: false        # Set true if presidio-analyzer is installed
+
+  prompt_injection:
+    enabled: true
+    sensitivity: medium        # low | medium | high
+    check_base64: true
+    llm_judge: false           # Enable for high-security deployments (+latency)
+    log_attempts: true
+
+  topic_classifier:
+    enabled: false             # Enable and configure allowed_topics for your use case
+    # allowed_topics:
+    #   - customer_support
+    #   - billing
+    #   - product_info
+    # fallback_message: "I can only help with customer support, billing, and product topics."
+
+  toxicity_input:
+    enabled: false             # ← planned: modules/input/toxicity.py not yet implemented
+    # threshold: 0.8
+    # categories: [self_harm_promotion, violent_threats, dangerous_instructions]
+
+  rate_limiter:
+    enabled: false             # ← planned: modules/input/rate_limiter.py not yet implemented
+    # requests_per_minute: 60
+    # tokens_per_day: 100000
+
+# ② PROCESSING GUARDRAILS (tool use / agent control)
+processing:
+  tool_policy:
+    enabled: true
+    default_deny: true
+    default_role: user
+    # require_approval:
+    #   - send_email
+    #   - database_write
+    #   - payment_*
+    # policies:
+    #   user:
+    #     allow: [search, calculator, fetch_url]
+    #     deny: [file_write, exec_code, shell_command]
+    #   admin:
+    #     allow: ["*"]
+    #     deny: [shell_command]
+
+  context_control:
+    enabled: false             # ← planned: modules/processing/context_control.py not yet implemented
+    # max_rag_results: 5
+    # allowed_collections: [public_docs, kb_articles]
+
+  memory_hygiene:
+    enabled: false             # ← planned: modules/processing/memory_hygiene.py not yet implemented
+    # ttl_seconds: 3600
+    # max_memory_tokens: 4096
+
+# ③ OUTPUT GUARDRAILS
+output:
+  toxicity_output:
+    enabled: true
+    threshold: 0.7
+    action: block              # block | warn | flag
+    categories:
+      - self_harm_promotion
+      - violent_threats
+      - dangerous_instructions
+    use_llm_judge: false       # Enable for higher accuracy (+latency)
+
+  pii_redactor:
+    enabled: false             # ← planned: modules/output/pii_redactor.py not yet implemented
+    # entities: [EMAIL, PHONE_US, SSN, CREDIT_CARD]
+
+  hallucination:
+    enabled: false             # ← planned: modules/output/hallucination.py not yet implemented
+    # threshold: 0.6
+    # citation_required: false
+
+  schema_validator:
+    enabled: false             # ← planned: modules/output/schema_validator.py not yet implemented
+    # schema: {}
+    # strict: false
+
+  content_policy:
+    enabled: false             # ← planned: modules/output/content_policy.py not yet implemented
+    # rules: []
+
+# ④ POLICY COMPLIANCE
+policy:
+  eu_ai_act:
+    enabled: true
+    risk_tier: limited         # unacceptable | high | limited | minimal
+    system_id: my-ai-system
+    provider_name: My Organization
+    enable_audit_log: false    # Set true for high-risk tier
+    audit_log_path: audit/eu_ai_act.jsonl
+    audit_retention_days: 365
+    check_prohibited: true
+    check_high_risk_indicators: true
+    strict_mode: true
+
+  gdpr:
+    enabled: false
+    # data_minimization: true
+    # purpose_limitation: true
