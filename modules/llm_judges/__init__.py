@@ -14,6 +14,7 @@ from modules.llm_judges.base import LLMJudgeBase, JudgeVerdict
 from modules.llm_judges.llamaguard import LlamaGuardJudge, LLAMAGUARD_CATEGORIES
 from modules.llm_judges.openai_mod import OpenAIModerationJudge
 from modules.llm_judges.claude_judge import ClaudeJudge
+from modules.llm_judges.cache import CachedJudge
 
 
 def build_judge(
@@ -75,5 +76,6 @@ __all__ = [
     "LLAMAGUARD_CATEGORIES",
     "OpenAIModerationJudge",
     "ClaudeJudge",
+    "CachedJudge",
     "build_judge",
 ]

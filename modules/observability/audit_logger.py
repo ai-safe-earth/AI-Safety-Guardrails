@@ -118,8 +118,12 @@ class AuditLogger:
             try:
                 with open(self.log_path, "a") as f:
                     f.write(line + "\n")
-            except Exception:
-                pass
+            except Exception as exc:
+                print(
+                    f"[AuditLogger] Failed to write to {self.log_path}: "
+                    f"{type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                )
 
         elif self.sink == "stdout":
             print(line, file=sys.stdout, flush=True)
@@ -197,5 +201,10 @@ class AuditLogger:
                     headers={"Content-Type": "application/json"},
                     timeout=aiohttp.ClientTimeout(total=2),
                 )
-        except Exception:
-            pass  # Never block on log failure
+        except Exception as exc:
+            # Never block the pipeline on log failure, but surface it to stderr
+            print(
+                f"[AuditLogger] HTTP sink failed ({self.http_endpoint}): "
+                f"{type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )

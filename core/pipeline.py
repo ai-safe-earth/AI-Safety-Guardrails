@@ -233,15 +233,30 @@ class GuardrailPipeline:
         fail_open = pipeline_cfg.get("fail_open", False)
 
         def build_guards(stage_key: str) -> list[GuardrailBase]:
+            stage_cfg = cfg.get(stage_key)
+            if not stage_cfg:
+                return []
+            if not isinstance(stage_cfg, dict):
+                raise GuardrailConfigError(
+                    f"Config section '{stage_key}' must be a mapping, "
+                    f"got {type(stage_cfg).__name__}."
+                )
             guards = []
-            for module_name, module_cfg in cfg.get(stage_key, {}).items():
+            for module_name, module_cfg in stage_cfg.items():
+                # Allow bare `module_name:` with no sub-keys (treat as enabled, no args)
+                module_cfg = module_cfg or {}
+                if not isinstance(module_cfg, dict):
+                    raise GuardrailConfigError(
+                        f"Config for module '{module_name}' must be a mapping, "
+                        f"got {type(module_cfg).__name__}."
+                    )
                 if not module_cfg.get("enabled", True):
                     continue
                 guard_cls = REGISTRY.get(module_name)
                 if guard_cls is None:
                     raise GuardrailConfigError(
-                        f"Unknown guardrail module: '{module_name}'. "
-                        f"Available: {list(REGISTRY.keys())}"
+                        f"Unknown guardrail module '{module_name}' in [{stage_key}]. "
+                        f"Registered modules: {sorted(REGISTRY.keys())}"
                     )
                 guards.append(guard_cls(**{k: v for k, v in module_cfg.items() if k != "enabled"}))
             return guards

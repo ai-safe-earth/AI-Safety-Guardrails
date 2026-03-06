@@ -19,6 +19,7 @@ Usage:
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 
@@ -29,8 +30,14 @@ class _GuardedMessages:
         self._context_fn = context_fn
 
     async def create(self, **kwargs) -> Any:
-        messages = kwargs.get("messages", [])
         context = self._context_fn(kwargs)
+
+        # Deep-copy messages so we never mutate the caller's list.
+        # Without this, a sanitized message would permanently replace the
+        # original on retry, and concurrent calls sharing a message list
+        # would corrupt each other.
+        messages = copy.deepcopy(kwargs.get("messages", []))
+        kwargs = {**kwargs, "messages": messages}
 
         # ---- INPUT: Guard the last user message ----
         user_messages = [m for m in messages if m.get("role") == "user"]
@@ -42,7 +49,7 @@ class _GuardedMessages:
                 if input_result.blocked:
                     # Return a synthetic response instead of calling the LLM
                     return _BlockedResponse(input_result.rejection_message)
-                # Replace with sanitized content
+                # Replace with sanitized content (safe: this is our deep copy)
                 last_user["content"] = input_result.sanitized_output
 
         # ---- LLM CALL ----
