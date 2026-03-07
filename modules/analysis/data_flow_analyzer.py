@@ -331,7 +331,14 @@ class DataFlowAnalyzer(ast.NodeVisitor):
             if value_taint:
                 for var in target_vars:
                     transformation = self._get_transformation_name(node.value)
-                    self.taint_map[var] = value_taint.propagate(var, transformation)
+                    new_taint = value_taint.propagate(var, transformation)
+                    # If the RHS is a sanitizer call, the result is clean
+                    if isinstance(node.value, ast.Call):
+                        func_name = self._get_call_name(node.value)
+                        if any(s in func_name for s in TaintPatterns.SANITIZERS):
+                            new_taint.sanitized = True
+                            new_taint.transformations.append(func_name)
+                    self.taint_map[var] = new_taint
 
         self.generic_visit(node)
 
@@ -441,10 +448,13 @@ class DataFlowAnalyzer(ast.NodeVisitor):
                 self.findings.append(finding)
 
     def _apply_sanitizer(self, node: ast.Call) -> None:
-        """Mark variables as sanitized after sanitizer function."""
-        # If sanitizer is applied, mark the result as sanitized
-        # This is simplified - in reality, need more sophisticated tracking
-        pass
+        """Mark tainted variables sanitized when passed into a sanitizer function."""
+        for arg in node.args:
+            if isinstance(arg, ast.Name) and arg.id in self.taint_map:
+                self.taint_map[arg.id].sanitized = True
+        for kw in node.keywords:
+            if isinstance(kw.value, ast.Name) and kw.value.id in self.taint_map:
+                self.taint_map[kw.value.id].sanitized = True
 
     def _calculate_severity(self, sensitivity: SensitivityLevel, sink_type: str) -> str:
         """Calculate finding severity based on data sensitivity and sink type."""

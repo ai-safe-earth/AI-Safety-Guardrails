@@ -9,6 +9,21 @@ pipeline:
   mode: async
   parallel_checks: true        # Run input checks in parallel for lower latency
   fail_open: false             # If true, guardrail errors allow traffic through (NOT recommended for prod)
+  request_timeout: 30.0        # Max seconds for the LLM call in run_full() (0 = no timeout)
+
+# ⑤ OBSERVABILITY (OpenTelemetry)
+# Install:  pip install "ai-safety-guardrails[otel]"
+# Pass a TelemetryProvider instance to GuardrailPipeline(telemetry_provider=...).
+# Backends: set exporter to "otlp" and point otlp_endpoint at any OTLP collector
+# (Jaeger, Zipkin, Datadog, Honeycomb, Grafana Tempo, AWS X-Ray via ADOT, etc.)
+#
+# observability:
+#   enabled: true
+#   service_name: my-ai-system
+#   exporter: console              # "console" | "otlp" | "none"
+#   otlp_endpoint: http://localhost:4317
+#   otlp_protocol: grpc            # "grpc" | "http"
+#   metric_export_interval_ms: 60000
 
 # ① INPUT GUARDRAILS
 input:
@@ -40,14 +55,16 @@ input:
     # fallback_message: "I can only help with customer support, billing, and product topics."
 
   toxicity_input:
-    enabled: false             # ← planned: modules/input/toxicity.py not yet implemented
+    enabled: false
     # threshold: 0.8
     # categories: [self_harm_promotion, violent_threats, dangerous_instructions]
 
   rate_limiter:
-    enabled: false             # ← planned: modules/input/rate_limiter.py not yet implemented
-    # requests_per_minute: 60
-    # tokens_per_day: 100000
+    enabled: true
+    requests_per_minute: 60
+    tokens_per_day: 100000
+    key_field: user_id         # context field to key limits on
+    count_tokens: true
 
 # ② PROCESSING GUARDRAILS (tool use / agent control)
 processing:
@@ -55,25 +72,33 @@ processing:
     enabled: true
     default_deny: true
     default_role: user
+    approval_timeout: 30.0         # Seconds to wait for approval callback before denying
+    max_tool_calls_per_session: 0  # 0 = unlimited; set e.g. 50 to cap agentic loops
+    max_calls_per_tool: 0          # 0 = unlimited per-tool cap
     # require_approval:
     #   - send_email
     #   - database_write
     #   - payment_*
     # policies:
     #   user:
-    #     allow: [search, calculator, fetch_url]
+    #     allow: [search, calculator, fetch_url, read_file]
     #     deny: [file_write, exec_code, shell_command]
+    #     argument_rules:           # Argument-level constraints per tool
+    #       read_file:
+    #         path: "./data/*"      # Only allow reads inside ./data/
+    #       fetch_url:
+    #         url: "https://*.trusted-domain.com/*"
     #   admin:
     #     allow: ["*"]
     #     deny: [shell_command]
 
   context_control:
-    enabled: false             # ← planned: modules/processing/context_control.py not yet implemented
+    enabled: false             # Not yet implemented
     # max_rag_results: 5
     # allowed_collections: [public_docs, kb_articles]
 
   memory_hygiene:
-    enabled: false             # ← planned: modules/processing/memory_hygiene.py not yet implemented
+    enabled: false             # Not yet implemented
     # ttl_seconds: 3600
     # max_memory_tokens: 4096
 
@@ -89,22 +114,22 @@ output:
       - dangerous_instructions
     use_llm_judge: false       # Enable for higher accuracy (+latency)
 
-  pii_redactor:
-    enabled: false             # ← planned: modules/output/pii_redactor.py not yet implemented
-    # entities: [EMAIL, PHONE_US, SSN, CREDIT_CARD]
+  pii_restorer:
+    enabled: false             # Enable when using PIIDetector(action="tokenize") on input
+    # Restores <PII:TYPE:N> tokens to original values after LLM response
 
   hallucination:
-    enabled: false             # ← planned: modules/output/hallucination.py not yet implemented
+    enabled: false             # Not yet implemented
     # threshold: 0.6
     # citation_required: false
 
   schema_validator:
-    enabled: false             # ← planned: modules/output/schema_validator.py not yet implemented
+    enabled: false             # Not yet implemented
     # schema: {}
     # strict: false
 
   content_policy:
-    enabled: false             # ← planned: modules/output/content_policy.py not yet implemented
+    enabled: false             # Not yet implemented
     # rules: []
 
 # ④ POLICY COMPLIANCE

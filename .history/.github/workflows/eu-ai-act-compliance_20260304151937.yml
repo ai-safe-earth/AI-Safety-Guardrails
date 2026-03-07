@@ -83,7 +83,7 @@ jobs:
       - name: Run EU AI Act compliance scan (terminal)
         id: lint-terminal
         run: |
-          python devtools/euaiact_lint.py "${{ steps.scan-path.outputs.path }}" \
+          python scripts/euaiact_lint.py "${{ steps.scan-path.outputs.path }}" \
             --format terminal \
             --no-color \
             ${{ github.event.inputs.fail_on_warnings == 'true' && '--fail-on-warnings' || '' }}
@@ -92,7 +92,7 @@ jobs:
       # ── JSON report ─────────────────────────────────────────────────────
       - name: Generate JSON report
         run: |
-          python devtools/euaiact_lint.py "${{ steps.scan-path.outputs.path }}" \
+          python scripts/euaiact_lint.py "${{ steps.scan-path.outputs.path }}" \
             --format json \
             --output eu-ai-act-report.json
 
@@ -106,7 +106,7 @@ jobs:
       # ── SARIF report (GitHub Code Scanning) ─────────────────────────────
       - name: Generate SARIF report
         run: |
-          python devtools/euaiact_lint.py "${{ steps.scan-path.outputs.path }}" \
+          python scripts/euaiact_lint.py "${{ steps.scan-path.outputs.path }}" \
             --format sarif \
             --output eu-ai-act-results.sarif
 
@@ -121,7 +121,7 @@ jobs:
       - name: Generate Markdown summary
         if: github.event_name == 'pull_request'
         run: |
-          python devtools/euaiact_lint.py "${{ steps.scan-path.outputs.path }}" \
+          python scripts/euaiact_lint.py "${{ steps.scan-path.outputs.path }}" \
             --format markdown \
             --output eu-ai-act-summary.md
 
@@ -196,5 +196,5 @@ jobs:
         if: steps.changed.outputs.files != '0'
         run: |
           while IFS= read -r file; do
-            [ -f "$file" ] && python devtools/euaiact_lint.py "$file" --errors-only --no-color || true
+            [ -f "$file" ] && python scripts/euaiact_lint.py "$file" --errors-only --no-color || true
           done < changed_files.txt

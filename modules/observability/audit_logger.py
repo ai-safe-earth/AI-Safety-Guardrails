@@ -168,7 +168,11 @@ class AuditLogger:
         if result.blocked:
             for check in result.checks:
                 if check.blocked:
-                    blocked_by = check.metadata.get("guard_name", "unknown")
+                    # Prefer the guard name from the first finding; fall back to metadata
+                    if check.findings:
+                        blocked_by = check.findings[0].guard_name
+                    else:
+                        blocked_by = check.metadata.get("guard_name", "unknown")
                     break
 
         return AuditRecord(

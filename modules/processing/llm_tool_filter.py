@@ -121,6 +121,7 @@ class LLMToolFilter(GuardrailBase):
         check_arguments: bool = True,
         check_results: bool = True,
         high_risk_tools: list[str] | None = None,
+        high_risk_fail_closed: list[str] | None = None,
         block_on_unsafe: bool = True,
         block_categories: list[str] | None = None,
         block_message: str = (
@@ -147,6 +148,10 @@ class LLMToolFilter(GuardrailBase):
         self.check_arguments = check_arguments
         self.check_results = check_results
         self.high_risk_tools = self.DEFAULT_HIGH_RISK_TOOLS | set(high_risk_tools or [])
+        # Tools that BLOCK (not FLAG) when the judge is unavailable — override fail_open
+        self.high_risk_fail_closed: set[str] = set(high_risk_fail_closed or [
+            "send_email", "database_write", "payment_process", "shell_command", "deploy",
+        ])
         self.block_on_unsafe = block_on_unsafe
         self.block_categories = [c.lower() for c in (block_categories or [])]
         self.block_message = block_message
@@ -183,17 +188,25 @@ class LLMToolFilter(GuardrailBase):
         verdict = await self._judge.judge(result_text, role="agent")
 
         if verdict.failed:
+            is_fail_closed = tool_name in self.high_risk_fail_closed
             return CheckResult(
-                passed=True,
-                action=Action.FLAG,
+                passed=not is_fail_closed,
+                action=Action.BLOCK if is_fail_closed else Action.FLAG,
                 sanitized_content=content,
                 findings=[Finding(
                     guard_name=self.name,
-                    severity=Severity.LOW,
+                    severity=Severity.HIGH if is_fail_closed else Severity.LOW,
                     category="llm_judge_error",
-                    description=f"Judge call failed (fail-open): {verdict.error}",
-                    metadata={"judge": verdict.judge_name, "tool": tool_name},
+                    description=(
+                        f"Judge call failed ({'fail-closed' if is_fail_closed else 'fail-open'}): "
+                        f"{verdict.error}"
+                    ),
+                    metadata={"judge": verdict.judge_name, "tool": tool_name, "fail_closed": is_fail_closed},
                 )],
+                rejection_message=(
+                    f"Tool '{tool_name}' blocked: safety judge unavailable for high-risk tool."
+                    if is_fail_closed else None
+                ),
             )
 
         if verdict.safe:
@@ -244,17 +257,25 @@ class LLMToolFilter(GuardrailBase):
         verdict = await self._judge.judge(args_text, role="user")
 
         if verdict.failed:
+            is_fail_closed = tool_name in self.high_risk_fail_closed
             return CheckResult(
-                passed=True,
-                action=Action.FLAG,
+                passed=not is_fail_closed,
+                action=Action.BLOCK if is_fail_closed else Action.FLAG,
                 sanitized_content=content,
                 findings=[Finding(
                     guard_name=self.name,
-                    severity=Severity.LOW,
+                    severity=Severity.HIGH if is_fail_closed else Severity.LOW,
                     category="llm_judge_error",
-                    description=f"Judge call failed (fail-open): {verdict.error}",
-                    metadata={"judge": verdict.judge_name, "tool": tool_name},
+                    description=(
+                        f"Judge call failed ({'fail-closed' if is_fail_closed else 'fail-open'}): "
+                        f"{verdict.error}"
+                    ),
+                    metadata={"judge": verdict.judge_name, "tool": tool_name, "fail_closed": is_fail_closed},
                 )],
+                rejection_message=(
+                    f"Tool '{tool_name}' blocked: safety judge unavailable for high-risk tool."
+                    if is_fail_closed else None
+                ),
             )
 
         if verdict.safe:

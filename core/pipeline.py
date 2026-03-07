@@ -9,10 +9,14 @@ supporting parallel execution and configurable fail modes.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
+import uuid
 import yaml
 from pathlib import Path
 from typing import Optional
+
+_nullcontext = contextlib.nullcontext
 
 from .base import (
     GuardrailBase,
@@ -58,6 +62,8 @@ class GuardrailPipeline:
         parallel: bool = True,
         fail_open: bool = False,
         audit_logger=None,
+        telemetry_provider=None,
+        request_timeout: float | None = None,
     ):
         self.input_guards: list[GuardrailBase] = input_guards or []
         self.processing_guards: list[GuardrailBase] = processing_guards or []
@@ -66,6 +72,8 @@ class GuardrailPipeline:
         self.parallel = parallel
         self.fail_open = fail_open       # If True, errors in guardrails allow traffic through
         self._audit_logger = audit_logger
+        self._telemetry = telemetry_provider
+        self.request_timeout = request_timeout  # Per-request wall-clock timeout (seconds)
 
     # ------------------------------------------------------------------
     # Public API
@@ -122,8 +130,21 @@ class GuardrailPipeline:
                 result=input_result,
             )
 
-        # 2. LLM call
-        llm_response = await llm_callable(input_result.sanitized_output)
+        # 2. LLM call — with optional wall-clock timeout
+        try:
+            if self.request_timeout:
+                llm_response = await asyncio.wait_for(
+                    llm_callable(input_result.sanitized_output),
+                    timeout=self.request_timeout,
+                )
+            else:
+                llm_response = await llm_callable(input_result.sanitized_output)
+        except asyncio.TimeoutError:
+            raise GuardrailBlockedError(
+                stage="llm",
+                message=f"LLM call timed out after {self.request_timeout}s.",
+                result=input_result,
+            )
 
         # 3. Output
         output_result = await self.run_output(llm_response, context)
@@ -140,6 +161,23 @@ class GuardrailPipeline:
     # Internal
     # ------------------------------------------------------------------
 
+    async def _run_guard(
+        self,
+        guard: GuardrailBase,
+        content: str,
+        ctx: dict,
+        stage_str: str,
+    ) -> CheckResult:
+        """Run one guard, wrapped in an OTel child span when telemetry is active."""
+        if self._telemetry:
+            with self._telemetry.guard_span(guard.name, stage_str) as span:
+                result = await guard(content, ctx)
+                self._telemetry.record_check_result(
+                    result, guard_name=guard.name, stage=stage_str, span=span
+                )
+                return result
+        return await guard(content, ctx)
+
     async def _run_stage(
         self,
         stage: GuardrailStage,
@@ -148,6 +186,10 @@ class GuardrailPipeline:
         context: dict | None,
     ) -> PipelineResult:
         ctx = context or {}
+        ctx["guardrail_stage"] = stage.value  # consumed by eu_ai_act, nist_ai_rmf transparency logic
+        stage_str = stage.value
+        run_id = str(uuid.uuid4())
+
         start = time.perf_counter()
         current_content = content
         checks: list[CheckResult] = []
@@ -156,54 +198,61 @@ class GuardrailPipeline:
 
         enabled_guards = [g for g in guards if g.enabled]
 
-        if self.parallel and stage != GuardrailStage.PROCESSING:
-            # Run all checks in parallel on the original content
-            tasks = [guard(current_content, ctx) for guard in enabled_guards]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+        with (self._telemetry.pipeline_stage_span(stage_str, run_id) if self._telemetry
+              else _nullcontext()) as stage_span:
 
-            for guard, result in zip(enabled_guards, results):
-                if isinstance(result, Exception):
-                    if self.fail_open:
-                        continue
-                    raise result
-                checks.append(result)
-                # Apply redaction in order after all checks complete
-                if result.action == Action.REDACT and result.sanitized_content:
-                    current_content = result.sanitized_content
-                elif result.action == Action.BLOCK:
-                    blocked = True
-                    rejection_message = result.rejection_message or f"Blocked by {guard.name}."
-        else:
-            # Sequential — each guard sees the output of the previous (important for redaction chains)
-            for guard in enabled_guards:
-                try:
-                    result = await guard(current_content, ctx)
-                except Exception as e:
-                    if self.fail_open:
-                        continue
-                    raise
+            if self.parallel and stage != GuardrailStage.PROCESSING:
+                # Run all checks in parallel on the original content
+                tasks = [self._run_guard(guard, current_content, ctx, stage_str) for guard in enabled_guards]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                checks.append(result)
+                for guard, result in zip(enabled_guards, results):
+                    if isinstance(result, Exception):
+                        if self.fail_open:
+                            continue
+                        raise result
+                    checks.append(result)
+                    # Apply redaction in order after all checks complete
+                    if result.action == Action.REDACT and result.sanitized_content:
+                        current_content = result.sanitized_content
+                    elif result.action == Action.BLOCK:
+                        blocked = True
+                        rejection_message = result.rejection_message or f"Blocked by {guard.name}."
+            else:
+                # Sequential — each guard sees the output of the previous (important for redaction chains)
+                for guard in enabled_guards:
+                    try:
+                        result = await self._run_guard(guard, current_content, ctx, stage_str)
+                    except Exception:
+                        if self.fail_open:
+                            continue
+                        raise
 
-                if result.action == Action.REDACT and result.sanitized_content:
-                    current_content = result.sanitized_content
-                elif result.action == Action.BLOCK:
-                    blocked = True
-                    rejection_message = result.rejection_message or f"Blocked by {guard.name}."
-                    break  # Stop processing on first block
+                    checks.append(result)
 
-        total_ms = (time.perf_counter() - start) * 1000
+                    if result.action == Action.REDACT and result.sanitized_content:
+                        current_content = result.sanitized_content
+                    elif result.action == Action.BLOCK:
+                        blocked = True
+                        rejection_message = result.rejection_message or f"Blocked by {guard.name}."
+                        break  # Stop processing on first block
 
-        pipeline_result = PipelineResult(
-            stage=stage,
-            original_content=content,
-            final_content=current_content,
-            passed=not blocked,
-            blocked=blocked,
-            checks=checks,
-            rejection_message=rejection_message,
-            total_latency_ms=total_ms,
-        )
+            total_ms = (time.perf_counter() - start) * 1000
+
+            pipeline_result = PipelineResult(
+                stage=stage,
+                original_content=content,
+                final_content=current_content,
+                passed=not blocked,
+                blocked=blocked,
+                checks=checks,
+                rejection_message=rejection_message,
+                total_latency_ms=total_ms,
+                pipeline_run_id=run_id,
+            )
+
+            if self._telemetry:
+                self._telemetry.record_pipeline_result(pipeline_result, span=stage_span)
 
         if self._audit_logger:
             await self._audit_logger.log(pipeline_result, ctx)
@@ -231,6 +280,8 @@ class GuardrailPipeline:
         pipeline_cfg = cfg.get("pipeline", {})
         parallel = pipeline_cfg.get("parallel_checks", True)
         fail_open = pipeline_cfg.get("fail_open", False)
+        request_timeout_raw = pipeline_cfg.get("request_timeout", 0)
+        request_timeout = float(request_timeout_raw) if request_timeout_raw else None
 
         def build_guards(stage_key: str) -> list[GuardrailBase]:
             stage_cfg = cfg.get(stage_key)
@@ -268,4 +319,5 @@ class GuardrailPipeline:
             policy_guards=build_guards("policy"),
             parallel=parallel,
             fail_open=fail_open,
+            request_timeout=request_timeout,
         )

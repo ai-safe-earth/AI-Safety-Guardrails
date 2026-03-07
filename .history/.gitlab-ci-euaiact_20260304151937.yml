@@ -29,14 +29,14 @@ eu-ai-act-full-scan:
   script:
     - |
       echo "🔍 Running EU AI Act compliance scan..."
-      python devtools/euaiact_lint.py $SCAN_PATH \
+      python scripts/euaiact_lint.py $SCAN_PATH \
         --format terminal \
         --no-color \
         $([ "$FAIL_ON_WARNINGS" = "true" ] && echo "--fail-on-warnings" || echo "")
     - |
       # Generate artifacts
-      python devtools/euaiact_lint.py $SCAN_PATH --format json --output eu-ai-act-report.json
-      python devtools/euaiact_lint.py $SCAN_PATH --format sarif --output eu-ai-act-results.sarif
+      python scripts/euaiact_lint.py $SCAN_PATH --format json --output eu-ai-act-report.json
+      python scripts/euaiact_lint.py $SCAN_PATH --format sarif --output eu-ai-act-results.sarif
   artifacts:
     name: "eu-ai-act-compliance-$CI_COMMIT_SHORT_SHA"
     paths:
@@ -78,7 +78,7 @@ eu-ai-act-mr-scan:
       EXIT_CODE=0
       while IFS= read -r file; do
         if [ -f "$file" ]; then
-          python devtools/euaiact_lint.py "$file" \
+          python scripts/euaiact_lint.py "$file" \
             --errors-only \
             --no-color || EXIT_CODE=1
         fi
@@ -100,8 +100,8 @@ eu-ai-act-weekly-audit:
   before_script:
     - pip install pyyaml --quiet
   script:
-    - python devtools/euaiact_lint.py . --format json --output weekly-audit.json
-    - python devtools/euaiact_lint.py . --format terminal --no-color --fail-on-warnings
+    - python scripts/euaiact_lint.py . --format json --output weekly-audit.json
+    - python scripts/euaiact_lint.py . --format terminal --no-color --fail-on-warnings
   artifacts:
     name: "eu-ai-act-weekly-audit-$CI_COMMIT_SHORT_SHA"
     paths:

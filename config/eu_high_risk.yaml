@@ -20,6 +20,7 @@ pipeline:
   mode: async
   parallel_checks: false       # Sequential for high-risk (ensures full chain logging)
   fail_open: false             # NEVER fail open in high-risk deployments
+  request_timeout: 20.0        # Hard timeout on LLM calls — prevent hanging under attack
 
 input:
   pii_detector:
@@ -61,6 +62,9 @@ processing:
   tool_policy:
     enabled: true
     default_deny: true
+    approval_timeout: 60.0           # Longer timeout for human review in high-risk
+    max_tool_calls_per_session: 30   # Hard cap on agentic loops
+    max_calls_per_tool: 10           # Per-tool guard against runaway repetition
     require_approval:
       - send_email
       - database_write
@@ -70,6 +74,27 @@ processing:
       - shell_command
       - deploy
       - file_delete
+    # policies:
+    #   user:
+    #     allow: [search, read_file]
+    #     deny: [shell_command, exec_code, deploy]
+    #     argument_rules:
+    #       read_file:
+    #         path: "./approved_data/*"
+
+  llm_tool_filter:
+    enabled: true
+    judge_type: llamaguard
+    judge_provider: groq
+    check_arguments: true
+    check_results: true
+    high_risk_tools: [web_search, fetch_url, database_query, read_email]
+    high_risk_fail_closed:          # Block (not flag) when judge is unavailable
+      - send_email
+      - database_write
+      - payment_process
+      - shell_command
+      - deploy
 
   context_control:
     enabled: true
@@ -87,17 +112,9 @@ output:
     action: block
     use_llm_judge: true
 
-  pii_redactor:
-    enabled: true
-    entities:
-      - EMAIL
-      - PHONE_US
-      - PHONE_INTL
-      - SSN
-      - CREDIT_CARD
-      - IBAN
-      - IP_ADDRESS
-      - PASSPORT
+  pii_restorer:
+    enabled: false   # Enable only when input uses PIIDetector(action="tokenize")
+    # Restores <PII:TYPE:N> tokens back to original values after LLM response
 
   hallucination:
     enabled: true
