@@ -1,12 +1,23 @@
 # AI Safety Guardrails
 
-> Production-ready, modular AI safety guardrails for any LLM-powered application.
+> Modular, self-hostable AI safety guardrails for any LLM-powered application.
+
+
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![EU AI Act Ready](https://img.shields.io/badge/EU%20AI%20Act-2024%2F1689-green.svg)](#eu-ai-act-compliance)
+[![EU AI Act aligned](https://img.shields.io/badge/EU%20AI%20Act-2024%2F1689-green.svg)](#eu-ai-act-compliance)
 [![NIST AI RMF](https://img.shields.io/badge/NIST-AI%20RMF%201.0-blue.svg)](#nist-ai-rmf-compliance)
 
+---
+
+
+> **Compliance disclaimer.** This library provides *technical controls and
+> audit evidence* that support compliance programs under Regulation (EU)
+> 2024/1689 (EU AI Act) and NIST AI RMF 1.0. Using it does not, by itself,
+> make a system compliant with any regulation. Compliance depends on your
+> system's risk classification, organizational measures, and legal
+> assessment. Nothing in this project is legal advice.
 ---
 
 ## Overview
