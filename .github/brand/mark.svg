@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="AI Safety Guardrails mark">
+  <rect width="1024" height="1024" fill="#131A21"/>
+  <circle cx="512" cy="512" r="240" fill="#1F5D7A"/>
+  <path d="M 840.9 564.1 A 333 333 0 1 1 840.9 459.9" fill="none" stroke="#F2EFE8" stroke-width="35"/>
+  <circle cx="845" cy="512" r="53" fill="#2E7D74"/>
+</svg>

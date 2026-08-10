@@ -1,13 +1,15 @@
+<img src="./.github/brand/mark.svg" alt="AI SAFE EARTH" width="72">
+
 # AI Safety Guardrails
 
 > Modular, self-hostable AI safety guardrails for any LLM-powered application.
 
-
-
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![EU AI Act aligned](https://img.shields.io/badge/EU%20AI%20Act-2024%2F1689-green.svg)](#eu-ai-act-compliance)
-[![NIST AI RMF](https://img.shields.io/badge/NIST-AI%20RMF%201.0-blue.svg)](#nist-ai-rmf-compliance)
+![Pillar](https://img.shields.io/badge/BUILD-EARLY_STAGE-2E7D74?style=flat-square&labelColor=131A21)
+[![Python](https://img.shields.io/badge/PYTHON-3.10+-1F5D7A?style=flat-square&labelColor=131A21)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/LICENSE-MIT-1F5D7A?style=flat-square&labelColor=131A21)](LICENSE)
+[![EU AI Act](https://img.shields.io/badge/EU_AI_ACT-2024%2F1689-4A5560?style=flat-square&labelColor=131A21)](#eu-ai-act-compliance)
+[![NIST AI RMF](https://img.shields.io/badge/NIST-AI_RMF_1.0-4A5560?style=flat-square&labelColor=131A21)](#nist-ai-rmf-compliance)
+[![Umbrella](https://img.shields.io/badge/AI_SAFE_EARTH-open_umbrella-131A21?style=flat-square&labelColor=131A21)](https://github.com/ai-safe-earth)
 
 ---
 
@@ -898,3 +900,7 @@ Tests do not require any API keys. All LLM calls are mocked.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+<sub>A project under <a href="https://github.com/ai-safe-earth">AI SAFE EARTH</a> · the fourth ring, around communities · AI safety &amp; civic tech</sub>
