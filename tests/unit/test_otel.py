@@ -13,16 +13,12 @@ Test groups:
 
 from __future__ import annotations
 
-import os
-import sys
 import uuid
 from unittest.mock import MagicMock
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
-
-from core.base import (
+from aisg.core.base import (
     Action,
     CheckResult,
     Finding,
@@ -31,8 +27,8 @@ from core.base import (
     PipelineResult,
     Severity,
 )
-from core.pipeline import GuardrailPipeline
-from modules.observability.otel import TelemetryProvider, _blocked_by
+from aisg.core.pipeline import GuardrailPipeline
+from aisg.modules.observability.otel import TelemetryProvider, _blocked_by
 
 # ---------------------------------------------------------------------------
 # Shared helpers

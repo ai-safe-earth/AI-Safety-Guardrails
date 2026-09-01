@@ -38,7 +38,7 @@ ruff errors, 52 of 65 files unformatted), so a repo-wide run buries the real dif
 ## 3. EU AI Act compliance
 
 ```bash
-python devtools/euaiact_lint.py <changed dirs>
+aisg lint <changed dirs>
 ```
 
 This is the only gate CI enforces. Exit `0` clean, `1` findings, `2` fatal. Use `--errors-only` to
@@ -47,7 +47,7 @@ see just the blocking Art. 5 / security findings, `--list-rules` to look up a ru
 ## 4. Misalignment
 
 ```bash
-python devtools/misalignment_check.py <changed dirs>
+aisg misalign <changed dirs>
 ```
 
 `ALIGN-001`, `005`, `006`, `008` are ERROR severity; the rest are warnings. Same flags and exit

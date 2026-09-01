@@ -18,13 +18,13 @@ import sys
 from pathlib import Path
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import asyncio
 import base64
 
-from modules.input.advanced_injection_detectors import AdvancedInjectionDetectors
-from modules.input.prompt_injection import PromptInjectionGuard
+from aisg.modules.input.advanced_injection_detectors import AdvancedInjectionDetectors
+from aisg.modules.input.prompt_injection import PromptInjectionGuard
 
 # ---------------------------------------------------------------------------
 # Attack Examples

@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from core.base import Action
-from modules.input.pii_detector import PII_TOKEN_MAP_KEY, PIIDetector, PIIRestorer
+from aisg.core.base import Action
+from aisg.modules.input.pii_detector import PII_TOKEN_MAP_KEY, PIIDetector, PIIRestorer
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -274,12 +274,12 @@ class TestTokenizeEndToEnd:
 
     @pytest.mark.asyncio
     async def test_restorer_registered_in_registry(self):
-        from core.registry import REGISTRY
+        from aisg.core.registry import REGISTRY
 
         assert "pii_restorer" in REGISTRY
 
     @pytest.mark.asyncio
     async def test_detector_tokenize_registered(self):
-        from core.registry import REGISTRY
+        from aisg.core.registry import REGISTRY
 
         assert "pii_detector" in REGISTRY

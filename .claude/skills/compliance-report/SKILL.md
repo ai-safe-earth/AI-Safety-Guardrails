@@ -12,10 +12,10 @@ Target: `$ARGUMENTS` if given, otherwise `modules/ integrations/ examples/ devto
 ## Run
 
 ```bash
-python devtools/euaiact_lint.py <target>
-python devtools/euaiact_lint.py <target> --format json     --output euaiact-report.json
-python devtools/euaiact_lint.py <target> --format sarif    --output euaiact-results.sarif
-python devtools/euaiact_lint.py <target> --format markdown --output euaiact-report.md
+aisg lint <target>
+aisg lint <target> --format json     --output euaiact-report.json
+aisg lint <target> --format sarif    --output euaiact-results.sarif
+aisg lint <target> --format markdown --output euaiact-report.md
 ```
 
 ## Gate
@@ -30,7 +30,7 @@ python -c "import json; d=json.load(open('euaiact-report.json')); print(d['summa
 
 - The `summary` block: error count, warning count, files scanned.
 - Every ERROR finding with its rule ID, file, and line. Use
-  `python devtools/euaiact_lint.py --list-rules` to explain any rule ID you cite.
+  `aisg lint --list-rules` to explain any rule ID you cite.
 - Whether the gate would pass or fail in CI.
 
 Then say where the four output files landed, and offer to delete them — they are build artifacts,
@@ -39,5 +39,5 @@ comment, and the JSON is retained 90 days under Art. 12; none of that happens lo
 
 ## Sibling check
 
-`devtools/misalignment_check.py` takes the same flags and formats and is **not** part of the CI
+`aisg misalign` takes the same flags and formats and is **not** part of the CI
 gate. Run it too if asked for a full audit.

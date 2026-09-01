@@ -5,15 +5,10 @@ Unit tests for the NIST AI RMF compliance guardrail.
 Run: pytest tests/ -v
 """
 
-import os
-import sys
-
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
-
-from core.base import Action, Severity
-from modules.policy.nist_ai_rmf import ImpactLevel, NISTAIRMFCompliance
+from aisg.core.base import Action, Severity
+from aisg.modules.policy.nist_ai_rmf import ImpactLevel, NISTAIRMFCompliance
 
 # ---------------------------------------------------------------------------
 # Helpers

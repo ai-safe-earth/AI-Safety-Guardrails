@@ -17,14 +17,12 @@ Test structure:
 
 from __future__ import annotations
 
-import os
 import sys
 from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 
 # Make sure the project root is on the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 # ---------------------------------------------------------------------------
 # Patch nemoguardrails before importing our module
@@ -42,15 +40,15 @@ _fake_nemo.RailsConfig = _fake_rails_config_cls
 sys.modules.setdefault("nemoguardrails", _fake_nemo)
 
 # Now we can safely import the module under test
-import integrations.nemo_rails as nemo_mod
+import aisg.integrations.nemo_rails as nemo_mod
 
 # Force _NEMO_AVAILABLE = True so the guards don't raise ImportError
 nemo_mod._NEMO_AVAILABLE = True
 nemo_mod.LLMRails = _fake_llm_rails_cls
 nemo_mod.RailsConfig = _fake_rails_config_cls
 
-from core.base import Action, GuardrailStage, PipelineResult
-from integrations.nemo_rails import (
+from aisg.core.base import Action, GuardrailStage, PipelineResult
+from aisg.integrations.nemo_rails import (
     NemoRailsGuard,
     NemoRailsMiddleware,
     _is_nemo_block,
@@ -80,7 +78,7 @@ def _make_pipeline(input_blocked=False, output_blocked=False, sanitized="clean i
     pipeline = MagicMock()
 
     if input_blocked:
-        from core.base import GuardrailStage
+        from aisg.core.base import GuardrailStage
 
         input_result = PipelineResult(
             stage=GuardrailStage.INPUT,
@@ -91,7 +89,7 @@ def _make_pipeline(input_blocked=False, output_blocked=False, sanitized="clean i
             rejection_message="Blocked by input guard.",
         )
     else:
-        from core.base import GuardrailStage
+        from aisg.core.base import GuardrailStage
 
         input_result = PipelineResult(
             stage=GuardrailStage.INPUT,

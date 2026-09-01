@@ -30,13 +30,10 @@ Test classes:
 from __future__ import annotations
 
 import json
-import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 # ---------------------------------------------------------------------------
 # Stub optional packages before importing project modules
@@ -48,17 +45,17 @@ if "anthropic" not in sys.modules:
     _fake_anthropic.AsyncAnthropic = MagicMock()
     sys.modules["anthropic"] = _fake_anthropic
 
-from core.base import Severity
-from modules.llm_judges import build_judge
-from modules.llm_judges.base import (
+from aisg.core.base import Severity
+from aisg.modules.llm_judges import build_judge
+from aisg.modules.llm_judges.base import (
     JudgeVerdict,
     LLMJudgeBase,
     _safe_fallback,
     _unsafe_fallback,
     category_to_severity,
 )
-from modules.llm_judges.claude_judge import ClaudeJudge
-from modules.llm_judges.llamaguard import (
+from aisg.modules.llm_judges.claude_judge import ClaudeJudge
+from aisg.modules.llm_judges.llamaguard import (
     CRITICAL_CATEGORIES,
     HIGH_CATEGORIES,
     LLAMAGUARD_CATEGORIES,
@@ -67,7 +64,7 @@ from modules.llm_judges.llamaguard import (
     _build_prompt,
     _parse_response,
 )
-from modules.llm_judges.openai_mod import OpenAIModerationJudge
+from aisg.modules.llm_judges.openai_mod import OpenAIModerationJudge
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -24,7 +24,7 @@ repos:
       - id: euaiact-lint
         name: EU AI Act Compliance Check
         language: python
-        entry: python devtools/euaiact_lint.py
+        entry: aisg lint
         args:
           - --staged             # Only scan staged files
           - --errors-only        # Block commit only on ERROR severity
@@ -37,7 +37,7 @@ repos:
       - id: misalignment-check
         name: AI Misalignment Control
         language: python
-        entry: python devtools/misalignment_check.py
+        entry: aisg misalign
         args:
           - --staged             # Only scan staged files
           - --errors-only        # Block commit on ALIGN-001/005/006/008 (ERROR rules)

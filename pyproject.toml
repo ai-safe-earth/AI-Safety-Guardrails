@@ -3,14 +3,14 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
-# After `pip install ai-safety-guardrails`, these commands are available globally:
-#   euaiact-lint src/
-#   euaiact-lint src/ --format sarif --output results.sarif
-#   euaiact-lint --staged            # in pre-commit
-euaiact-lint = "devtools.euaiact_lint:main"
-#   misalignment-check src/
-#   misalignment-check --staged      # in pre-commit
-misalignment-check = "devtools.misalignment_check:main"
+# Single entry point. `aisg <command> --help` shows each tool's own options.
+#   aisg lint src/
+#   aisg lint src/ --format sarif --output results.sarif
+#   aisg misalign src/ --fail-on-warnings
+aisg = "aisg.cli:main"
+# Retained so existing pre-commit configs and CI keep working.
+euaiact-lint = "aisg.devtools.euaiact_lint:main"
+misalignment-check = "aisg.devtools.misalignment_check:main"
 
 [project]
 name = "ai-safety-guardrails"
@@ -107,8 +107,18 @@ metrics = [
     "prometheus-client>=0.20",
 ]
 
-# Lint / static analysis only (no runtime deps needed)
-lint = []
+# Static analysis CLI (`aisg lint` / `aisg misalign`) -- deliberately light.
+# The analysers are pure-stdlib AST walkers; they need nothing beyond the base
+# dependencies. tomli only backfills tomllib on Python 3.10 so the CLI can read
+# its [tool.*] defaults out of pyproject.toml.
+devtools = [
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+# Deprecated alias for `devtools`.
+lint = [
+    "ai-safety-guardrails[devtools]",
+]
 
 # Pre-commit companion tools
 precommit = [
@@ -118,7 +128,7 @@ precommit = [
 
 # Full install (everything)
 all = [
-    "ai-safety-guardrails[presidio,langchain,fastapi,anthropic,otel,metrics,lint,precommit,llm-judges,settings,nemo]",
+    "ai-safety-guardrails[presidio,langchain,fastapi,anthropic,otel,metrics,devtools,precommit,llm-judges,settings,nemo]",
 ]
 
 # Development
@@ -134,8 +144,12 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["core*", "modules*", "integrations*", "devtools*"]
+where = ["src"]
+include = ["aisg*"]
+
+[tool.setuptools.package-data]
+# YAML presets ship inside the wheel; readable via aisg.config.preset_path().
+"aisg.config" = ["*.yaml", "nemo_rails/*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -152,8 +166,9 @@ select = ["E", "F", "W", "I"]
 ignore = ["E501"]   # line length handled by formatter
 
 [tool.ruff.lint.per-file-ignores]
-# These self-bootstrap with sys.path.insert before importing the package,
-# so module-level imports cannot come first. See CLAUDE.md > Layout.
+# examples/ call sys.path.insert to run against src/ without installing.
+# tests/ stub optional dependencies into sys.modules before importing the code
+# under test, so those imports must follow the stub.
 "tests/*" = ["E402"]
 "examples/*" = ["E402"]
 
@@ -165,10 +180,10 @@ exclude = ["tests/fixtures/"]   # fixtures contain intentionally bad code
 # -------------------------------------------------------
 # euaiact-lint configuration
 # -------------------------------------------------------
-# These settings are read by devtools/euaiact_lint.py
+# Read by aisg/devtools/euaiact_lint.py via aisg/devtools/_config.py
 # when invoked with no explicit flags.
 [tool.euaiact-lint]
-paths = ["modules", "integrations", "examples", "devtools"]
+paths = ["src", "examples"]
 exclude = ["tests/fixtures", "__pycache__", ".venv", "dist"]
 format = "terminal"
 errors_only = false         # set true to only report Art.5 / security errors
@@ -177,10 +192,10 @@ fail_on_warnings = false    # set true for strict CI enforcement
 # -------------------------------------------------------
 # misalignment-check configuration
 # -------------------------------------------------------
-# These settings are read by devtools/misalignment_check.py
+# Read by aisg/devtools/misalignment_check.py via aisg/devtools/_config.py
 # when invoked with no explicit flags.
 [tool.misalignment-check]
-paths = ["modules", "integrations", "examples", "devtools"]
+paths = ["src", "examples"]
 exclude = ["tests/fixtures", "__pycache__", ".venv", "dist"]
 format = "terminal"
 errors_only = false         # set true to hard-block on ALIGN-001/005/006/008 only

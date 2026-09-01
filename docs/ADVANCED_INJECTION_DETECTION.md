@@ -127,7 +127,7 @@ Detects obfuscation at the character level:
 ### Standalone Usage
 
 ```python
-from modules.input.advanced_injection_detectors import AdvancedInjectionDetectors
+from aisg.modules.input.advanced_injection_detectors import AdvancedInjectionDetectors
 
 # Initialize detectors
 detectors = AdvancedInjectionDetectors()
@@ -146,7 +146,7 @@ for finding in findings:
 ### Integrated with PromptInjectionGuard
 
 ```python
-from modules.input.prompt_injection import PromptInjectionGuard
+from aisg.modules.input.prompt_injection import PromptInjectionGuard
 
 # Create guardrail with advanced detectors enabled
 guard = PromptInjectionGuard(

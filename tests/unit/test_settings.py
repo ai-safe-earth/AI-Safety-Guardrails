@@ -8,15 +8,11 @@ reading from any real .env file or ambient environment variables.
 The monkeypatch fixture is used when testing environment variable resolution.
 """
 
-import os
-import sys
 import warnings
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
-
-from config.settings import Settings
+from aisg.config.settings import Settings
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -339,14 +335,14 @@ class TestJudgeKwargs:
 
     def test_judge_kwargs_feeds_build_judge(self):
         """judge_kwargs() output is accepted by build_judge() without error."""
-        from modules.llm_judges import build_judge
+        from aisg.modules.llm_judges import build_judge
 
         s = make(default_judge_type="llamaguard", default_judge_provider="groq")
         judge = build_judge(**s.judge_kwargs())
         assert judge.name == "llamaguard3_groq"
 
     def test_judge_kwargs_claude(self):
-        from modules.llm_judges import build_judge
+        from aisg.modules.llm_judges import build_judge
 
         s = make(default_judge_type="claude")
         judge = build_judge(**s.judge_kwargs())

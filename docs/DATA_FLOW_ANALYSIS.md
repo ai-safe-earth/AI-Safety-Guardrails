@@ -98,7 +98,7 @@ def process_message():
         raise ValueError("Message too long")
 
     # Check for injection patterns
-    from modules.input.prompt_injection import PromptInjectionGuard
+    from aisg.modules.input.prompt_injection import PromptInjectionGuard
     guard = PromptInjectionGuard()
     result = await guard.check(user_message, {})
 
@@ -318,7 +318,7 @@ def train_model():
 ### Basic Analysis
 
 ```python
-from modules.analysis.data_flow_analyzer import DataFlowAnalyzer
+from aisg.modules.analysis.data_flow_analyzer import DataFlowAnalyzer
 
 analyzer = DataFlowAnalyzer()
 
@@ -363,7 +363,7 @@ python -m modules.analysis.data_flow_analyzer src/ --format json > dataflow-repo
 Add custom taint sources:
 
 ```python
-from modules.analysis.data_flow_analyzer import TaintPatterns, SensitivityLevel, DataCategory
+from aisg.modules.analysis.data_flow_analyzer import TaintPatterns, SensitivityLevel, DataCategory
 
 # Add your custom source
 TaintPatterns.SOURCES["my_custom_input"] = (SensitivityLevel.PII, DataCategory.USER_INPUT)

@@ -4,15 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Layout
 
-Packages live at the repo **root** — there is no `src/`. Imports are top-level absolute:
-`from core.pipeline import GuardrailPipeline`, `from modules.input.pii_detector import PIIDetector`.
+`src/` layout. The only importable top-level name is `aisg` — everything is
+`aisg.core.*`, `aisg.modules.*`, `aisg.integrations.*`, `aisg.devtools.*`,
+`aisg.config.*`. Nothing is importable as a bare `core`/`modules`/`config`,
+and it must stay that way: those names would collide with users' own modules
+once published to PyPI.
 
-The package is **not installable** (see Known-broken below). Every test file and `examples/*.py`
-self-bootstraps with `sys.path.insert(0, ".../..")`, and there is no `conftest.py`. **Run every
-command from the repo root** — `pytest`'s `testpaths` and both `devtools/` CLIs assume it.
+`tests/conftest.py` puts `src/` on `sys.path`, so the suite runs without an
+install; `examples/*.py` still self-bootstrap with `sys.path.insert(..., "src")`.
+Run commands from the repo root.
 
-`config/` and the root `__init__.py` are excluded from `[tool.setuptools.packages.find]`; only
-`core*`, `modules*`, `integrations*`, `devtools*` ship.
+YAML presets exist twice on purpose: `src/aisg/config/*.yaml` ships in the
+wheel as package data (read it with `aisg.config.preset_path()` /
+`load_preset()`, never a hard-coded path), and repo-root `config/` is the
+local-dev copy. Keep the two in sync when editing either.
 
 ## Commands
 
@@ -26,15 +31,18 @@ python -m pytest tests/unit/test_pii_tokenization.py -k "roundtrip" -q
 ruff format <file>                                        # authoritative formatter
 ruff check --fix <file>
 
-python devtools/euaiact_lint.py modules/                  # EU AI Act compliance linter
-python devtools/misalignment_check.py modules/            # ALIGN-001..008 rule set
+aisg lint src/                                            # EU AI Act compliance linter
+aisg misalign src/                                        # ALIGN-001..008 rule set
 ```
 
-Both `devtools/` CLIs share flags: `--staged`, `--diff`, `--errors-only`, `--fail-on-warnings`,
-`--format terminal|json|sarif|markdown`, `--output <path>`, `--list-rules`.
+`aisg` is the single console script (`aisg.cli:main`); `euaiact-lint` and
+`misalignment-check` remain as aliases. Both subcommands share flags: `--staged`, `--diff`,
+`--errors-only`, `--fail-on-warnings`, `--format terminal|json|sarif|markdown`,
+`--output <path>`, `--list-rules`. The CLI passes everything after the subcommand through
+verbatim (`argparse.REMAINDER`), so `aisg lint --help` shows the linter's own help.
 Exit codes: `0` clean, `1` findings, `2` fatal.
 Their defaults come from `[tool.euaiact-lint]` / `[tool.misalignment-check]` in
-`pyproject.toml` via `devtools/_config.py`; an explicit CLI flag always wins, but a `true`
+`pyproject.toml` via `src/aisg/devtools/_config.py`; an explicit CLI flag always wins, but a `true`
 boolean there cannot be switched back off from the command line.
 
 **Verify before reporting done:** `pytest`, `ruff check` on changed files, then both `devtools/`
@@ -98,27 +106,24 @@ module-level `settings = Settings()` singleton at import time. `.env` resolves t
 
 1. `.secrets.baseline` is gitignored and absent, so `pre-commit run --all-files` fails on the
    `detect-secrets` hook in any fresh clone.
-2. README API drift: `from modules.output.pii_detector import PIIRestorer` (it lives in
-   `modules/input/`), `AnthropicGuardrailMiddleware(client=..., pipeline=...)` (the real class is
-   `AnthropicGuardrail(pipeline=..., **client_kwargs)`), and "415 tests" (actually 475).
-3. `config/` is excluded from `[tool.setuptools.packages.find]`, so `default.yaml` /
-   `eu_high_risk.yaml` do not ship in the wheel — `GuardrailPipeline.from_config("config/...")`
-   works from a checkout but not from an installed package.
-4. `ruff check .` reports 8 `F841` unused-variable findings, left in place deliberately. Two
-   look like real bugs rather than dead code: `modules/llm_judges/claude_judge.py` parses
+2. `ruff check .` reports 8 `F841` unused-variable findings, left in place deliberately. Two
+   look like real bugs rather than dead code: `aisg/modules/llm_judges/claude_judge.py` parses
    `reason` from the model's JSON but `JudgeVerdict` has no such field, so the explanation is
-   dropped; `modules/llm_judges/openai_mod.py` parses per-category `flags` and never uses
+   dropped; `aisg/modules/llm_judges/openai_mod.py` parses per-category `flags` and never uses
    them. Do not blind-delete the rest — some are side-effecting calls in tests.
-5. `examples/advanced_injection_demo.py:68` raises `AttributeError` — it calls `.encode()` on
+3. `examples/advanced_injection_demo.py:68` raises `AttributeError` — it calls `.encode()` on
    the `bytes` returned by `base64.b64encode`. Examples are not covered by pytest.
-6. Console output uses `✓`/`✗`, which crashes on a cp1252 Windows terminal. Run examples with
+4. Console output uses `✓`/`✗`, which crashes on a cp1252 Windows terminal. Run examples with
    `PYTHONIOENCODING=utf-8`.
+5. Every machine-readable CLI document starts with `"schema": "aisg/1"`. In SARIF this is an
+   extra root property the 2.1.0 spec does not define — GitHub Code Scanning accepts it, a
+   strict schema validator may not.
 
 ## Adding a guard
 
 Subclass `GuardrailBase`, set `name`/`stage`, decorate with `@register_guard("name")`, implement
-`async def check`, wire the name into **both** `config/default.yaml` and `config/eu_high_risk.yaml`,
-export from the root `__init__.py`, add tests. `GuardrailPipeline.from_config` fails loudly on an
+`async def check`, wire the name into **all four** YAML presets (`config/` and `src/aisg/config/`),
+export from `src/aisg/__init__.py`, add tests. `GuardrailPipeline.from_config` fails loudly on an
 unregistered name.
 
 ## Git

@@ -14,10 +14,10 @@ import sys
 from pathlib import Path
 
 # Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
-from modules.analysis.data_flow_analyzer import DataFlowAnalyzer
+from aisg.modules.analysis.data_flow_analyzer import DataFlowAnalyzer
 
 # ---------------------------------------------------------------------------
 # Vulnerable Code Examples (for demonstration)

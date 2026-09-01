@@ -14,14 +14,11 @@ Tests for the six codebase improvements:
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 # Stub anthropic before importing middleware
 if "anthropic" not in sys.modules:
@@ -34,8 +31,8 @@ if "anthropic" not in sys.modules:
 # 1.  LangChain callback — _run_async
 # ===========================================================================
 
-from core.base import Action, GuardrailStage, PipelineResult
-from integrations.langchain_callback import LangChainGuardrailCallback, _run_async
+from aisg.core.base import Action, GuardrailStage, PipelineResult
+from aisg.integrations.langchain_callback import LangChainGuardrailCallback, _run_async
 
 
 def _make_pipeline_result(blocked=False, sanitized="clean", msg="blocked"):
@@ -140,7 +137,7 @@ class TestLangChainCallback:
 # 2.  Anthropic middleware — deep copy
 # ===========================================================================
 
-from integrations.anthropic_middleware import _BlockedResponse, _GuardedMessages
+from aisg.integrations.anthropic_middleware import _BlockedResponse, _GuardedMessages
 
 
 class TestAnthropicMiddleware:
@@ -236,7 +233,7 @@ class TestAnthropicMiddleware:
 # 3.  Audit logger — stderr on write failure
 # ===========================================================================
 
-from modules.observability.audit_logger import AuditLogger
+from aisg.modules.observability.audit_logger import AuditLogger
 
 
 def _make_result():
@@ -298,8 +295,8 @@ class TestAuditLoggerErrors:
 # 4.  Config validation
 # ===========================================================================
 
-from core.exceptions import GuardrailConfigError
-from core.pipeline import GuardrailPipeline
+from aisg.core.exceptions import GuardrailConfigError
+from aisg.core.pipeline import GuardrailPipeline
 
 
 class TestConfigValidation:
@@ -365,7 +362,7 @@ class TestConfigValidation:
 # 5.  RateLimiter
 # ===========================================================================
 
-from modules.input.rate_limiter import RateLimiter
+from aisg.modules.input.rate_limiter import RateLimiter
 
 
 class TestRateLimiter:
@@ -467,7 +464,7 @@ class TestRateLimiter:
 
     @pytest.mark.asyncio
     async def test_registered_as_rate_limiter(self):
-        from core.registry import REGISTRY
+        from aisg.core.registry import REGISTRY
 
         assert "rate_limiter" in REGISTRY
 
@@ -476,8 +473,8 @@ class TestRateLimiter:
 # 6.  CachedJudge
 # ===========================================================================
 
-from modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
-from modules.llm_judges.cache import CachedJudge
+from aisg.modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
+from aisg.modules.llm_judges.cache import CachedJudge
 
 
 class _CountingJudge(LLMJudgeBase):

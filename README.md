@@ -75,77 +75,107 @@ Safe Response to User
 
 ## Repository Structure
 
+The package lives under `src/aisg/`, so nothing is importable as a bare
+top-level name — everything is `aisg.*`.
+
 ```
 ai-safety-guardrails/
 │
-├── core/
-│   ├── base.py                  # GuardrailBase, CheckResult, PipelineResult, Severity, Action
-│   ├── pipeline.py              # GuardrailPipeline — async orchestrator
-│   ├── exceptions.py            # GuardrailBlockedError, GuardrailConfigError, PolicyViolationError
-│   └── registry.py              # REGISTRY dict + @register_guard decorator
+├── src/aisg/
+│   ├── __init__.py              # Public API surface
+│   ├── cli.py                   # `aisg` entry point (lint / misalign)
+│   │
+│   ├── core/
+│   │   ├── base.py              # GuardrailBase, CheckResult, PipelineResult, Severity, Action
+│   │   ├── pipeline.py          # GuardrailPipeline — async orchestrator
+│   │   ├── exceptions.py        # GuardrailBlockedError, GuardrailConfigError, PolicyViolationError
+│   │   └── registry.py          # REGISTRY dict + @register_guard decorator
+│   │
+│   ├── modules/
+│   │   ├── input/
+│   │   │   ├── pii_detector.py                   # PIIDetector + PIIRestorer
+│   │   │   ├── prompt_injection.py
+│   │   │   ├── advanced_injection_detectors.py   # Unicode bypass, encoding, token smuggling
+│   │   │   ├── rate_limiter.py
+│   │   │   └── llm_input_filter.py
+│   │   │
+│   │   ├── processing/
+│   │   │   ├── tool_policy.py
+│   │   │   └── llm_tool_filter.py
+│   │   │
+│   │   ├── output/
+│   │   │   ├── toxicity.py
+│   │   │   └── llm_output_filter.py
+│   │   │
+│   │   ├── policy/
+│   │   │   ├── eu_ai_act.py
+│   │   │   ├── nist_ai_rmf.py
+│   │   │   └── code_analyzer/   # Static EU AI Act linter (used by the CLI)
+│   │   │
+│   │   ├── llm_judges/
+│   │   │   ├── base.py          # LLMJudgeBase, JudgeVerdict, category_to_severity()
+│   │   │   ├── llamaguard.py    # LlamaGuard 3 — Groq / Together / Ollama / HuggingFace
+│   │   │   ├── openai_mod.py    # OpenAI Moderation API
+│   │   │   ├── claude_judge.py  # Claude safety judge (injection / toxicity / general)
+│   │   │   └── cache.py         # CachedJudge — LRU + TTL wrapper
+│   │   │
+│   │   ├── analysis/
+│   │   │   └── data_flow_analyzer.py
+│   │   │
+│   │   └── observability/
+│   │       ├── audit_logger.py  # Structured JSONL audit trail
+│   │       └── otel.py          # OpenTelemetry traces + metrics
+│   │
+│   ├── integrations/
+│   │   ├── fastapi_middleware.py    # Starlette/FastAPI middleware
+│   │   ├── anthropic_middleware.py  # Drop-in Anthropic client wrapper
+│   │   ├── langchain_callback.py    # LangChain callback handler
+│   │   └── nemo_rails.py            # NVIDIA NeMo Guardrails (guard + middleware)
+│   │
+│   ├── config/
+│   │   ├── __init__.py          # preset_path() / load_preset() via importlib.resources
+│   │   ├── settings.py          # Pydantic Settings — reads .env file
+│   │   ├── default.yaml         # Packaged preset (ships in the wheel)
+│   │   ├── eu_high_risk.yaml    # Packaged preset (ships in the wheel)
+│   │   └── nemo_rails/
+│   │       ├── config.yml       # NeMo model + rail declarations
+│   │       └── rails.co         # Colang dialog flows
+│   │
+│   └── devtools/
+│       ├── euaiact_lint.py      # EU AI Act compliance linter  (aisg lint)
+│       ├── misalignment_check.py# AI alignment static analysis (aisg misalign)
+│       └── _config.py           # Reads [tool.*] defaults from pyproject.toml
 │
-├── modules/
-│   ├── input/
-│   │   ├── pii_detector.py
-│   │   ├── prompt_injection.py
-│   │   ├── advanced_injection_detectors.py   # Unicode bypass, encoding, token smuggling
-│   │   └── llm_input_filter.py
-│   │
-│   ├── processing/
-│   │   ├── tool_policy.py
-│   │   └── llm_tool_filter.py
-│   │
-│   ├── output/
-│   │   ├── toxicity.py
-│   │   └── llm_output_filter.py
-│   │
-│   ├── policy/
-│   │   ├── eu_ai_act.py
-│   │   ├── nist_ai_rmf.py
-│   │   └── code_analyzer/       # Static EU AI Act linter (used by devtools)
-│   │
-│   ├── llm_judges/
-│   │   ├── base.py              # LLMJudgeBase, JudgeVerdict, category_to_severity()
-│   │   ├── llamaguard.py        # LlamaGuard 3 — Groq / Together / Ollama / HuggingFace
-│   │   ├── openai_mod.py        # OpenAI Moderation API
-│   │   └── claude_judge.py      # Claude safety judge (injection / toxicity / general)
-│   │
-│   ├── analysis/
-│   │   └── data_flow_analyzer.py
-│   │
-│   └── observability/
-│       ├── audit_logger.py          # Structured JSONL audit trail
-│       └── otel.py                  # OpenTelemetry traces + metrics
-│
-├── integrations/
-│   ├── fastapi_middleware.py    # Starlette/FastAPI middleware
-│   ├── anthropic_middleware.py  # Drop-in Anthropic client wrapper
-│   ├── langchain_callback.py    # LangChain callback handler
-│   └── nemo_rails.py            # NVIDIA NeMo Guardrails (guard + middleware)
-│
-├── config/
-│   ├── settings.py              # Pydantic Settings — reads .env file
-│   ├── default.yaml             # Default pipeline config
-│   ├── eu_high_risk.yaml        # Strict config for EU high-risk systems
+├── config/                      # Same YAML presets, for local development
+│   ├── default.yaml
+│   ├── eu_high_risk.yaml
 │   └── nemo_rails/
-│       ├── config.yml           # NeMo model + rail declarations
-│       └── rails.co             # Colang dialog flows
-│
-├── devtools/
-│   ├── euaiact_lint.py          # CLI: static EU AI Act compliance linter
-│   └── misalignment_check.py    # CLI: AI alignment static analysis
 │
 ├── tests/
+│   ├── conftest.py              # Puts src/ on sys.path for uninstalled runs
 │   ├── test_advanced_injection.py
 │   └── unit/
 │       ├── test_guardrails.py
+│       ├── test_judges.py
 │       ├── test_nemo_rails.py
 │       ├── test_nist_ai_rmf.py
+│       ├── test_otel.py
+│       ├── test_pii_tokenization.py
 │       └── test_settings.py
 │
 ├── .env.example                 # All environment variables documented
 ├── pyproject.toml
 └── README.md
+```
+
+Configuration presets are readable from an installed wheel, not just a checkout:
+
+```python
+from aisg.config import preset_path, load_preset
+from aisg.core.pipeline import GuardrailPipeline
+
+pipeline = GuardrailPipeline.from_config(preset_path("default.yaml"))
+text = load_preset("eu_high_risk.yaml")
 ```
 
 ---
@@ -192,12 +222,12 @@ pip install "ai-safety-guardrails[all]"
 
 ```python
 import asyncio
-from core.pipeline import GuardrailPipeline
-from modules.input.pii_detector import PIIDetector
-from modules.input.prompt_injection import PromptInjectionGuard
-from modules.input.rate_limiter import RateLimiter
-from modules.output.toxicity import ToxicityFilter
-from modules.policy.eu_ai_act import EUAIActCompliance
+from aisg.core.pipeline import GuardrailPipeline
+from aisg.modules.input.pii_detector import PIIDetector
+from aisg.modules.input.prompt_injection import PromptInjectionGuard
+from aisg.modules.input.rate_limiter import RateLimiter
+from aisg.modules.output.toxicity import ToxicityFilter
+from aisg.modules.policy.eu_ai_act import EUAIActCompliance
 
 pipeline = GuardrailPipeline(
     input_guards=[
@@ -231,7 +261,7 @@ async def handle_request(user_message: str) -> str:
 ### 2. Load pipeline from YAML config
 
 ```python
-from core.pipeline import GuardrailPipeline
+from aisg.core.pipeline import GuardrailPipeline
 
 pipeline = GuardrailPipeline.from_config("config/default.yaml")
 ```
@@ -260,8 +290,8 @@ print(result.sanitized_output)
 Use `action="tokenize"` to send de-identified content to the LLM and restore the original values in the response:
 
 ```python
-from modules.input.pii_detector import PIIDetector
-from modules.output.pii_detector import PIIRestorer   # same file, separate class
+from aisg.modules.input.pii_detector import PIIDetector
+from aisg.modules.input.pii_detector import PIIRestorer   # same file, separate class
 
 pipeline = GuardrailPipeline(
     input_guards=[PIIDetector(action="tokenize")],
@@ -297,7 +327,7 @@ LLM judges add a second layer of semantic safety on top of pattern-based checks.
 ### Using a judge directly
 
 ```python
-from modules.llm_judges import build_judge
+from aisg.modules.llm_judges import build_judge
 
 # LlamaGuard 3 via Groq (fastest, ~100 ms)
 judge = build_judge(
@@ -331,9 +361,9 @@ judge = build_judge(
 ### Injecting a judge into a pipeline guard
 
 ```python
-from modules.llm_judges import build_judge
-from modules.input.llm_input_filter import LLMInputFilter
-from modules.output.llm_output_filter import LLMOutputFilter
+from aisg.modules.llm_judges import build_judge
+from aisg.modules.input.llm_input_filter import LLMInputFilter
+from aisg.modules.output.llm_output_filter import LLMOutputFilter
 
 judge = build_judge(judge_type="llamaguard", judge_provider="groq", api_key="gsk_...")
 
@@ -357,7 +387,7 @@ LLMInputFilter(
 ### LLMToolFilter — indirect injection detection
 
 ```python
-from modules.processing.llm_tool_filter import LLMToolFilter
+from aisg.modules.processing.llm_tool_filter import LLMToolFilter
 
 # Checks tool arguments before execution and tool results before feeding back to LLM
 tool_filter = LLMToolFilter(
@@ -386,7 +416,7 @@ For AI agents that call tools, the library provides three interlocking layers.
 ### Tool access policy (role-based, argument-level)
 
 ```python
-from modules.processing.tool_policy import ToolPolicyGuard, ToolPolicy
+from aisg.modules.processing.tool_policy import ToolPolicyGuard, ToolPolicy
 
 guard = ToolPolicyGuard(
     policies={
@@ -499,13 +529,13 @@ NIST_IMPACT_LEVEL=moderate
 ### Using settings in code
 
 ```python
-from config.settings import settings
+from aisg.config.settings import settings
 
 print(settings.groq_api_key)
 print(settings.is_production)       # True / False
 
 # Build a judge directly from settings
-from modules.llm_judges import build_judge
+from aisg.modules.llm_judges import build_judge
 judge = build_judge(**settings.judge_kwargs())
 ```
 
@@ -516,7 +546,7 @@ judge = build_judge(**settings.judge_kwargs())
 ### EU AI Act (Regulation 2024/1689)
 
 ```python
-from modules.policy.eu_ai_act import EUAIActCompliance, RiskTier
+from aisg.modules.policy.eu_ai_act import EUAIActCompliance, RiskTier
 
 eu_guard = EUAIActCompliance(
     risk_tier=RiskTier.HIGH,
@@ -544,7 +574,7 @@ eu_guard = EUAIActCompliance(
 ### NIST AI RMF 1.0
 
 ```python
-from modules.policy.nist_ai_rmf import NISTAIRMFCompliance, ImpactLevel
+from aisg.modules.policy.nist_ai_rmf import NISTAIRMFCompliance, ImpactLevel
 
 nist_guard = NISTAIRMFCompliance(
     impact_level=ImpactLevel.HIGH,
@@ -581,7 +611,7 @@ Add NeMo as a guard inside your existing `GuardrailPipeline`:
 
 ```python
 from nemoguardrails import LLMRails, RailsConfig
-from integrations.nemo_rails import NemoRailsGuard
+from aisg.integrations.nemo_rails import NemoRailsGuard
 
 rails_cfg = RailsConfig.from_path("config/nemo_rails")
 rails = LLMRails(rails_cfg)
@@ -603,7 +633,7 @@ NemoRailsGuard(rails_config_path="config/nemo_rails", fail_open=True)
 Use NeMo as the LLM callable, with your pipeline handling input/output guardrails around it:
 
 ```python
-from integrations.nemo_rails import NemoRailsMiddleware
+from aisg.integrations.nemo_rails import NemoRailsMiddleware
 
 middleware = NemoRailsMiddleware(
     pipeline=pipeline,
@@ -638,7 +668,7 @@ Edit `config/nemo_rails/rails.co` to define your own dialog rails. The file ship
 
 ```python
 from fastapi import FastAPI
-from integrations.fastapi_middleware import FastAPIGuardrailMiddleware
+from aisg.integrations.fastapi_middleware import FastAPIGuardrailMiddleware
 
 app = FastAPI()
 app.add_middleware(
@@ -654,7 +684,7 @@ The middleware automatically skips `/health`, `/ready`, `/metrics`, and `/docs`.
 ### Anthropic middleware
 
 ```python
-from integrations.anthropic_middleware import AnthropicGuardrailMiddleware
+from aisg.integrations.anthropic_middleware import AnthropicGuardrailMiddleware
 import anthropic
 
 client = anthropic.Anthropic(api_key="sk-ant-...")
@@ -670,7 +700,7 @@ response = await middleware.messages.create(
 ### LangChain callback
 
 ```python
-from integrations.langchain_callback import LangChainGuardrailCallback
+from aisg.integrations.langchain_callback import LangChainGuardrailCallback
 from langchain_openai import ChatOpenAI
 
 callback = LangChainGuardrailCallback(pipeline=pipeline)
@@ -683,33 +713,33 @@ llm = ChatOpenAI(callbacks=[callback])
 
 Two CLI tools ship with the library for pre-commit and CI use.
 
-### euaiact-lint — static EU AI Act compliance linter
+### `aisg lint` — static EU AI Act compliance linter
 
 Scans Python source files for EU AI Act compliance issues without running any code:
 
 ```bash
 # Scan a directory
-python devtools/euaiact_lint.py modules/
+aisg lint src/
 
 # List all rules
-python devtools/euaiact_lint.py --list-rules
+aisg lint --list-rules
 
 # SARIF output for GitHub Code Scanning
-python devtools/euaiact_lint.py src/ --format sarif --output results.sarif
+aisg lint src/ --format sarif --output results.sarif
 
 # Errors only (non-zero exit on Art. 5 / security violations)
-python devtools/euaiact_lint.py src/ --errors-only
+aisg lint src/ --errors-only
 ```
 
-### misalignment-check — AI alignment static analysis
+### `aisg misalign` — AI alignment static analysis
 
 Scans for alignment anti-patterns: deceptive system prompts, missing human oversight hooks, goal misspecification:
 
 ```bash
-python devtools/misalignment_check.py modules/
+aisg misalign src/
 
 # Strict mode (non-zero exit on any warning)
-python devtools/misalignment_check.py src/ --fail-on-warnings
+aisg misalign src/ --fail-on-warnings
 ```
 
 ### Pre-commit hooks
@@ -722,14 +752,14 @@ repos:
     hooks:
       - id: euaiact-lint
         name: EU AI Act compliance lint
-        entry: python devtools/euaiact_lint.py
+        entry: aisg lint
         args: [--errors-only]
         language: python
         types: [python]
 
       - id: misalignment-check
         name: AI alignment check
-        entry: python devtools/misalignment_check.py
+        entry: aisg misalign
         language: python
         types: [python]
 ```
@@ -741,7 +771,7 @@ repos:
 ### Audit logging
 
 ```python
-from modules.observability.audit_logger import AuditLogger
+from aisg.modules.observability.audit_logger import AuditLogger
 
 logger = AuditLogger(log_path="audit/pipeline.jsonl")
 pipeline = GuardrailPipeline(..., audit_logger=logger)
@@ -758,8 +788,8 @@ pip install "ai-safety-guardrails[otel]"
 ```
 
 ```python
-from modules.observability.otel import TelemetryProvider
-from core.pipeline import GuardrailPipeline
+from aisg.modules.observability.otel import TelemetryProvider
+from aisg.core.pipeline import GuardrailPipeline
 
 telemetry = TelemetryProvider(
     service_name="my-ai-system",
@@ -838,8 +868,8 @@ Blocked stages and guards have their span status set to `ERROR` for automatic al
 Any class that extends `GuardrailBase` and implements `check()` is a valid guard:
 
 ```python
-from core.base import GuardrailBase, GuardrailStage, CheckResult, Action, Severity, Finding
-from core.registry import register_guard
+from aisg.core.base import GuardrailBase, GuardrailStage, CheckResult, Action, Severity, Finding
+from aisg.core.registry import register_guard
 
 @register_guard("my_guard")
 class MyCustomGuard(GuardrailBase):
@@ -887,7 +917,7 @@ input:
 
 ```bash
 pip install pytest pytest-asyncio
-pytest                        # run all 415 tests
+pytest                        # run all 475 tests
 pytest tests/unit/            # unit tests only
 pytest -v -k "nemo"           # filter by name
 pytest -v -k "pii"            # PII tokenization + restoration tests

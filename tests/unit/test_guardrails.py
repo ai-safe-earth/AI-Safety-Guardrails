@@ -6,21 +6,17 @@ Run: pytest tests/ -v
 """
 
 import asyncio
-import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
-
-from core.base import Action
-from core.exceptions import GuardrailBlockedError
-from core.pipeline import GuardrailPipeline
-from modules.input.pii_detector import PIIDetector
-from modules.input.prompt_injection import PromptInjectionGuard
-from modules.output.toxicity import ToxicityFilter
-from modules.policy.eu_ai_act import EUAIActCompliance, RiskTier
-from modules.processing.tool_policy import ToolPolicy, ToolPolicyGuard
+from aisg.core.base import Action
+from aisg.core.exceptions import GuardrailBlockedError
+from aisg.core.pipeline import GuardrailPipeline
+from aisg.modules.input.pii_detector import PIIDetector
+from aisg.modules.input.prompt_injection import PromptInjectionGuard
+from aisg.modules.output.toxicity import ToxicityFilter
+from aisg.modules.policy.eu_ai_act import EUAIActCompliance, RiskTier
+from aisg.modules.processing.tool_policy import ToolPolicy, ToolPolicyGuard
 
 # ---------------------------------------------------------------------------
 # PII Detector
