@@ -217,5 +217,6 @@ class ClaudeJudge(LLMJudgeBase):
             safe=safe,
             categories=categories,
             confidence=confidence,
+            reason=reason,
             raw_response=raw,
         )

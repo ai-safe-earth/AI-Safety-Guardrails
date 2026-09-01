@@ -47,7 +47,30 @@ PII_PATTERNS: dict[str, re.Pattern] = {
     "EU_TAX_ID": re.compile(r"\b[A-Z]{2}\d{8,12}\b"),
 }
 
-DEFAULT_ENTITIES = ["EMAIL", "PHONE_US", "PHONE_INTL", "SSN", "CREDIT_CARD", "IP_ADDRESS"]
+# Enabled unless the caller passes `entities=`.
+#
+# IBAN and DATE_OF_BIRTH were added after measuring every candidate pattern
+# against benign text containing realistic identifiers (order numbers, SKUs,
+# ticket IDs, error codes). Both produced zero false positives -- IBAN's
+# country+checksum structure is specific, and DATE_OF_BIRTH requires a literal
+# "dob"/"date of birth"/"born" prefix.
+#
+# PASSPORT ([A-Z]{1,2}\d{6,9}) and EU_TAX_ID ([A-Z]{2}\d{8,12}) are
+# deliberately NOT default: they matched 6 and 3 of 9 benign strings
+# respectively -- "order number AB1234567", "SKU XY98765432", "ticket T1234567".
+# Redacting those would corrupt ordinary support traffic. Enable them
+# explicitly where the shape of your data justifies it:
+#     PIIDetector(entities=DEFAULT_ENTITIES + ["PASSPORT", "EU_TAX_ID"])
+DEFAULT_ENTITIES = [
+    "EMAIL",
+    "PHONE_US",
+    "PHONE_INTL",
+    "SSN",
+    "CREDIT_CARD",
+    "IP_ADDRESS",
+    "IBAN",
+    "DATE_OF_BIRTH",
+]
 
 REDACTION_PLACEHOLDERS = {
     "EMAIL": "[EMAIL REDACTED]",

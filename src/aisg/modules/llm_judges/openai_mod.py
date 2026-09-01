@@ -125,6 +125,13 @@ class OpenAIModerationJudge(LLMJudgeBase):
         # Collect violated categories above threshold
         violated = [cat for cat, score in scores.items() if score >= self.threshold]
 
+        # `flagged` is OpenAI's own determination and can be true while every
+        # score sits under our local threshold. Without this the verdict came
+        # back unsafe with an EMPTY category list -- unsafe for no stated
+        # reason. Fall back to the categories OpenAI itself flagged.
+        if flagged and not violated:
+            violated = sorted(cat for cat, is_flagged in flags.items() if is_flagged)
+
         # Confidence = highest score among violated categories (or 0 if safe)
         confidence = max((scores[c] for c in violated), default=0.0) if violated else 0.0
 
@@ -134,5 +141,6 @@ class OpenAIModerationJudge(LLMJudgeBase):
             safe=not flagged and not violated,
             categories=violated,
             confidence=confidence,
+            reason=("flagged by the moderation endpoint" if flagged else ""),
             raw_response=json.dumps(result),
         )

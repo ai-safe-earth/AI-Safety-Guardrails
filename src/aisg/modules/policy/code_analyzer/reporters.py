@@ -92,12 +92,12 @@ class TerminalReporter:
         bullet_icon = "•" if self.use_unicode else "*"
 
         # Summary header
+        # PASS/FAIL is carried by the icon; a separate status string was built
+        # here and never printed.
         if report.error_count == 0:
             icon = f"{c.GREEN}{check_icon}{c.RESET}"
-            status = f"{c.GREEN}PASS{c.RESET}"
         else:
             icon = f"{c.RED}{cross_icon}{c.RESET}"
-            status = f"{c.RED}FAIL{c.RESET}"
 
         parts = []
         if report.error_count > 0:
@@ -477,11 +477,10 @@ class MarkdownReporter:
         self._print("## EU AI Act Compliance Report\n")
 
         # Summary
+        # status_emoji already carries the glyph; the separate `icon` was unused.
         if report.error_count == 0:
-            icon = "✅"
             status_emoji = "✅ **PASS**"
         else:
-            icon = "❌"
             status_emoji = "❌ **FAIL**"
 
         parts = []

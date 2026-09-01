@@ -1190,3 +1190,39 @@ class TestBuildJudge:
     def test_default_provider_is_groq(self):
         judge = build_judge(api_key="k")
         assert judge.provider == "groq"
+
+
+# ---------------------------------------------------------------------------
+# JudgeVerdict.reason
+# ---------------------------------------------------------------------------
+
+
+class TestJudgeReason:
+    """
+    ClaudeJudge parsed `reason` out of the model's JSON and dropped it, because
+    JudgeVerdict had no field for it. Every explanation the judge produced was
+    silently discarded.
+    """
+
+    def test_verdict_has_a_reason_field(self):
+        from aisg.modules.llm_judges.base import JudgeVerdict
+
+        assert JudgeVerdict(safe=True).reason == ""
+        assert JudgeVerdict(safe=False, reason="because").reason == "because"
+
+    def test_claude_judge_keeps_the_reason(self):
+        from aisg.modules.llm_judges.claude_judge import ClaudeJudge
+
+        judge = ClaudeJudge(api_key="k")
+        raw = '{"safe": false, "categories": ["injection"], "confidence": 0.9, '
+        raw += '"reason": "instruction override attempt"}'
+        verdict = judge._parse(raw)
+        assert verdict.reason == "instruction override attempt"
+        assert verdict.safe is False
+
+    def test_missing_reason_is_empty_not_none(self):
+        from aisg.modules.llm_judges.claude_judge import ClaudeJudge
+
+        judge = ClaudeJudge(api_key="k")
+        verdict = judge._parse('{"safe": true, "categories": []}')
+        assert verdict.reason == ""

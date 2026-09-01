@@ -143,7 +143,6 @@ async def main():
     print("=" * 80)
     print()
 
-    total_tests = len(test_cases)
     attacks = test_cases[:-1]  # Exclude benign example
     benign = test_cases[-1]
 
@@ -159,6 +158,7 @@ async def main():
     benign_findings = await detectors.detect_all(benign["input"])
     high_severity_benign = [f for f in benign_findings if f.severity.value == "high"]
 
+    print(f"Test cases: {len(test_cases)} ({len(attacks)} attacks + 1 benign)")
     print(f"Attack examples tested: {len(attacks)}")
     print(f"Attacks detected: {detected_count}")
     print(f"Detection rate: {(detected_count / len(attacks) * 100):.1f}%")

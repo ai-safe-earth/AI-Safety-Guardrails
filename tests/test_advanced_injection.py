@@ -412,6 +412,8 @@ class TestPerformance:
 
         # Should complete in reasonable time (< 1 second for 10KB)
         assert duration < 1.0
+        # Benign repeated text should not trip anything.
+        assert findings == []
 
     @pytest.mark.asyncio
     async def test_many_examples_performance(self):
@@ -429,6 +431,7 @@ class TestPerformance:
 
         # Should still be fast
         assert duration < 0.5
+        assert isinstance(findings, list)
 
 
 if __name__ == "__main__":

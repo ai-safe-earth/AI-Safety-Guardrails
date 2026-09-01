@@ -353,6 +353,8 @@ class TestNemoRailsMiddleware:
         mw = NemoRailsMiddleware(pipeline=pipeline, rails=rails, fail_open=True)
         result = await mw.generate("hello")
         # fail_open=True: _call_nemo returns an error string, output pipeline runs
+        # and its PipelineResult is what generate() hands back.
+        assert result is pipeline.run_output.return_value
         pipeline.run_output.assert_called_once()
         nemo_arg = pipeline.run_output.call_args[0][0]
         assert "NeMo error" in nemo_arg

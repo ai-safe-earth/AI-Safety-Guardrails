@@ -283,3 +283,61 @@ class TestTokenizeEndToEnd:
         from aisg.core.registry import REGISTRY
 
         assert "pii_detector" in REGISTRY
+
+
+# ---------------------------------------------------------------------------
+# Default entity set
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultEntities:
+    """
+    Which entities are on by default was decided by measuring each candidate
+    against benign text containing realistic identifiers. These tests pin that
+    decision so it is not quietly widened.
+    """
+
+    def test_iban_redacted_by_default(self):
+        guard = PIIDetector(action="redact")
+        import asyncio
+
+        r = asyncio.run(guard("Transfer to DE89370400440532013000 today", {}))
+        assert "DE89370400440532013000" not in r.sanitized_content
+
+    def test_date_of_birth_redacted_by_default(self):
+        guard = PIIDetector(action="redact")
+        import asyncio
+
+        r = asyncio.run(guard("DOB: 12/03/1985 for the form", {}))
+        assert "12/03/1985" not in r.sanitized_content
+
+    @pytest.mark.parametrize(
+        "benign",
+        [
+            "My order number is AB1234567, when will it ship?",
+            "Track parcel GB12345678 please.",
+            "The SKU is XY98765432 and the price is 40 EUR.",
+            "Ticket ID: T1234567 was closed yesterday.",
+            "Part number A123456789 is out of stock.",
+        ],
+    )
+    def test_benign_identifiers_survive_default_redaction(self, benign):
+        """
+        PASSPORT and EU_TAX_ID are deliberately opt-in: their patterns match
+        ordinary order numbers, SKUs and ticket IDs. Enabling them by default
+        would corrupt normal support traffic.
+        """
+        import asyncio
+
+        guard = PIIDetector(action="redact")
+        r = asyncio.run(guard(benign, {}))
+        assert r.sanitized_content == benign, "default redaction damaged benign text"
+
+    def test_passport_available_when_asked_for(self):
+        import asyncio
+
+        from aisg.modules.input.pii_detector import DEFAULT_ENTITIES
+
+        guard = PIIDetector(action="redact", entities=DEFAULT_ENTITIES + ["PASSPORT"])
+        r = asyncio.run(guard("Passport AB1234567 expires soon", {}))
+        assert "AB1234567" not in r.sanitized_content

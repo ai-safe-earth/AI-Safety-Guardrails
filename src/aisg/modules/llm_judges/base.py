@@ -44,12 +44,15 @@ class JudgeVerdict:
         raw_response:       The unprocessed text/JSON from the model.
         judge_name:         Name of the judge that produced this verdict.
         latency_ms:         Wall-clock time for the judge call.
+        reason:             The judge's own explanation, when it gives one.
+                            Empty for judges that return no rationale.
         error:              Set if the call failed and the verdict is a fallback.
     """
 
     safe: bool
     categories: list[str] = field(default_factory=list)
     confidence: float = 1.0
+    reason: str = ""
     raw_response: str = ""
     judge_name: str = ""
     latency_ms: float = 0.0
