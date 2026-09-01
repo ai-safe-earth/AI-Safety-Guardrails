@@ -150,6 +150,8 @@ include = ["aisg*"]
 [tool.setuptools.package-data]
 # YAML presets ship inside the wheel; readable via aisg.config.preset_path().
 "aisg.config" = ["*.yaml", "nemo_rails/*"]
+# Attack corpus for `aisg probe`, loaded via importlib.resources.
+"aisg.probes" = ["*.yaml"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

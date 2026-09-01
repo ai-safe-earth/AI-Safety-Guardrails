@@ -31,6 +31,8 @@ _EPILOG = """
 Commands:
   lint        EU AI Act static compliance analysis (was: euaiact-lint)
   misalign    AI misalignment static analysis      (was: misalignment-check)
+  init        Write an ai-system-card.yaml for the system under assessment
+  probe       Send a fixed attack corpus to a live endpoint and report what got through
 
 Run `aisg <command> --help` for a command's own options.
 
@@ -40,6 +42,8 @@ Examples:
   aisg lint src/ --errors-only
   aisg lint --staged                       # pre-commit
   aisg misalign src/ --fail-on-warnings
+  aisg init --defaults
+  aisg probe http://localhost:8000/chat --response-path '$.response'
 """
 
 
@@ -55,9 +59,23 @@ def _misalign(argv: Sequence[str]) -> int:
     return misalign_main(list(argv))
 
 
+def _init(argv: Sequence[str]) -> int:
+    from aisg.devtools.system_card import main as init_main
+
+    return init_main(list(argv))
+
+
+def _probe(argv: Sequence[str]) -> int:
+    from aisg.devtools.probe import main as probe_main
+
+    return probe_main(list(argv))
+
+
 COMMANDS: dict[str, Callable[[Sequence[str]], int]] = {
     "lint": _lint,
     "misalign": _misalign,
+    "init": _init,
+    "probe": _probe,
 }
 
 

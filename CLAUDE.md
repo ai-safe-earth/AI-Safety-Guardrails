@@ -119,6 +119,39 @@ module-level `settings = Settings()` singleton at import time. `.env` resolves t
    extra root property the 2.1.0 spec does not define — GitHub Code Scanning accepts it, a
    strict schema validator may not.
 
+## `aisg init` and `aisg probe`
+
+`init` (`devtools/system_card.py`) writes `ai-system-card.yaml` -- what the
+operator *asserts* about their system. The rendered file carries an inline
+caveat above `risk_tier` saying classification is a legal determination, not a
+tool output. That caveat is load-bearing and pinned by a test; do not drop it.
+`--defaults` is the non-interactive path, and without it the command refuses to
+run when stdin is not a tty rather than hanging in CI.
+
+`probe` (`devtools/probe.py`) sends a fixed corpus at a live HTTP endpoint and
+reports what got through. Rules that hold:
+
+- **No LLM, ever.** Fixed payloads, fixed detectors, deterministic verdicts.
+- **A detector hit means the attack SUCCEEDED**, so a hit is a failure. Exit 1
+  if any case got through.
+- **Non-2xx is `error`, never `passed`.** A case that never reached a working
+  endpoint has not been tested; calling it a pass is a false clean bill of
+  health. Only 2xx and `REJECTION_CODES` (400/403/406/409/413/422, i.e. the
+  endpoint rejecting the payload) run the detector. A run with errors exits 2.
+- A preflight request runs first, so a dead or wrong endpoint fails fast
+  instead of producing N misleading rows.
+- **Never claims compliance.** The report has no verdict field and carries a
+  disclaimer; a test greps the JSON for compliance language.
+- Non-loopback targets are refused unless `--i-have-authorization` is passed. A
+  hostname that is not a literal IP counts as remote even if it would resolve
+  to loopback.
+
+The corpus is `src/aisg/probes/*.yaml`, one file per family, 47 cases seeded
+from the guards this package already ships -- INJECTION_PATTERNS, PII_PATTERNS,
+TOXICITY_PATTERNS, AdvancedInjectionDetectors, high_risk_fail_closed. Every case
+records its `seed_pattern`; keep that link when adding cases, and add a case when
+adding a detection pattern.
+
 ## Rule precision gating
 
 Every `euaiact-lint` rule carries `measured_precision: float | None` (on

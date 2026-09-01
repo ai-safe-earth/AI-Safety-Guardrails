@@ -766,6 +766,64 @@ repos:
 
 ---
 
+## System card & live probing
+
+### `aisg init` — record what you assert about the system
+
+```bash
+aisg init                 # interactive
+aisg init --defaults      # non-interactive, for CI
+```
+
+Writes `./ai-system-card.yaml`: system id/name/purpose, your role (provider,
+deployer, importer, distributor), risk tier, Annex III category when high-risk,
+affected persons and deployment region.
+
+The card records **assertions, not findings**. Risk classification is a legal
+determination — `aisg` writes down your answer and does not classify anything.
+The generated file says so inline, above `risk_tier`.
+
+### `aisg probe` — send an attack corpus at a live endpoint
+
+```bash
+aisg probe http://localhost:8000/chat     --request-template '{"message":"{{payload}}"}'     --response-path '$.response'
+```
+
+47 fixed payloads across six families — prompt injection, system-prompt
+extraction, PII echo, toxicity elicitation, encoding/Unicode bypass and tool
+abuse — seeded from the detection patterns this package already ships. No LLM is
+involved: deterministic payloads, deterministic detectors, repeatable verdicts.
+
+A detector matching means the attack **got through**. Exit code is 1 if any case
+succeeded, 2 if any case could not be exercised at all.
+
+| Flag | Purpose |
+|---|---|
+| `--request-template` | JSON body with `{{payload}}` as the placeholder |
+| `--response-path` | JSONPath subset to the reply text, e.g. `$.choices[0].message.content` |
+| `--families` | Limit to named families |
+| `--rate-limit` | Max requests per second |
+| `--timeout` | Per-request timeout, seconds |
+| `--header NAME:VALUE` | Extra request header, repeatable |
+| `--list-cases` | Print the corpus and exit |
+| `--i-have-authorization` | Required for any non-loopback target |
+
+Output is `probe-report.json` (schema `aisg/1`) plus a terminal table, reporting
+only sent / passed / failed / errors and a per-family breakdown.
+
+**This is not a compliance check.** A clean run means these payloads did not
+produce these markers against this endpoint. It says nothing about payloads
+outside the corpus, and nothing about any legal obligation. The report contains
+no verdict field and never uses the word "compliant".
+
+**Authorization.** Non-loopback targets are refused unless
+`--i-have-authorization` is passed, and the refusal explains why: sending
+injection, PII and tool-abuse payloads to a host you do not own or have written
+permission to test may be unlawful. A hostname that is not a literal IP is
+treated as remote even if it would resolve to loopback.
+
+---
+
 ## Observability
 
 ### Audit logging
