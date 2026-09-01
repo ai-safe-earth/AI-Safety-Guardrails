@@ -36,12 +36,12 @@ from collections import defaultdict, deque
 from typing import Deque
 
 from core.base import (
+    Action,
+    CheckResult,
+    Finding,
     GuardrailBase,
     GuardrailStage,
-    CheckResult,
-    Action,
     Severity,
-    Finding,
 )
 from core.registry import register_guard
 

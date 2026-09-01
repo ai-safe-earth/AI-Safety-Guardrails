@@ -8,19 +8,20 @@ All guardrail modules inherit from GuardrailBase.
 from __future__ import annotations
 
 import time
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
-import uuid
-
 
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
 
+
 class Severity(str, Enum):
     """How serious a guardrail finding is."""
+
     INFO = "info"
     LOW = "low"
     MEDIUM = "medium"
@@ -30,11 +31,12 @@ class Severity(str, Enum):
 
 class Action(str, Enum):
     """What action to take when a check fires."""
-    ALLOW = "allow"       # Pass through unchanged
-    FLAG = "flag"         # Pass through but annotate
-    REDACT = "redact"     # Sanitize and pass through
-    BLOCK = "block"       # Hard stop — return rejection_message
-    HUMAN = "human"       # Route to human review queue
+
+    ALLOW = "allow"  # Pass through unchanged
+    FLAG = "flag"  # Pass through but annotate
+    REDACT = "redact"  # Sanitize and pass through
+    BLOCK = "block"  # Hard stop — return rejection_message
+    HUMAN = "human"  # Route to human review queue
 
 
 class GuardrailStage(str, Enum):
@@ -48,14 +50,16 @@ class GuardrailStage(str, Enum):
 # Result objects
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Finding:
     """A single finding from a guardrail check."""
+
     guard_name: str
     severity: Severity
     category: str
     description: str
-    span: Optional[tuple[int, int]] = None   # character span in content
+    span: Optional[tuple[int, int]] = None  # character span in content
     metadata: dict = field(default_factory=dict)
 
 
@@ -73,6 +77,7 @@ class CheckResult:
         latency_ms:         Time taken for this check.
         check_id:           UUID for correlation with audit logs.
     """
+
     passed: bool
     action: Action = Action.ALLOW
     sanitized_content: Optional[str] = None
@@ -102,6 +107,7 @@ class PipelineResult:
     """
     Aggregated result from running content through all guardrails in a stage.
     """
+
     stage: GuardrailStage
     original_content: str
     final_content: str
@@ -124,6 +130,7 @@ class PipelineResult:
 # ---------------------------------------------------------------------------
 # Base class
 # ---------------------------------------------------------------------------
+
 
 class GuardrailBase(ABC):
     """

@@ -19,21 +19,21 @@ from typing import Iterator
 
 from modules.policy.code_analyzer.analyzer import BaseRule, CodeFinding, Severity
 
-
 # ---------------------------------------------------------------------------
 # ALIGN-001 — Safety bypass patterns
 # ---------------------------------------------------------------------------
 
+
 class Rule_ALIGN001_SafetyBypass(BaseRule):
-    rule_id     = "ALIGN-001"
-    article     = "Misalignment / Safety"
-    severity    = Severity.ERROR
-    title       = "Safety bypass pattern detected"
+    rule_id = "ALIGN-001"
+    article = "Misalignment / Safety"
+    severity = Severity.ERROR
+    title = "Safety bypass pattern detected"
     description = (
         "Code contains patterns that disable, skip, or override safety mechanisms. "
         "This can allow unsafe outputs to reach users without guardrail filtering."
     )
-    suggestion  = (
+    suggestion = (
         "Remove bypass flags. If a guardrail is too strict, adjust its threshold "
         "through the official configuration rather than disabling it."
     )
@@ -68,18 +68,22 @@ class Rule_ALIGN001_SafetyBypass(BaseRule):
             if isinstance(node, ast.Call):
                 for kw in node.keywords:
                     name = (kw.arg or "").lower()
-                    val  = kw.value
-                    is_true_const  = isinstance(val, ast.Constant) and val.value is True
+                    val = kw.value
+                    is_true_const = isinstance(val, ast.Constant) and val.value is True
                     is_false_const = isinstance(val, ast.Constant) and val.value is False
                     if (
-                        ("bypass" in name or "skip" in name or "unsafe" in name or "disable" in name)
+                        (
+                            "bypass" in name
+                            or "skip" in name
+                            or "unsafe" in name
+                            or "disable" in name
+                        )
                         and is_true_const
-                    ) or (
-                        "safe" in name and is_false_const
-                    ):
+                    ) or ("safe" in name and is_false_const):
                         line = getattr(node, "lineno", 0)
                         yield self._finding(
-                            filename, line,
+                            filename,
+                            line,
                             snippet=self._snippet(source_lines, line),
                             description=f"Keyword argument `{kw.arg}` disables a safety check.",
                         )
@@ -89,16 +93,17 @@ class Rule_ALIGN001_SafetyBypass(BaseRule):
 # ALIGN-002 — Hardcoded unsafe defaults
 # ---------------------------------------------------------------------------
 
+
 class Rule_ALIGN002_UnsafeDefaults(BaseRule):
-    rule_id     = "ALIGN-002"
-    article     = "Misalignment / Defaults"
-    severity    = Severity.WARNING
-    title       = "Hardcoded unsafe or extreme default value"
+    rule_id = "ALIGN-002"
+    article = "Misalignment / Defaults"
+    severity = Severity.WARNING
+    title = "Hardcoded unsafe or extreme default value"
     description = (
         "A safety-critical parameter (confidence threshold, temperature, score limit) "
         "is set to an extreme or permissive value that could weaken safety filtering."
     )
-    suggestion  = (
+    suggestion = (
         "Move threshold values to configuration files. Use named constants with "
         "clear comments explaining their safety implications."
     )
@@ -122,31 +127,44 @@ class Rule_ALIGN002_UnsafeDefaults(BaseRule):
             if stripped.startswith("#"):
                 continue
             if self._THRESHOLD.search(line):
-                yield self._finding(filename, i, snippet=line,
-                    description="Safety threshold set to 0.0 or 1.0 — verify this is intentional.")
+                yield self._finding(
+                    filename,
+                    i,
+                    snippet=line,
+                    description="Safety threshold set to 0.0 or 1.0 — verify this is intentional.",
+                )
             if self._TEMPERATURE.search(line):
-                yield self._finding(filename, i, snippet=line,
-                    description="Temperature > 1.5 increases randomness and may produce unsafe outputs.")
+                yield self._finding(
+                    filename,
+                    i,
+                    snippet=line,
+                    description="Temperature > 1.5 increases randomness and may produce unsafe outputs.",
+                )
             if self._TOP_P.search(line):
-                yield self._finding(filename, i, snippet=line,
-                    description="top_p=1.0 disables nucleus sampling filtering.")
+                yield self._finding(
+                    filename,
+                    i,
+                    snippet=line,
+                    description="top_p=1.0 disables nucleus sampling filtering.",
+                )
 
 
 # ---------------------------------------------------------------------------
 # ALIGN-003 — Missing human oversight hooks
 # ---------------------------------------------------------------------------
 
+
 class Rule_ALIGN003_MissingOversight(BaseRule):
-    rule_id     = "ALIGN-003"
-    article     = "Misalignment / Human Oversight"
-    severity    = Severity.WARNING
-    title       = "High-risk action without audit or oversight hook"
+    rule_id = "ALIGN-003"
+    article = "Misalignment / Human Oversight"
+    severity = Severity.WARNING
+    title = "High-risk action without audit or oversight hook"
     description = (
         "A function performing a high-risk or irreversible action (execute, deploy, "
         "delete, send, publish) contains no logging, audit, or confirmation call, "
         "making the action invisible to human oversight."
     )
-    suggestion  = (
+    suggestion = (
         "Add an audit log call (e.g. audit_logger.log()) or a confirmation gate "
         "before executing irreversible operations."
     )
@@ -176,7 +194,8 @@ class Rule_ALIGN003_MissingOversight(BaseRule):
             )
             if not self._OVERSIGHT.search(body_src):
                 yield self._finding(
-                    filename, node.lineno,
+                    filename,
+                    node.lineno,
                     snippet=self._snippet(source_lines, node.lineno),
                     description=(
                         f"Function `{node.name}` performs a high-risk action "
@@ -189,16 +208,17 @@ class Rule_ALIGN003_MissingOversight(BaseRule):
 # ALIGN-004 — Policy-code consistency
 # ---------------------------------------------------------------------------
 
+
 class Rule_ALIGN004_PolicyConsistency(BaseRule):
-    rule_id     = "ALIGN-004"
-    article     = "Misalignment / Policy Consistency"
-    severity    = Severity.WARNING
-    title       = "Declared policy not enforced in code"
+    rule_id = "ALIGN-004"
+    article = "Misalignment / Policy Consistency"
+    severity = Severity.WARNING
+    title = "Declared policy not enforced in code"
     description = (
         "A guardrail class or safety policy is imported but never instantiated or "
         "called, meaning it exists on paper but has no runtime effect."
     )
-    suggestion  = (
+    suggestion = (
         "Ensure every imported guardrail is instantiated and added to the active "
         "pipeline. Remove unused policy imports to avoid false confidence."
     )
@@ -218,12 +238,16 @@ class Rule_ALIGN004_PolicyConsistency(BaseRule):
             if isinstance(node, ast.ImportFrom):
                 for alias in node.names:
                     name = alias.asname or alias.name
-                    if re.search(r"(Guard|Guardrail|Policy|Checker|Validator|Filter|Scanner)", name, re.I):
+                    if re.search(
+                        r"(Guard|Guardrail|Policy|Checker|Validator|Filter|Scanner)", name, re.I
+                    ):
                         imported_names[name] = node.lineno
             elif isinstance(node, ast.Import):
                 for alias in node.names:
                     name = alias.asname or alias.name
-                    if re.search(r"(Guard|Guardrail|Policy|Checker|Validator|Filter|Scanner)", name, re.I):
+                    if re.search(
+                        r"(Guard|Guardrail|Policy|Checker|Validator|Filter|Scanner)", name, re.I
+                    ):
                         imported_names[name] = node.lineno
 
         if not imported_names:
@@ -239,12 +263,15 @@ class Rule_ALIGN004_PolicyConsistency(BaseRule):
 
         for name, lineno in imported_names.items():
             # Count usages beyond the import line itself
-            occurrences = sum(1 for n in ast.walk(tree)
-                              if isinstance(n, ast.Name) and n.id == name
-                              and getattr(n, "lineno", 0) != lineno)
+            occurrences = sum(
+                1
+                for n in ast.walk(tree)
+                if isinstance(n, ast.Name) and n.id == name and getattr(n, "lineno", 0) != lineno
+            )
             if occurrences == 0:
                 yield self._finding(
-                    filename, lineno,
+                    filename,
+                    lineno,
                     snippet=self._snippet(source_lines, lineno),
                     description=f"`{name}` is imported as a safety component but never used.",
                 )
@@ -254,17 +281,18 @@ class Rule_ALIGN004_PolicyConsistency(BaseRule):
 # ALIGN-005 — Hidden / encoded content
 # ---------------------------------------------------------------------------
 
+
 class Rule_ALIGN005_HiddenContent(BaseRule):
-    rule_id     = "ALIGN-005"
-    article     = "Misalignment / Hidden Content"
-    severity    = Severity.ERROR
-    title       = "Potentially hidden or encoded content detected"
+    rule_id = "ALIGN-005"
+    article = "Misalignment / Hidden Content"
+    severity = Severity.ERROR
+    title = "Potentially hidden or encoded content detected"
     description = (
         "The file contains patterns associated with hidden information: long "
         "base64-like strings, zero-width or invisible Unicode characters, or "
         "unusual Unicode that could conceal instructions or data."
     )
-    suggestion  = (
+    suggestion = (
         "Review all long encoded strings. Replace with named constants or "
         "external config. Remove any zero-width or invisible Unicode characters."
     )
@@ -272,9 +300,7 @@ class Rule_ALIGN005_HiddenContent(BaseRule):
     # Long base64-like blobs (>60 chars of base64 alphabet)
     _BASE64 = re.compile(r"['\"][A-Za-z0-9+/]{60,}={0,2}['\"]")
     # Zero-width / invisible Unicode (in source text)
-    _INVISIBLE = re.compile(
-        r"[\u200b\u200c\u200d\u200e\u200f\u00ad\ufeff\u2060\u180e\u2028\u2029]"
-    )
+    _INVISIBLE = re.compile(r"[\u200b\u200c\u200d\u200e\u200f\u00ad\ufeff\u2060\u180e\u2028\u2029]")
     # Private-use area or unusual control characters embedded in strings
     _UNUSUAL_UNICODE = re.compile(r"[\ue000-\uf8ff\U000f0000-\U000fffff]")
 
@@ -282,31 +308,44 @@ class Rule_ALIGN005_HiddenContent(BaseRule):
         lines = source.splitlines()
         for i, line in enumerate(lines, 1):
             if self._BASE64.search(line):
-                yield self._finding(filename, i, snippet=line,
-                    description="Long base64-like string found — may contain encoded hidden content.")
+                yield self._finding(
+                    filename,
+                    i,
+                    snippet=line,
+                    description="Long base64-like string found — may contain encoded hidden content.",
+                )
             if self._INVISIBLE.search(line):
-                yield self._finding(filename, i, snippet=repr(line),
-                    description="Zero-width or invisible Unicode character detected in source code.")
+                yield self._finding(
+                    filename,
+                    i,
+                    snippet=repr(line),
+                    description="Zero-width or invisible Unicode character detected in source code.",
+                )
             if self._UNUSUAL_UNICODE.search(line):
-                yield self._finding(filename, i, snippet=repr(line),
-                    description="Private-use area Unicode character detected — unusual in source code.")
+                yield self._finding(
+                    filename,
+                    i,
+                    snippet=repr(line),
+                    description="Private-use area Unicode character detected — unusual in source code.",
+                )
 
 
 # ---------------------------------------------------------------------------
 # ALIGN-006 — Covert instructions in prompts / strings
 # ---------------------------------------------------------------------------
 
+
 class Rule_ALIGN006_CovertInstructions(BaseRule):
-    rule_id     = "ALIGN-006"
-    article     = "Misalignment / Covert Instructions"
-    severity    = Severity.ERROR
-    title       = "Covert or adversarial instruction in string literal"
+    rule_id = "ALIGN-006"
+    article = "Misalignment / Covert Instructions"
+    severity = Severity.ERROR
+    title = "Covert or adversarial instruction in string literal"
     description = (
         "A string literal contains language patterns typical of prompt injection, "
         "goal redirection, or hidden instructions that could cause an AI system "
         "to behave contrary to its stated purpose."
     )
-    suggestion  = (
+    suggestion = (
         "Remove or sanitize adversarial instruction patterns. If this is a test "
         "fixture, isolate it in a dedicated test file with a clear comment."
     )
@@ -336,7 +375,8 @@ class Rule_ALIGN006_CovertInstructions(BaseRule):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 if self._PATTERNS.search(node.value):
                     yield self._finding(
-                        filename, node.lineno,
+                        filename,
+                        node.lineno,
                         snippet=repr(node.value[:120]),
                         description="String literal contains adversarial instruction pattern.",
                     )
@@ -346,17 +386,18 @@ class Rule_ALIGN006_CovertInstructions(BaseRule):
 # ALIGN-007 — Unnecessary codified information
 # ---------------------------------------------------------------------------
 
+
 class Rule_ALIGN007_UnnecessaryData(BaseRule):
-    rule_id     = "ALIGN-007"
-    article     = "Misalignment / Unnecessary Data"
-    severity    = Severity.WARNING
-    title       = "Unnecessary personal data or large data blob in source"
+    rule_id = "ALIGN-007"
+    article = "Misalignment / Unnecessary Data"
+    severity = Severity.WARNING
+    title = "Unnecessary personal data or large data blob in source"
     description = (
         "The file contains hardcoded personal identifiers (email, phone, SSN-like) "
         "or an unusually large inline string that may embed data better kept in "
         "external storage or config files."
     )
-    suggestion  = (
+    suggestion = (
         "Move personal data and large datasets out of source code. Use environment "
         "variables or external storage. Avoid embedding reference data in strings."
     )
@@ -376,34 +417,48 @@ class Rule_ALIGN007_UnnecessaryData(BaseRule):
             if stripped.startswith("#"):
                 continue
             if self._EMAIL.search(line):
-                yield self._finding(filename, i, snippet=line,
-                    description="Hardcoded email address found in source code.")
+                yield self._finding(
+                    filename,
+                    i,
+                    snippet=line,
+                    description="Hardcoded email address found in source code.",
+                )
             if self._PHONE.search(line):
-                yield self._finding(filename, i, snippet=line,
-                    description="Hardcoded phone number found in source code.")
+                yield self._finding(
+                    filename,
+                    i,
+                    snippet=line,
+                    description="Hardcoded phone number found in source code.",
+                )
             if self._SSN.search(line):
-                yield self._finding(filename, i, snippet=line,
-                    description="SSN-like pattern found in source code.")
+                yield self._finding(
+                    filename, i, snippet=line, description="SSN-like pattern found in source code."
+                )
             if self._LARGE_STRING.search(line):
-                yield self._finding(filename, i, snippet=line[:120] + "…",
-                    description="Very large inline string (>500 chars) — consider externalizing this data.")
+                yield self._finding(
+                    filename,
+                    i,
+                    snippet=line[:120] + "…",
+                    description="Very large inline string (>500 chars) — consider externalizing this data.",
+                )
 
 
 # ---------------------------------------------------------------------------
 # ALIGN-008 — Undesired objectives
 # ---------------------------------------------------------------------------
 
+
 class Rule_ALIGN008_UndesiredObjectives(BaseRule):
-    rule_id     = "ALIGN-008"
-    article     = "Misalignment / Undesired Objectives"
-    severity    = Severity.ERROR
-    title       = "Undesired or misaligned objective pattern"
+    rule_id = "ALIGN-008"
+    article = "Misalignment / Undesired Objectives"
+    severity = Severity.ERROR
+    title = "Undesired or misaligned objective pattern"
     description = (
         "The code contains language associated with reward hacking, specification "
         "gaming, dependency creation, engagement maximization, or detection evasion — "
         "goals that diverge from safe and beneficial AI behaviour."
     )
-    suggestion  = (
+    suggestion = (
         "Review this code for objectives that conflict with the system's stated "
         "purpose. Ensure all optimisation targets are explicitly documented and "
         "reviewed by a safety engineer."
@@ -438,7 +493,8 @@ class Rule_ALIGN008_UndesiredObjectives(BaseRule):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 if self._PATTERNS.search(node.value):
                     yield self._finding(
-                        filename, node.lineno,
+                        filename,
+                        node.lineno,
                         snippet=repr(node.value[:120]),
                         description="Docstring or string literal contains undesired objective language.",
                     )

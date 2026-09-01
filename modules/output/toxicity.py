@@ -25,9 +25,8 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from core.base import GuardrailBase, GuardrailStage, CheckResult, Action, Finding, Severity
+from core.base import Action, CheckResult, Finding, GuardrailBase, GuardrailStage, Severity
 from core.registry import register_guard
-
 
 # ---------------------------------------------------------------------------
 # Fast rule-based layer
@@ -35,15 +34,24 @@ from core.registry import register_guard
 
 TOXICITY_PATTERNS: dict[str, list[re.Pattern]] = {
     "self_harm_promotion": [
-        re.compile(r"\b(how to|steps to|instructions? (for|to))\s+.{0,20}(suicide|self.harm|self.injur)", re.I),
+        re.compile(
+            r"\b(how to|steps to|instructions? (for|to))\s+.{0,20}(suicide|self.harm|self.injur)",
+            re.I,
+        ),
         re.compile(r"(kill yourself|end your life|you should die)", re.I),
     ],
     "violent_threats": [
-        re.compile(r"\b(i (will|am going to|gonna)|you should)\s+.{0,15}(kill|murder|attack|hurt|harm)\s+\w+", re.I),
+        re.compile(
+            r"\b(i (will|am going to|gonna)|you should)\s+.{0,15}(kill|murder|attack|hurt|harm)\s+\w+",
+            re.I,
+        ),
         re.compile(r"(make a|build a|create a).{0,20}(bomb|explosive|weapon)", re.I),
     ],
     "dangerous_instructions": [
-        re.compile(r"(step[s]?|instructions?|how to).{0,30}(synthesize|make|create|produce).{0,20}(fentanyl|meth|cocaine|nerve agent|sarin|vx )", re.I),
+        re.compile(
+            r"(step[s]?|instructions?|how to).{0,30}(synthesize|make|create|produce).{0,20}(fentanyl|meth|cocaine|nerve agent|sarin|vx )",
+            re.I,
+        ),
     ],
 }
 
@@ -80,7 +88,9 @@ class ToxicityFilter(GuardrailBase):
     ):
         self.threshold = threshold
         self.categories = categories or DEFAULT_CATEGORIES
-        self.action_mode = Action[action.upper()] if action.upper() in Action.__members__ else Action.BLOCK
+        self.action_mode = (
+            Action[action.upper()] if action.upper() in Action.__members__ else Action.BLOCK
+        )
         self.use_llm_judge = use_llm_judge
         self.use_perspective = use_perspective
         self.block_message = block_message
@@ -93,14 +103,16 @@ class ToxicityFilter(GuardrailBase):
             patterns = TOXICITY_PATTERNS.get(category, [])
             for pattern in patterns:
                 for match in pattern.finditer(content):
-                    findings.append(Finding(
-                        guard_name=self.name,
-                        severity=Severity.HIGH,
-                        category=category,
-                        description=f"Toxic content detected: {category}",
-                        span=(match.start(), match.end()),
-                        metadata={"pattern_category": category},
-                    ))
+                    findings.append(
+                        Finding(
+                            guard_name=self.name,
+                            severity=Severity.HIGH,
+                            category=category,
+                            description=f"Toxic content detected: {category}",
+                            span=(match.start(), match.end()),
+                            metadata={"pattern_category": category},
+                        )
+                    )
 
         # LLM judge (optional)
         if self.use_llm_judge and not findings:
@@ -129,12 +141,13 @@ class ToxicityFilter(GuardrailBase):
     async def _llm_judge(self, content: str) -> list[Finding]:
         try:
             import anthropic
+
             client = anthropic.AsyncAnthropic()
             prompt = (
                 "Rate the following AI response for toxicity on a scale 0.0-1.0.\n"
                 "Categories to check: hate_speech, harassment, violence, sexual_content, self_harm.\n"
                 f"Response: {content[:3000]}\n\n"
-                "Reply ONLY with JSON: {\"score\": 0.0, \"categories\": [], \"reason\": \"\"}"
+                'Reply ONLY with JSON: {"score": 0.0, "categories": [], "reason": ""}'
             )
             resp = await client.messages.create(
                 model="claude-sonnet-4-20250514",
@@ -142,15 +155,18 @@ class ToxicityFilter(GuardrailBase):
                 messages=[{"role": "user", "content": prompt}],
             )
             import json
+
             data = json.loads(resp.content[0].text)
             if data.get("score", 0) >= self.threshold:
-                return [Finding(
-                    guard_name=self.name,
-                    severity=Severity.HIGH,
-                    category="llm_judge_toxicity",
-                    description=f"LLM judge: toxicity score {data['score']:.2f} — {data.get('reason', '')}",
-                    metadata=data,
-                )]
+                return [
+                    Finding(
+                        guard_name=self.name,
+                        severity=Severity.HIGH,
+                        category="llm_judge_toxicity",
+                        description=f"LLM judge: toxicity score {data['score']:.2f} — {data.get('reason', '')}",
+                        metadata=data,
+                    )
+                ]
         except Exception:
             pass
         return []

@@ -22,10 +22,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Literal
 
-
 # ---------------------------------------------------------------------------
 # Verdict dataclass
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class JudgeVerdict:
@@ -46,6 +46,7 @@ class JudgeVerdict:
         latency_ms:         Wall-clock time for the judge call.
         error:              Set if the call failed and the verdict is a fallback.
     """
+
     safe: bool
     categories: list[str] = field(default_factory=list)
     confidence: float = 1.0
@@ -63,6 +64,7 @@ class JudgeVerdict:
 # ---------------------------------------------------------------------------
 # Fallback factories
 # ---------------------------------------------------------------------------
+
 
 def _safe_fallback(judge_name: str, error: str, latency_ms: float = 0.0) -> JudgeVerdict:
     """
@@ -101,6 +103,7 @@ def _unsafe_fallback(judge_name: str, error: str, latency_ms: float = 0.0) -> Ju
 # Shared severity helper (used by the stage filters)
 # ---------------------------------------------------------------------------
 
+
 def category_to_severity(category: str):
     """
     Map a judge category string to a core.base.Severity level.
@@ -112,9 +115,7 @@ def category_to_severity(category: str):
     """
     # Import here to avoid circular imports at module load
     from core.base import Severity
-    from modules.llm_judges.llamaguard import (
-        CRITICAL_CATEGORIES, HIGH_CATEGORIES
-    )
+    from modules.llm_judges.llamaguard import CRITICAL_CATEGORIES, HIGH_CATEGORIES
 
     code = category.split(":")[0].strip().upper()
     if code in CRITICAL_CATEGORIES:
@@ -125,10 +126,19 @@ def category_to_severity(category: str):
     lower = category.lower()
     if any(kw in lower for kw in ("child", "weapon", "indiscriminate", "graphic", "/minors")):
         return Severity.CRITICAL
-    if any(kw in lower for kw in (
-        "violent", "violence", "self-harm", "self_harm", "threatening",
-        "illicit/violent", "injection", "jailbreak",
-    )):
+    if any(
+        kw in lower
+        for kw in (
+            "violent",
+            "violence",
+            "self-harm",
+            "self_harm",
+            "threatening",
+            "illicit/violent",
+            "injection",
+            "jailbreak",
+        )
+    ):
         return Severity.HIGH
     return Severity.MEDIUM
 

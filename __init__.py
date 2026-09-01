@@ -17,47 +17,47 @@ Static code analyzer (use in CI / pre-commit):
     # or via CLI: euaiact-lint src/
 """
 
-from core.pipeline import GuardrailPipeline
 from core.base import (
-    GuardrailBase,
-    CheckResult,
-    PipelineResult,
-    Finding,
-    Severity,
     Action,
+    CheckResult,
+    Finding,
+    GuardrailBase,
     GuardrailStage,
+    PipelineResult,
+    Severity,
 )
 from core.exceptions import (
     GuardrailBlockedError,
     GuardrailConfigError,
     PolicyViolationError,
 )
+from core.pipeline import GuardrailPipeline
 
 # Input modules
 from modules.input.pii_detector import PIIDetector
 from modules.input.prompt_injection import PromptInjectionGuard
 
-# Processing modules
-from modules.processing.tool_policy import ToolPolicyGuard, ToolPolicy
+# Observability
+from modules.observability.audit_logger import AuditLogger
 
 # Output modules
 from modules.output.toxicity import ToxicityFilter
 
-# Policy — runtime guardrails
-from modules.policy.eu_ai_act import EUAIActCompliance, RiskTier
-from modules.policy.nist_ai_rmf import NISTAIRMFCompliance, ImpactLevel
-
 # Policy — static code analyzer
 from modules.policy.code_analyzer.analyzer import EUAIActCodeAnalyzer, ScanReport
 from modules.policy.code_analyzer.reporters import (
-    TerminalReporter,
     JSONReporter,
-    SARIFReporter,
     MarkdownReporter,
+    SARIFReporter,
+    TerminalReporter,
 )
 
-# Observability
-from modules.observability.audit_logger import AuditLogger
+# Policy — runtime guardrails
+from modules.policy.eu_ai_act import EUAIActCompliance, RiskTier
+from modules.policy.nist_ai_rmf import ImpactLevel, NISTAIRMFCompliance
+
+# Processing modules
+from modules.processing.tool_policy import ToolPolicy, ToolPolicyGuard
 
 __version__ = "0.1.0"
 __all__ = [

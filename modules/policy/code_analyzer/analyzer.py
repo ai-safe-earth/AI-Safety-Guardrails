@@ -25,39 +25,38 @@ Entry points:
 from __future__ import annotations
 
 import ast
-import os
-import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Iterator
 
-
 # ---------------------------------------------------------------------------
 # Finding data model
 # ---------------------------------------------------------------------------
 
+
 class Severity(str, Enum):
-    ERROR   = "error"    # Likely non-compliant — must fix before deploy
+    ERROR = "error"  # Likely non-compliant — must fix before deploy
     WARNING = "warning"  # Potentially non-compliant — legal review recommended
-    INFO    = "info"     # Good-practice suggestion aligned with the Act
+    INFO = "info"  # Good-practice suggestion aligned with the Act
 
 
 @dataclass
 class CodeFinding:
     """A single compliance finding in source code."""
-    rule_id:     str           # e.g. "EU-AIA-001"
-    article:     str           # e.g. "Art. 5(1)(c)"
-    severity:    Severity
-    title:       str
+
+    rule_id: str  # e.g. "EU-AIA-001"
+    article: str  # e.g. "Art. 5(1)(c)"
+    severity: Severity
+    title: str
     description: str
-    file:        str
-    line:        int
-    col:         int = 0
-    snippet:     str = ""      # The offending line of code
-    suggestion:  str = ""      # What to do instead
-    reference:   str = ""      # Link to official text
+    file: str
+    line: int
+    col: int = 0
+    snippet: str = ""  # The offending line of code
+    suggestion: str = ""  # What to do instead
+    reference: str = ""  # Link to official text
 
     def __str__(self) -> str:
         loc = f"{self.file}:{self.line}:{self.col}"
@@ -67,20 +66,28 @@ class CodeFinding:
 @dataclass
 class ScanReport:
     """Aggregated report for one scan run."""
-    scanned_files:  list[str]   = field(default_factory=list)
-    findings:       list[CodeFinding] = field(default_factory=list)
+
+    scanned_files: list[str] = field(default_factory=list)
+    findings: list[CodeFinding] = field(default_factory=list)
     scan_duration_s: float = 0.0
-    errors:         list[str]   = field(default_factory=list)  # parse errors
+    errors: list[str] = field(default_factory=list)  # parse errors
 
     # Computed
     @property
-    def error_count(self)   -> int: return sum(1 for f in self.findings if f.severity == Severity.ERROR)
+    def error_count(self) -> int:
+        return sum(1 for f in self.findings if f.severity == Severity.ERROR)
+
     @property
-    def warning_count(self) -> int: return sum(1 for f in self.findings if f.severity == Severity.WARNING)
+    def warning_count(self) -> int:
+        return sum(1 for f in self.findings if f.severity == Severity.WARNING)
+
     @property
-    def info_count(self)    -> int: return sum(1 for f in self.findings if f.severity == Severity.INFO)
+    def info_count(self) -> int:
+        return sum(1 for f in self.findings if f.severity == Severity.INFO)
+
     @property
-    def passed(self)        -> bool: return self.error_count == 0
+    def passed(self) -> bool:
+        return self.error_count == 0
 
     def by_file(self) -> dict[str, list[CodeFinding]]:
         out: dict[str, list[CodeFinding]] = {}
@@ -99,19 +106,21 @@ class ScanReport:
 # Rule base class
 # ---------------------------------------------------------------------------
 
+
 class BaseRule:
     """
     A single compliance rule. Subclass and implement:
         check_ast(tree, source_lines, filename)  → Iterator[CodeFinding]
         check_text(source, filename)             → Iterator[CodeFinding]
     """
-    rule_id:     str = "EU-AIA-000"
-    article:     str = ""
-    severity:    Severity = Severity.WARNING
-    title:       str = ""
+
+    rule_id: str = "EU-AIA-000"
+    article: str = ""
+    severity: Severity = Severity.WARNING
+    title: str = ""
     description: str = ""
-    suggestion:  str = ""
-    reference:   str = "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689"
+    suggestion: str = ""
+    reference: str = "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689"
 
     def check_ast(
         self,
@@ -124,20 +133,21 @@ class BaseRule:
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
         return iter([])
 
-    def _finding(self, filename: str, line: int, col: int = 0,
-                 snippet: str = "", **overrides) -> CodeFinding:
+    def _finding(
+        self, filename: str, line: int, col: int = 0, snippet: str = "", **overrides
+    ) -> CodeFinding:
         return CodeFinding(
-            rule_id     = overrides.get("rule_id", self.rule_id),
-            article     = overrides.get("article", self.article),
-            severity    = overrides.get("severity", self.severity),
-            title       = overrides.get("title", self.title),
-            description = overrides.get("description", self.description),
-            suggestion  = overrides.get("suggestion", self.suggestion),
-            reference   = overrides.get("reference", self.reference),
-            file        = filename,
-            line        = line,
-            col         = col,
-            snippet     = snippet.strip(),
+            rule_id=overrides.get("rule_id", self.rule_id),
+            article=overrides.get("article", self.article),
+            severity=overrides.get("severity", self.severity),
+            title=overrides.get("title", self.title),
+            description=overrides.get("description", self.description),
+            suggestion=overrides.get("suggestion", self.suggestion),
+            reference=overrides.get("reference", self.reference),
+            file=filename,
+            line=line,
+            col=col,
+            snippet=snippet.strip(),
         )
 
     def _snippet(self, lines: list[str], lineno: int) -> str:
@@ -150,6 +160,7 @@ class BaseRule:
 # ---------------------------------------------------------------------------
 # Main analyzer
 # ---------------------------------------------------------------------------
+
 
 class EUAIActCodeAnalyzer:
     """
@@ -164,6 +175,7 @@ class EUAIActCodeAnalyzer:
 
     def __init__(self, rules: list[BaseRule] | None = None):
         from modules.policy.code_analyzer.rules import ALL_RULES
+
         self.rules: list[BaseRule] = rules if rules is not None else ALL_RULES
 
     # ------------------------------------------------------------------
@@ -186,7 +198,10 @@ class EUAIActCodeAnalyzer:
     ) -> ScanReport:
         report = ScanReport()
         start = time.perf_counter()
-        exclude = set(exclude_dirs or ["__pycache__", ".git", ".venv", "venv", "node_modules", "dist", "build"])
+        exclude = set(
+            exclude_dirs
+            or ["__pycache__", ".git", ".venv", "venv", "node_modules", "dist", "build"]
+        )
         root = Path(path)
 
         if recursive:

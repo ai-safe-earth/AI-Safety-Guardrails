@@ -59,14 +59,10 @@ Config-driven (via YAML):
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
 
-from core.base import GuardrailBase, GuardrailStage, CheckResult, Action, Finding, Severity
+from core.base import Action, CheckResult, Finding, GuardrailBase, GuardrailStage, Severity
 from core.registry import register_guard
 from modules.llm_judges.base import category_to_severity
-
-if TYPE_CHECKING:
-    from modules.llm_judges.base import LLMJudgeBase
 
 
 @register_guard("llm_tool_filter")
@@ -105,10 +101,19 @@ class LLMToolFilter(GuardrailBase):
 
     # Tools that deal with external/user-controlled content — always screened
     DEFAULT_HIGH_RISK_TOOLS = {
-        "web_search", "fetch_url", "browse_web", "scrape_page",
-        "read_file", "read_url", "get_page", "http_request",
-        "database_query", "sql_query", "retrieve_document",
-        "send_email", "read_email",
+        "web_search",
+        "fetch_url",
+        "browse_web",
+        "scrape_page",
+        "read_file",
+        "read_url",
+        "get_page",
+        "http_request",
+        "database_query",
+        "sql_query",
+        "retrieve_document",
+        "send_email",
+        "read_email",
     }
 
     def setup(
@@ -124,9 +129,7 @@ class LLMToolFilter(GuardrailBase):
         high_risk_fail_closed: list[str] | None = None,
         block_on_unsafe: bool = True,
         block_categories: list[str] | None = None,
-        block_message: str = (
-            "Tool call blocked: content flagged by safety system."
-        ),
+        block_message: str = ("Tool call blocked: content flagged by safety system."),
         max_result_chars: int = 4000,
         fail_open: bool = True,
         judge_timeout: float = 10.0,
@@ -136,6 +139,7 @@ class LLMToolFilter(GuardrailBase):
             self._judge = judge
         else:
             from modules.llm_judges import build_judge
+
             self._judge = build_judge(
                 judge_type=judge_type,
                 judge_provider=judge_provider,
@@ -149,9 +153,16 @@ class LLMToolFilter(GuardrailBase):
         self.check_results = check_results
         self.high_risk_tools = self.DEFAULT_HIGH_RISK_TOOLS | set(high_risk_tools or [])
         # Tools that BLOCK (not FLAG) when the judge is unavailable — override fail_open
-        self.high_risk_fail_closed: set[str] = set(high_risk_fail_closed or [
-            "send_email", "database_write", "payment_process", "shell_command", "deploy",
-        ])
+        self.high_risk_fail_closed: set[str] = set(
+            high_risk_fail_closed
+            or [
+                "send_email",
+                "database_write",
+                "payment_process",
+                "shell_command",
+                "deploy",
+            ]
+        )
         self.block_on_unsafe = block_on_unsafe
         self.block_categories = [c.lower() for c in (block_categories or [])]
         self.block_message = block_message
@@ -193,19 +204,26 @@ class LLMToolFilter(GuardrailBase):
                 passed=not is_fail_closed,
                 action=Action.BLOCK if is_fail_closed else Action.FLAG,
                 sanitized_content=content,
-                findings=[Finding(
-                    guard_name=self.name,
-                    severity=Severity.HIGH if is_fail_closed else Severity.LOW,
-                    category="llm_judge_error",
-                    description=(
-                        f"Judge call failed ({'fail-closed' if is_fail_closed else 'fail-open'}): "
-                        f"{verdict.error}"
-                    ),
-                    metadata={"judge": verdict.judge_name, "tool": tool_name, "fail_closed": is_fail_closed},
-                )],
+                findings=[
+                    Finding(
+                        guard_name=self.name,
+                        severity=Severity.HIGH if is_fail_closed else Severity.LOW,
+                        category="llm_judge_error",
+                        description=(
+                            f"Judge call failed ({'fail-closed' if is_fail_closed else 'fail-open'}): "
+                            f"{verdict.error}"
+                        ),
+                        metadata={
+                            "judge": verdict.judge_name,
+                            "tool": tool_name,
+                            "fail_closed": is_fail_closed,
+                        },
+                    )
+                ],
                 rejection_message=(
                     f"Tool '{tool_name}' blocked: safety judge unavailable for high-risk tool."
-                    if is_fail_closed else None
+                    if is_fail_closed
+                    else None
                 ),
             )
 
@@ -262,19 +280,26 @@ class LLMToolFilter(GuardrailBase):
                 passed=not is_fail_closed,
                 action=Action.BLOCK if is_fail_closed else Action.FLAG,
                 sanitized_content=content,
-                findings=[Finding(
-                    guard_name=self.name,
-                    severity=Severity.HIGH if is_fail_closed else Severity.LOW,
-                    category="llm_judge_error",
-                    description=(
-                        f"Judge call failed ({'fail-closed' if is_fail_closed else 'fail-open'}): "
-                        f"{verdict.error}"
-                    ),
-                    metadata={"judge": verdict.judge_name, "tool": tool_name, "fail_closed": is_fail_closed},
-                )],
+                findings=[
+                    Finding(
+                        guard_name=self.name,
+                        severity=Severity.HIGH if is_fail_closed else Severity.LOW,
+                        category="llm_judge_error",
+                        description=(
+                            f"Judge call failed ({'fail-closed' if is_fail_closed else 'fail-open'}): "
+                            f"{verdict.error}"
+                        ),
+                        metadata={
+                            "judge": verdict.judge_name,
+                            "tool": tool_name,
+                            "fail_closed": is_fail_closed,
+                        },
+                    )
+                ],
                 rejection_message=(
                     f"Tool '{tool_name}' blocked: safety judge unavailable for high-risk tool."
-                    if is_fail_closed else None
+                    if is_fail_closed
+                    else None
                 ),
             )
 

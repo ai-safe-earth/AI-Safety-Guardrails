@@ -10,11 +10,11 @@ Judges are injected into stage-specific guard modules:
     LLMOutputFilter(judge=ClaudeJudge(mode="toxicity"))
 """
 
-from modules.llm_judges.base import LLMJudgeBase, JudgeVerdict
-from modules.llm_judges.llamaguard import LlamaGuardJudge, LLAMAGUARD_CATEGORIES
-from modules.llm_judges.openai_mod import OpenAIModerationJudge
-from modules.llm_judges.claude_judge import ClaudeJudge
+from modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
 from modules.llm_judges.cache import CachedJudge
+from modules.llm_judges.claude_judge import ClaudeJudge
+from modules.llm_judges.llamaguard import LLAMAGUARD_CATEGORIES, LlamaGuardJudge
+from modules.llm_judges.openai_mod import OpenAIModerationJudge
 
 
 def build_judge(
@@ -64,8 +64,7 @@ def build_judge(
             timeout=timeout,
         )
     raise ValueError(
-        f"Unknown judge_type {judge_type!r}. "
-        "Choose from: 'llamaguard', 'openai_mod', 'claude'."
+        f"Unknown judge_type {judge_type!r}. Choose from: 'llamaguard', 'openai_mod', 'claude'."
     )
 
 

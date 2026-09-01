@@ -17,9 +17,9 @@ Test structure:
 
 from __future__ import annotations
 
-import sys
 import os
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+import sys
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 
@@ -42,7 +42,6 @@ _fake_nemo.RailsConfig = _fake_rails_config_cls
 sys.modules.setdefault("nemoguardrails", _fake_nemo)
 
 # Now we can safely import the module under test
-import importlib
 import integrations.nemo_rails as nemo_mod
 
 # Force _NEMO_AVAILABLE = True so the guards don't raise ImportError
@@ -50,17 +49,17 @@ nemo_mod._NEMO_AVAILABLE = True
 nemo_mod.LLMRails = _fake_llm_rails_cls
 nemo_mod.RailsConfig = _fake_rails_config_cls
 
+from core.base import Action, GuardrailStage, PipelineResult
 from integrations.nemo_rails import (
     NemoRailsGuard,
     NemoRailsMiddleware,
     _is_nemo_block,
 )
-from core.base import Action, GuardrailStage, PipelineResult
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_guard(rails=None, **kwargs) -> NemoRailsGuard:
     """Build a NemoRailsGuard with a mock rails instance."""
@@ -82,6 +81,7 @@ def _make_pipeline(input_blocked=False, output_blocked=False, sanitized="clean i
 
     if input_blocked:
         from core.base import GuardrailStage
+
         input_result = PipelineResult(
             stage=GuardrailStage.INPUT,
             original_content="bad",
@@ -92,6 +92,7 @@ def _make_pipeline(input_blocked=False, output_blocked=False, sanitized="clean i
         )
     else:
         from core.base import GuardrailStage
+
         input_result = PipelineResult(
             stage=GuardrailStage.INPUT,
             original_content="hello",
@@ -118,8 +119,8 @@ def _make_pipeline(input_blocked=False, output_blocked=False, sanitized="clean i
 # TestNemoBlockDetection
 # ===========================================================================
 
-class TestNemoBlockDetection:
 
+class TestNemoBlockDetection:
     def test_safe_response_not_blocked(self):
         assert _is_nemo_block("Sure, here is the information you requested.") is False
 
@@ -174,8 +175,8 @@ class TestNemoBlockDetection:
 # TestNemoRailsGuard
 # ===========================================================================
 
-class TestNemoRailsGuard:
 
+class TestNemoRailsGuard:
     @pytest.mark.asyncio
     async def test_safe_response_passes(self):
         rails = _make_mock_rails("The answer is 42.")
@@ -200,7 +201,7 @@ class TestNemoRailsGuard:
         rails = _make_mock_rails("I cannot help with that.")
         guard = _make_guard(rails=rails, block_on_refuse=False)
         result = await guard.check("Bad request.", {})
-        assert result.passed is True   # flag-only, not blocked
+        assert result.passed is True  # flag-only, not blocked
         assert result.action == Action.FLAG
         assert any(f.category == "nemo_refusal" for f in result.findings)
 
@@ -254,8 +255,8 @@ class TestNemoRailsGuard:
 # TestNemoRailsGuardFailOpen
 # ===========================================================================
 
-class TestNemoRailsGuardFailOpen:
 
+class TestNemoRailsGuardFailOpen:
     @pytest.mark.asyncio
     async def test_nemo_error_fail_open(self):
         rails = MagicMock()
@@ -316,8 +317,8 @@ class TestNemoRailsGuardFailOpen:
 # TestNemoRailsMiddleware
 # ===========================================================================
 
-class TestNemoRailsMiddleware:
 
+class TestNemoRailsMiddleware:
     @pytest.mark.asyncio
     async def test_full_pass_through(self):
         rails = _make_mock_rails("NeMo says hello back.")
@@ -424,6 +425,7 @@ class TestNemoRailsMiddleware:
 # ===========================================================================
 # TestNemoRailsMiddlewareInput
 # ===========================================================================
+
 
 class TestNemoRailsMiddlewareInput:
     """Integration-style tests verifying the full flow via generate()."""

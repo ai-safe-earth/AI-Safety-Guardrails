@@ -12,22 +12,21 @@ import asyncio
 import contextlib
 import time
 import uuid
-import yaml
 from pathlib import Path
-from typing import Optional
 
-_nullcontext = contextlib.nullcontext
+import yaml
 
 from .base import (
+    Action,
+    CheckResult,
     GuardrailBase,
     GuardrailStage,
     PipelineResult,
-    CheckResult,
-    Action,
-    Severity,
 )
-from .exceptions import GuardrailConfigError, GuardrailBlockedError
+from .exceptions import GuardrailBlockedError, GuardrailConfigError
 from .registry import REGISTRY
+
+_nullcontext = contextlib.nullcontext
 
 
 class GuardrailPipeline:
@@ -70,7 +69,7 @@ class GuardrailPipeline:
         self.output_guards: list[GuardrailBase] = output_guards or []
         self.policy_guards: list[GuardrailBase] = policy_guards or []
         self.parallel = parallel
-        self.fail_open = fail_open       # If True, errors in guardrails allow traffic through
+        self.fail_open = fail_open  # If True, errors in guardrails allow traffic through
         self._audit_logger = audit_logger
         self._telemetry = telemetry_provider
         self.request_timeout = request_timeout  # Per-request wall-clock timeout (seconds)
@@ -95,7 +94,9 @@ class GuardrailPipeline:
         Pass the tool_call dict for tool-policy checks.
         """
         ctx = {**(context or {}), "tool_call": tool_call or {}}
-        return await self._run_stage(GuardrailStage.PROCESSING, content, self.processing_guards, ctx)
+        return await self._run_stage(
+            GuardrailStage.PROCESSING, content, self.processing_guards, ctx
+        )
 
     async def run_output(self, content: str, context: dict | None = None) -> PipelineResult:
         """Run all output-stage guardrails."""
@@ -186,7 +187,9 @@ class GuardrailPipeline:
         context: dict | None,
     ) -> PipelineResult:
         ctx = context or {}
-        ctx["guardrail_stage"] = stage.value  # consumed by eu_ai_act, nist_ai_rmf transparency logic
+        ctx["guardrail_stage"] = (
+            stage.value
+        )  # consumed by eu_ai_act, nist_ai_rmf transparency logic
         stage_str = stage.value
         run_id = str(uuid.uuid4())
 
@@ -198,12 +201,17 @@ class GuardrailPipeline:
 
         enabled_guards = [g for g in guards if g.enabled]
 
-        with (self._telemetry.pipeline_stage_span(stage_str, run_id) if self._telemetry
-              else _nullcontext()) as stage_span:
-
+        with (
+            self._telemetry.pipeline_stage_span(stage_str, run_id)
+            if self._telemetry
+            else _nullcontext()
+        ) as stage_span:
             if self.parallel and stage != GuardrailStage.PROCESSING:
                 # Run all checks in parallel on the original content
-                tasks = [self._run_guard(guard, current_content, ctx, stage_str) for guard in enabled_guards]
+                tasks = [
+                    self._run_guard(guard, current_content, ctx, stage_str)
+                    for guard in enabled_guards
+                ]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
                 for guard, result in zip(enabled_guards, results):

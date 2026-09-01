@@ -144,10 +144,18 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# Deliberately-broken linter input; mypy excludes it too.
+extend-exclude = ["tests/fixtures"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]   # line length handled by formatter
+
+[tool.ruff.lint.per-file-ignores]
+# These self-bootstrap with sys.path.insert before importing the package,
+# so module-level imports cannot come first. See CLAUDE.md > Layout.
+"tests/*" = ["E402"]
+"examples/*" = ["E402"]
 
 [tool.mypy]
 python_version = "3.10"

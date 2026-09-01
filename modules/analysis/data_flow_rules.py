@@ -17,13 +17,13 @@ from __future__ import annotations
 import ast
 from typing import Iterator
 
-from modules.policy.code_analyzer.analyzer import BaseRule, CodeFinding, Severity
 from modules.analysis.data_flow_analyzer import DataFlowAnalyzer, SensitivityLevel
-
+from modules.policy.code_analyzer.analyzer import BaseRule, CodeFinding, Severity
 
 # ---------------------------------------------------------------------------
 # Rule: Unvalidated User Input to LLM
 # ---------------------------------------------------------------------------
+
 
 class UnvalidatedLLMInputRule(BaseRule):
     """
@@ -83,6 +83,7 @@ class UnvalidatedLLMInputRule(BaseRule):
 # Rule: PII in Logs
 # ---------------------------------------------------------------------------
 
+
 class PIIInLogsRule(BaseRule):
     """
     Detects PII flowing to logging statements without redaction.
@@ -137,6 +138,7 @@ class PIIInLogsRule(BaseRule):
 # Rule: Secrets in Model Artifacts
 # ---------------------------------------------------------------------------
 
+
 class SecretsInModelRule(BaseRule):
     """
     Detects secrets (API keys, credentials) embedded in model artifacts.
@@ -178,7 +180,10 @@ class SecretsInModelRule(BaseRule):
         analyzer.visit(tree)
 
         for finding in analyzer.findings:
-            if finding.sink_type == "model_serialization" and finding.sensitivity == SensitivityLevel.SECRET:
+            if (
+                finding.sink_type == "model_serialization"
+                and finding.sensitivity == SensitivityLevel.SECRET
+            ):
                 yield self._finding(
                     filename=filename,
                     line=finding.sink_line,
@@ -192,6 +197,7 @@ class SecretsInModelRule(BaseRule):
 # ---------------------------------------------------------------------------
 # Rule: Unencrypted Sensitive Storage
 # ---------------------------------------------------------------------------
+
 
 class UnencryptedStorageRule(BaseRule):
     """
@@ -237,7 +243,7 @@ class UnencryptedStorageRule(BaseRule):
             if finding.sink_type == "file_write" and finding.sensitivity in [
                 SensitivityLevel.PII,
                 SensitivityLevel.SECRET,
-                SensitivityLevel.CONFIDENTIAL
+                SensitivityLevel.CONFIDENTIAL,
             ]:
                 yield self._finding(
                     filename=filename,
@@ -251,6 +257,7 @@ class UnencryptedStorageRule(BaseRule):
 # ---------------------------------------------------------------------------
 # Rule: PII to External API
 # ---------------------------------------------------------------------------
+
 
 class PIIExfiltrationRule(BaseRule):
     """
@@ -310,6 +317,7 @@ class PIIExfiltrationRule(BaseRule):
 # Rule: Training Data Without Validation
 # ---------------------------------------------------------------------------
 
+
 class UnvalidatedTrainingDataRule(BaseRule):
     """
     Detects training data loaded without validation or bias checks.
@@ -345,12 +353,10 @@ class UnvalidatedTrainingDataRule(BaseRule):
 
         # Look for data loading followed by model training without validation
         data_load_pattern = re.compile(
-            r'(pd\.read_csv|load_dataset|pd\.read_json|pd\.read_excel)\s*\([^)]+\)',
-            re.I
+            r"(pd\.read_csv|load_dataset|pd\.read_json|pd\.read_excel)\s*\([^)]+\)", re.I
         )
         model_fit_pattern = re.compile(
-            r'(model\.fit|model\.train|\.fit\(|trainer\.train)\s*\(',
-            re.I
+            r"(model\.fit|model\.train|\.fit\(|trainer\.train)\s*\(", re.I
         )
 
         lines = source.splitlines()
@@ -358,13 +364,19 @@ class UnvalidatedTrainingDataRule(BaseRule):
         for i, line in enumerate(lines, 1):
             if data_load_pattern.search(line):
                 # Check next 10 lines for model.fit without validation keywords
-                window = '\n'.join(lines[i:min(i+10, len(lines))])
+                window = "\n".join(lines[i : min(i + 10, len(lines))])
 
                 if model_fit_pattern.search(window):
                     # Check if validation keywords are present
                     validation_keywords = [
-                        'validate', 'check', 'quality', 'bias', 'clean',
-                        'preprocess', 'verify', 'assert'
+                        "validate",
+                        "check",
+                        "quality",
+                        "bias",
+                        "clean",
+                        "preprocess",
+                        "verify",
+                        "assert",
                     ]
 
                     if not any(kw in window.lower() for kw in validation_keywords):

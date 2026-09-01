@@ -37,14 +37,9 @@ Config-driven (via YAML / GuardrailPipeline.from_config):
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from core.base import GuardrailBase, GuardrailStage, CheckResult, Action, Finding, Severity
+from core.base import Action, CheckResult, Finding, GuardrailBase, GuardrailStage, Severity
 from core.registry import register_guard
 from modules.llm_judges.base import category_to_severity
-
-if TYPE_CHECKING:
-    from modules.llm_judges.base import LLMJudgeBase
 
 
 @register_guard("llm_output_filter")
@@ -95,6 +90,7 @@ class LLMOutputFilter(GuardrailBase):
             self._judge = judge
         else:
             from modules.llm_judges import build_judge
+
             self._judge = build_judge(
                 judge_type=judge_type,
                 judge_provider=judge_provider,
@@ -123,13 +119,15 @@ class LLMOutputFilter(GuardrailBase):
                 passed=True,
                 action=Action.FLAG,
                 sanitized_content=content,
-                findings=[Finding(
-                    guard_name=self.name,
-                    severity=Severity.LOW,
-                    category="llm_judge_error",
-                    description=f"Judge call failed (fail-open): {verdict.error}",
-                    metadata={"judge": verdict.judge_name, "error": verdict.error},
-                )],
+                findings=[
+                    Finding(
+                        guard_name=self.name,
+                        severity=Severity.LOW,
+                        category="llm_judge_error",
+                        description=f"Judge call failed (fail-open): {verdict.error}",
+                        metadata={"judge": verdict.judge_name, "error": verdict.error},
+                    )
+                ],
             )
 
         if verdict.safe:

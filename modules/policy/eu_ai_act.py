@@ -39,21 +39,21 @@ Usage:
 from __future__ import annotations
 
 import json
+import re
 import time
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Awaitable, Optional, Literal
+from typing import Callable
 
-from core.base import GuardrailBase, GuardrailStage, CheckResult, Action, Finding, Severity
-from core.exceptions import PolicyViolationError
+from core.base import Action, CheckResult, Finding, GuardrailBase, GuardrailStage, Severity
 from core.registry import register_guard
-
 
 # ---------------------------------------------------------------------------
 # Risk Tier Enum
 # ---------------------------------------------------------------------------
+
 
 class RiskTier(str, Enum):
     UNACCEPTABLE = "unacceptable"
@@ -67,44 +67,55 @@ class RiskTier(str, Enum):
 # Effective 2 February 2025
 # ---------------------------------------------------------------------------
 
-import re
-
 PROHIBITED_PATTERNS = [
     # Social scoring by public authorities
-    (re.compile(
-        r"(social (scoring|credit|ranking)|citizen score|trustworthiness score).{0,50}(government|authority|state|public)",
-        re.I
-    ), "Art.5(1)(c) — Social scoring by public authorities"),
-
+    (
+        re.compile(
+            r"(social (scoring|credit|ranking)|citizen score|trustworthiness score).{0,50}(government|authority|state|public)",
+            re.I,
+        ),
+        "Art.5(1)(c) — Social scoring by public authorities",
+    ),
     # Real-time remote biometric ID in public spaces (with exceptions)
-    (re.compile(
-        r"real.?time.{0,30}(biometric|facial recognition|fingerprint).{0,50}(public space|street|crowd|surveillance)",
-        re.I
-    ), "Art.5(1)(d) — Real-time remote biometric identification in public spaces"),
-
+    (
+        re.compile(
+            r"real.?time.{0,30}(biometric|facial recognition|fingerprint).{0,50}(public space|street|crowd|surveillance)",
+            re.I,
+        ),
+        "Art.5(1)(d) — Real-time remote biometric identification in public spaces",
+    ),
     # Subliminal / manipulative techniques targeting vulnerabilities
-    (re.compile(
-        r"(subliminal|subconscious|unconscious).{0,40}(manipulat|exploit|influence|persuad)",
-        re.I
-    ), "Art.5(1)(a) — Subliminal manipulation techniques"),
-
+    (
+        re.compile(
+            r"(subliminal|subconscious|unconscious).{0,40}(manipulat|exploit|influence|persuad)",
+            re.I,
+        ),
+        "Art.5(1)(a) — Subliminal manipulation techniques",
+    ),
     # Exploitation of vulnerable groups
-    (re.compile(
-        r"exploit.{0,40}(children|minors|elderly|disabled|vulnerab).{0,40}(manipulat|deceiv|harm)",
-        re.I
-    ), "Art.5(1)(b) — Exploitation of vulnerabilities of specific groups"),
-
+    (
+        re.compile(
+            r"exploit.{0,40}(children|minors|elderly|disabled|vulnerab).{0,40}(manipulat|deceiv|harm)",
+            re.I,
+        ),
+        "Art.5(1)(b) — Exploitation of vulnerabilities of specific groups",
+    ),
     # Emotion recognition in workplace / education (restricted)
-    (re.compile(
-        r"emotion.{0,20}(recogni|detect|analys).{0,50}(workplace|school|education|employee|student)",
-        re.I
-    ), "Art.5(1)(f) — Emotion recognition in workplace/education"),
-
+    (
+        re.compile(
+            r"emotion.{0,20}(recogni|detect|analys).{0,50}(workplace|school|education|employee|student)",
+            re.I,
+        ),
+        "Art.5(1)(f) — Emotion recognition in workplace/education",
+    ),
     # Predictive policing based on profiling
-    (re.compile(
-        r"(predict|forecast).{0,30}(criminal|crime|offend).{0,40}(individual|person|profile)",
-        re.I
-    ), "Art.5(1)(e) — Predictive policing / criminal risk profiling"),
+    (
+        re.compile(
+            r"(predict|forecast).{0,30}(criminal|crime|offend).{0,40}(individual|person|profile)",
+            re.I,
+        ),
+        "Art.5(1)(e) — Predictive policing / criminal risk profiling",
+    ),
 ]
 
 # ---------------------------------------------------------------------------
@@ -112,14 +123,42 @@ PROHIBITED_PATTERNS = [
 # ---------------------------------------------------------------------------
 
 HIGH_RISK_INDICATORS = [
-    (re.compile(r"(credit (scor|rating|decision)|loan approval|insurance (underwriting|pricing))", re.I), "Annex III(5)(b) — Financial creditworthiness assessment"),
-    (re.compile(r"(hire|hiring|recruitment|job (applicant|candidate)).{0,30}(AI|automated|system)", re.I), "Annex III(4)(a) — AI-assisted recruitment"),
-    (re.compile(r"(medical (diagnosis|triage|treatment)|clinical decision)", re.I), "Annex III(5)(a) — Medical device / diagnostic AI"),
-    (re.compile(r"(biometric (identification|verification)|face (recognition|match))", re.I), "Annex III(1) — Biometric identification"),
-    (re.compile(r"(critical infrastructure|power grid|water supply|transport safety)", re.I), "Annex III(2) — Critical infrastructure management"),
-    (re.compile(r"(law enforcement|police|criminal justice|sentencing|recidivism)", re.I), "Annex III(6) — Law enforcement"),
-    (re.compile(r"(asylum|immigration|border control|visa decision)", re.I), "Annex III(7) — Migration / border management"),
-    (re.compile(r"(court|judicial|legal ruling|sentence determination)", re.I), "Annex III(8) — Administration of justice"),
+    (
+        re.compile(
+            r"(credit (scor|rating|decision)|loan approval|insurance (underwriting|pricing))", re.I
+        ),
+        "Annex III(5)(b) — Financial creditworthiness assessment",
+    ),
+    (
+        re.compile(
+            r"(hire|hiring|recruitment|job (applicant|candidate)).{0,30}(AI|automated|system)", re.I
+        ),
+        "Annex III(4)(a) — AI-assisted recruitment",
+    ),
+    (
+        re.compile(r"(medical (diagnosis|triage|treatment)|clinical decision)", re.I),
+        "Annex III(5)(a) — Medical device / diagnostic AI",
+    ),
+    (
+        re.compile(r"(biometric (identification|verification)|face (recognition|match))", re.I),
+        "Annex III(1) — Biometric identification",
+    ),
+    (
+        re.compile(r"(critical infrastructure|power grid|water supply|transport safety)", re.I),
+        "Annex III(2) — Critical infrastructure management",
+    ),
+    (
+        re.compile(r"(law enforcement|police|criminal justice|sentencing|recidivism)", re.I),
+        "Annex III(6) — Law enforcement",
+    ),
+    (
+        re.compile(r"(asylum|immigration|border control|visa decision)", re.I),
+        "Annex III(7) — Migration / border management",
+    ),
+    (
+        re.compile(r"(court|judicial|legal ruling|sentence determination)", re.I),
+        "Annex III(8) — Administration of justice",
+    ),
 ]
 
 
@@ -127,14 +166,18 @@ HIGH_RISK_INDICATORS = [
 # Audit Event (Article 12)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class AuditEvent:
     """
     Tamper-evident audit record aligned with Art. 12 logging obligations.
     High-risk systems must retain logs automatically throughout the system lifecycle.
     """
+
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    timestamp: str = field(
+        default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    )
     system_id: str = ""
     provider_name: str = ""
     risk_tier: str = ""
@@ -154,6 +197,7 @@ class AuditEvent:
 # ---------------------------------------------------------------------------
 # Main module
 # ---------------------------------------------------------------------------
+
 
 @register_guard("eu_ai_act")
 class EUAIActCompliance(GuardrailBase):
@@ -210,8 +254,8 @@ class EUAIActCompliance(GuardrailBase):
         self.provider_name = provider_name
 
         # Art. 12 — Automatic logging: mandatory for high-risk
-        self.enable_audit_log = enable_audit_log if enable_audit_log is not None else (
-            risk_tier == RiskTier.HIGH
+        self.enable_audit_log = (
+            enable_audit_log if enable_audit_log is not None else (risk_tier == RiskTier.HIGH)
         )
         self.audit_log_path = Path(audit_log_path)
         self.audit_retention_days = audit_retention_days
@@ -222,7 +266,8 @@ class EUAIActCompliance(GuardrailBase):
         # Art. 13/50 — Transparency disclosure
         self.transparency_disclosure = transparency_disclosure or (
             f"[This response was generated by an AI system operated by {provider_name}.]"
-            if risk_tier in (RiskTier.LIMITED, RiskTier.HIGH) else None
+            if risk_tier in (RiskTier.LIMITED, RiskTier.HIGH)
+            else None
         )
 
         self.check_prohibited = check_prohibited
@@ -241,35 +286,41 @@ class EUAIActCompliance(GuardrailBase):
         if self.check_prohibited and self.risk_tier != RiskTier.UNACCEPTABLE:
             for pattern, description in PROHIBITED_PATTERNS:
                 if pattern.search(content):
-                    findings.append(Finding(
-                        guard_name=self.name,
-                        severity=Severity.CRITICAL,
-                        category="eu_ai_act_prohibited",
-                        description=description,
-                        metadata={"article": "5", "regulation": "EU 2024/1689"},
-                    ))
+                    findings.append(
+                        Finding(
+                            guard_name=self.name,
+                            severity=Severity.CRITICAL,
+                            category="eu_ai_act_prohibited",
+                            description=description,
+                            metadata={"article": "5", "regulation": "EU 2024/1689"},
+                        )
+                    )
 
         # Unacceptable risk tier — always block
         if self.risk_tier == RiskTier.UNACCEPTABLE:
-            findings.append(Finding(
-                guard_name=self.name,
-                severity=Severity.CRITICAL,
-                category="eu_ai_act_unacceptable_risk",
-                description="Art.5 — System configured as UNACCEPTABLE risk tier. All requests blocked.",
-                metadata={"article": "5"},
-            ))
+            findings.append(
+                Finding(
+                    guard_name=self.name,
+                    severity=Severity.CRITICAL,
+                    category="eu_ai_act_unacceptable_risk",
+                    description="Art.5 — System configured as UNACCEPTABLE risk tier. All requests blocked.",
+                    metadata={"article": "5"},
+                )
+            )
 
         # --- Art. 6 / Annex III: High-risk use case indicators ---
         if self.check_high_risk_indicators:
             for pattern, description in HIGH_RISK_INDICATORS:
                 if pattern.search(content):
-                    findings.append(Finding(
-                        guard_name=self.name,
-                        severity=Severity.MEDIUM,
-                        category="eu_ai_act_high_risk_indicator",
-                        description=f"Potential high-risk AI use detected: {description}",
-                        metadata={"article": "6", "annex": "III"},
-                    ))
+                    findings.append(
+                        Finding(
+                            guard_name=self.name,
+                            severity=Severity.MEDIUM,
+                            category="eu_ai_act_high_risk_indicator",
+                            description=f"Potential high-risk AI use detected: {description}",
+                            metadata={"article": "6", "annex": "III"},
+                        )
+                    )
 
         # Check for critical findings
         critical_findings = [f for f in findings if f.severity == Severity.CRITICAL]
@@ -290,7 +341,9 @@ class EUAIActCompliance(GuardrailBase):
 
                 approved = await self.human_oversight_callback(content, context)
                 if not approved:
-                    await self._write_audit_log(content, findings, "blocked_human_oversight", context)
+                    await self._write_audit_log(
+                        content, findings, "blocked_human_oversight", context
+                    )
                     return CheckResult(
                         passed=False,
                         action=Action.HUMAN,
@@ -370,7 +423,9 @@ class EUAIActCompliance(GuardrailBase):
             risk_tier=self.risk_tier.value,
             stage=context.get("guardrail_stage", "unknown"),
             action_taken=action,
-            article_triggered=",".join({f.metadata.get("article", "") for f in findings if f.metadata.get("article")}),
+            article_triggered=",".join(
+                {f.metadata.get("article", "") for f in findings if f.metadata.get("article")}
+            ),
             findings_count=len(findings),
             user_id=context.get("user_id", "anonymous"),
             session_id=context.get("session_id", ""),

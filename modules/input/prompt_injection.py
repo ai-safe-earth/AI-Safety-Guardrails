@@ -25,9 +25,8 @@ import base64
 import re
 from typing import Literal
 
-from core.base import GuardrailBase, GuardrailStage, CheckResult, Action, Finding, Severity
+from core.base import Action, CheckResult, Finding, GuardrailBase, GuardrailStage, Severity
 from core.registry import register_guard
-
 
 # ---------------------------------------------------------------------------
 # Attack Pattern Library
@@ -35,24 +34,76 @@ from core.registry import register_guard
 
 INJECTION_PATTERNS = [
     # Classic ignore-previous
-    (re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?|context)", re.I), "ignore_previous", Severity.HIGH),
+    (
+        re.compile(
+            r"ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?|context)", re.I
+        ),
+        "ignore_previous",
+        Severity.HIGH,
+    ),
     # System prompt reveal
-    (re.compile(r"(reveal|show|print|output|repeat|tell me)\s+(your|the)?\s*(system\s+prompt|instructions?|directives?)", re.I), "system_prompt_extraction", Severity.HIGH),
+    (
+        re.compile(
+            r"(reveal|show|print|output|repeat|tell me)\s+(your|the)?\s*(system\s+prompt|instructions?|directives?)",
+            re.I,
+        ),
+        "system_prompt_extraction",
+        Severity.HIGH,
+    ),
     # Role override
-    (re.compile(r"(you are now|pretend (you are|to be)|act as|roleplay as)\s+.{0,40}(without restrictions|no limits|jailbreak|DAN)", re.I), "role_override", Severity.HIGH),
+    (
+        re.compile(
+            r"(you are now|pretend (you are|to be)|act as|roleplay as)\s+.{0,40}(without restrictions|no limits|jailbreak|DAN)",
+            re.I,
+        ),
+        "role_override",
+        Severity.HIGH,
+    ),
     # DAN and variants
-    (re.compile(r"\bDAN\b|\bdo anything now\b|jailbreak(ed)?\s+mode", re.I), "dan_jailbreak", Severity.HIGH),
+    (
+        re.compile(r"\bDAN\b|\bdo anything now\b|jailbreak(ed)?\s+mode", re.I),
+        "dan_jailbreak",
+        Severity.HIGH,
+    ),
     # Prompt delimiter injection
-    (re.compile(r"(<\|im_start\|>|<\|im_end\|>|\[INST\]|\[\/INST\]|### (System|Human|Assistant):)", re.I), "delimiter_injection", Severity.MEDIUM),
+    (
+        re.compile(
+            r"(<\|im_start\|>|<\|im_end\|>|\[INST\]|\[\/INST\]|### (System|Human|Assistant):)", re.I
+        ),
+        "delimiter_injection",
+        Severity.MEDIUM,
+    ),
     # Many-shot bypass setup
-    (re.compile(r"(the following|here are) \d+ (examples?|conversations?|demonstrations?)", re.I), "many_shot_setup", Severity.MEDIUM),
+    (
+        re.compile(
+            r"(the following|here are) \d+ (examples?|conversations?|demonstrations?)", re.I
+        ),
+        "many_shot_setup",
+        Severity.MEDIUM,
+    ),
     # Indirect injection markers
-    (re.compile(r"(SYSTEM:|<<SYS>>|<s>|\[system\])", re.I), "indirect_injection_marker", Severity.MEDIUM),
+    (
+        re.compile(r"(SYSTEM:|<<SYS>>|<s>|\[system\])", re.I),
+        "indirect_injection_marker",
+        Severity.MEDIUM,
+    ),
     # Obfuscation: base64 mention
-    (re.compile(r"decode (the following|this)\s+(base64|b64|encoded)", re.I), "base64_obfuscation_attempt", Severity.MEDIUM),
+    (
+        re.compile(r"decode (the following|this)\s+(base64|b64|encoded)", re.I),
+        "base64_obfuscation_attempt",
+        Severity.MEDIUM,
+    ),
     # Token smuggling
-    (re.compile(r"concatenate|combine|merge.{0,20}(strings?|tokens?|words?).{0,30}(instruction|command)", re.I), "token_smuggling", Severity.LOW),
+    (
+        re.compile(
+            r"concatenate|combine|merge.{0,20}(strings?|tokens?|words?).{0,30}(instruction|command)",
+            re.I,
+        ),
+        "token_smuggling",
+        Severity.LOW,
+    ),
 ]
+
 
 # Obfuscated base64 check — decode and re-scan
 def _check_base64_payload(content: str) -> list[tuple[str, str]]:
@@ -64,7 +115,10 @@ def _check_base64_payload(content: str) -> list[tuple[str, str]]:
         try:
             decoded = base64.b64decode(match.group()).decode("utf-8", errors="ignore")
             # Check decoded content for injection keywords
-            if any(kw in decoded.lower() for kw in ["ignore", "system prompt", "jailbreak", "dan", "act as"]):
+            if any(
+                kw in decoded.lower()
+                for kw in ["ignore", "system prompt", "jailbreak", "dan", "act as"]
+            ):
                 suspicious.append((match.group(), decoded))
         except Exception:
             pass
@@ -126,6 +180,7 @@ class PromptInjectionGuard(GuardrailBase):
         # Initialize advanced detectors if enabled
         if self.use_advanced_detectors:
             from modules.input.advanced_injection_detectors import AdvancedInjectionDetectors
+
             self._advanced_detectors = AdvancedInjectionDetectors()
         else:
             self._advanced_detectors = None
@@ -136,25 +191,29 @@ class PromptInjectionGuard(GuardrailBase):
         # 1. Rule-based scan
         for pattern, category, severity in INJECTION_PATTERNS:
             for match in pattern.finditer(content):
-                findings.append(Finding(
-                    guard_name=self.name,
-                    severity=severity,
-                    category="prompt_injection",
-                    description=f"Injection pattern detected: {category}",
-                    span=(match.start(), match.end()),
-                    metadata={"pattern_category": category},
-                ))
+                findings.append(
+                    Finding(
+                        guard_name=self.name,
+                        severity=severity,
+                        category="prompt_injection",
+                        description=f"Injection pattern detected: {category}",
+                        span=(match.start(), match.end()),
+                        metadata={"pattern_category": category},
+                    )
+                )
 
         # 2. Base64 decode check
         if self.check_base64:
             for b64_raw, decoded in _check_base64_payload(content):
-                findings.append(Finding(
-                    guard_name=self.name,
-                    severity=Severity.HIGH,
-                    category="base64_obfuscation",
-                    description="Base64-encoded injection payload detected",
-                    metadata={"decoded_snippet": decoded[:100]},
-                ))
+                findings.append(
+                    Finding(
+                        guard_name=self.name,
+                        severity=Severity.HIGH,
+                        category="base64_obfuscation",
+                        description="Base64-encoded injection payload detected",
+                        metadata={"decoded_snippet": decoded[:100]},
+                    )
+                )
 
         # 3. Advanced detection techniques (Unicode, many-shot, encoding, etc.)
         if self.use_advanced_detectors and self._advanced_detectors:
@@ -188,6 +247,7 @@ class PromptInjectionGuard(GuardrailBase):
         """
         try:
             import anthropic
+
             client = anthropic.AsyncAnthropic()
 
             judge_prompt = (

@@ -39,8 +39,7 @@ import json
 import os
 from typing import Literal
 
-from modules.llm_judges.base import LLMJudgeBase, JudgeVerdict
-
+from modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
 
 # ---------------------------------------------------------------------------
 # Judge prompts
@@ -104,6 +103,7 @@ Respond with ONLY valid JSON, no other text:
 # ---------------------------------------------------------------------------
 # Main class
 # ---------------------------------------------------------------------------
+
 
 class ClaudeJudge(LLMJudgeBase):
     """
@@ -193,16 +193,13 @@ class ClaudeJudge(LLMJudgeBase):
         text = raw.strip()
         if text.startswith("```"):
             lines = text.splitlines()
-            text = "\n".join(
-                line for line in lines
-                if not line.startswith("```")
-            ).strip()
+            text = "\n".join(line for line in lines if not line.startswith("```")).strip()
 
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
             # Fallback: scan for "safe" keyword
-            safe = "\"safe\": true" in raw.lower() or "'safe': true" in raw.lower()
+            safe = '"safe": true' in raw.lower() or "'safe': true" in raw.lower()
             return JudgeVerdict(safe=safe, raw_response=raw, confidence=0.5)
 
         safe = bool(data.get("safe", True))

@@ -49,25 +49,24 @@ import json
 import re
 import time
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable
 
-from core.base import GuardrailBase, GuardrailStage, CheckResult, Action, Finding, Severity
-from core.exceptions import PolicyViolationError
+from core.base import Action, CheckResult, Finding, GuardrailBase, GuardrailStage, Severity
 from core.registry import register_guard
-
 
 # ---------------------------------------------------------------------------
 # Impact Level Enum  (AI RMF Playbook — Risk Tolerance tiers)
 # ---------------------------------------------------------------------------
 
+
 class ImpactLevel(str, Enum):
-    CRITICAL = "critical"   # Widespread / irreversible harm
-    HIGH     = "high"       # Significant harm to individuals or groups
-    MODERATE = "moderate"   # Limited, recoverable harm
-    LOW      = "low"        # Minimal expected harm
+    CRITICAL = "critical"  # Widespread / irreversible harm
+    HIGH = "high"  # Significant harm to individuals or groups
+    MODERATE = "moderate"  # Limited, recoverable harm
+    LOW = "low"  # Minimal expected harm
 
 
 # ---------------------------------------------------------------------------
@@ -76,46 +75,52 @@ class ImpactLevel(str, Enum):
 # ---------------------------------------------------------------------------
 
 HIGH_HARM_DOMAIN_PATTERNS = [
-    (re.compile(
-        r"(medical (diagnosis|triage|treatment|prescription)|clinical decision|patient outcome)",
-        re.I
-    ), "MAP 5.1 — Healthcare AI: errors may cause direct physical harm"),
-
-    (re.compile(
-        r"(credit (scor|rating|decision)|loan (approval|denial)|insurance (underwriting|pricing))",
-        re.I
-    ), "MAP 5.1 — Financial AI: errors may cause economic harm and discrimination"),
-
-    (re.compile(
-        r"(hire|hiring|recruitment|job (applicant|candidate)|employment decision).{0,50}(AI|automated|model|algorithm)"
-        r"|(AI|automated|model|algorithm).{0,50}(hire|hiring|recruitment|job (applicant|candidate)|employment decision)",
-        re.I
-    ), "MAP 5.1 — Employment AI: errors may cause discriminatory outcomes"),
-
-    (re.compile(
-        r"(law enforcement|police|criminal justice|sentencing|recidivism|parole)",
-        re.I
-    ), "MAP 5.1 — Criminal justice AI: high potential for civil-rights harm"),
-
-    (re.compile(
-        r"(critical infrastructure|power grid|water supply|transport safety|nuclear)",
-        re.I
-    ), "MAP 5.1 — Critical infrastructure: system failures may cascade"),
-
-    (re.compile(
-        r"(asylum|immigration|border control|visa decision|deportation)",
-        re.I
-    ), "MAP 5.1 — Immigration AI: errors may cause irreversible harm to individuals"),
-
-    (re.compile(
-        r"(child welfare|child protective services|foster care|custody decision)",
-        re.I
-    ), "MAP 5.1 — Child welfare AI: errors may cause serious harm to minors"),
-
-    (re.compile(
-        r"(autonomous (weapon|lethal|strike|targeting)|military AI|drone targeting)",
-        re.I
-    ), "MAP 5.1 — Lethal autonomous weapon: critical safety and ethical concern"),
+    (
+        re.compile(
+            r"(medical (diagnosis|triage|treatment|prescription)|clinical decision|patient outcome)",
+            re.I,
+        ),
+        "MAP 5.1 — Healthcare AI: errors may cause direct physical harm",
+    ),
+    (
+        re.compile(
+            r"(credit (scor|rating|decision)|loan (approval|denial)|insurance (underwriting|pricing))",
+            re.I,
+        ),
+        "MAP 5.1 — Financial AI: errors may cause economic harm and discrimination",
+    ),
+    (
+        re.compile(
+            r"(hire|hiring|recruitment|job (applicant|candidate)|employment decision).{0,50}(AI|automated|model|algorithm)"
+            r"|(AI|automated|model|algorithm).{0,50}(hire|hiring|recruitment|job (applicant|candidate)|employment decision)",
+            re.I,
+        ),
+        "MAP 5.1 — Employment AI: errors may cause discriminatory outcomes",
+    ),
+    (
+        re.compile(r"(law enforcement|police|criminal justice|sentencing|recidivism|parole)", re.I),
+        "MAP 5.1 — Criminal justice AI: high potential for civil-rights harm",
+    ),
+    (
+        re.compile(
+            r"(critical infrastructure|power grid|water supply|transport safety|nuclear)", re.I
+        ),
+        "MAP 5.1 — Critical infrastructure: system failures may cascade",
+    ),
+    (
+        re.compile(r"(asylum|immigration|border control|visa decision|deportation)", re.I),
+        "MAP 5.1 — Immigration AI: errors may cause irreversible harm to individuals",
+    ),
+    (
+        re.compile(r"(child welfare|child protective services|foster care|custody decision)", re.I),
+        "MAP 5.1 — Child welfare AI: errors may cause serious harm to minors",
+    ),
+    (
+        re.compile(
+            r"(autonomous (weapon|lethal|strike|targeting)|military AI|drone targeting)", re.I
+        ),
+        "MAP 5.1 — Lethal autonomous weapon: critical safety and ethical concern",
+    ),
 ]
 
 
@@ -124,20 +129,27 @@ HIGH_HARM_DOMAIN_PATTERNS = [
 # ---------------------------------------------------------------------------
 
 BIAS_RISK_PATTERNS = [
-    (re.compile(
-        r"(predict|score|rank|classify|segment).{0,40}(race|ethnicity|gender|religion|nationality|disability|age group)",
-        re.I
-    ), "MEASURE 2.5 — Model uses protected attributes; fairness evaluation required"),
-
-    (re.compile(
-        r"(demographic|protected (class|group|attribute)).{0,30}(feature|variable|input|factor)",
-        re.I
-    ), "MAP 2.2 — Protected characteristics as model inputs; bias evaluation required"),
-
-    (re.compile(
-        r"(disparate impact|differential treatment|discriminatory (outcome|result|pattern))",
-        re.I
-    ), "MEASURE 2.5 — Content references potential discriminatory AI outcomes"),
+    (
+        re.compile(
+            r"(predict|score|rank|classify|segment).{0,40}(race|ethnicity|gender|religion|nationality|disability|age group)",
+            re.I,
+        ),
+        "MEASURE 2.5 — Model uses protected attributes; fairness evaluation required",
+    ),
+    (
+        re.compile(
+            r"(demographic|protected (class|group|attribute)).{0,30}(feature|variable|input|factor)",
+            re.I,
+        ),
+        "MAP 2.2 — Protected characteristics as model inputs; bias evaluation required",
+    ),
+    (
+        re.compile(
+            r"(disparate impact|differential treatment|discriminatory (outcome|result|pattern))",
+            re.I,
+        ),
+        "MEASURE 2.5 — Content references potential discriminatory AI outcomes",
+    ),
 ]
 
 
@@ -147,22 +159,28 @@ BIAS_RISK_PATTERNS = [
 # ---------------------------------------------------------------------------
 
 OPACITY_PATTERNS = [
-    (re.compile(
-        r"\b(the (AI|model|algorithm|system) (decided|determined|concluded|predicts)).{0,60}"
-        r"(without|no (explanation|reason|justification|rationale))",
-        re.I
-    ), "GOVERN 1.7 — AI decision without explanation undermines transparency"),
-
-    (re.compile(
-        r"(black.?box|unexplainable|uninterpretable).{0,30}(decision|output|result|model)",
-        re.I
-    ), "GOVERN 1.7 — Reference to opaque/unexplainable AI decision"),
-
-    (re.compile(
-        r"(fully automated|no human (review|oversight|involvement)).{0,50}"
-        r"(high.?risk|consequential|life.?affecting|critical|irreversible)",
-        re.I
-    ), "MANAGE 2.4 — Fully automated consequential decision; human oversight recommended"),
+    (
+        re.compile(
+            r"\b(the (AI|model|algorithm|system) (decided|determined|concluded|predicts)).{0,60}"
+            r"(without|no (explanation|reason|justification|rationale))",
+            re.I,
+        ),
+        "GOVERN 1.7 — AI decision without explanation undermines transparency",
+    ),
+    (
+        re.compile(
+            r"(black.?box|unexplainable|uninterpretable).{0,30}(decision|output|result|model)", re.I
+        ),
+        "GOVERN 1.7 — Reference to opaque/unexplainable AI decision",
+    ),
+    (
+        re.compile(
+            r"(fully automated|no human (review|oversight|involvement)).{0,50}"
+            r"(high.?risk|consequential|life.?affecting|critical|irreversible)",
+            re.I,
+        ),
+        "MANAGE 2.4 — Fully automated consequential decision; human oversight recommended",
+    ),
 ]
 
 
@@ -171,15 +189,20 @@ OPACITY_PATTERNS = [
 # ---------------------------------------------------------------------------
 
 DECEPTION_PATTERNS = [
-    (re.compile(
-        r"(pretend|claim|act).{0,20}(you are|to be).{0,20}(human|not an AI|a person|real person)",
-        re.I
-    ), "GOVERN 1.1 — Instruction to deceive users about AI nature"),
-
-    (re.compile(
-        r"(hide|conceal|do not (disclose|reveal|mention)).{0,50}(AI|model|automated|algorithm)",
-        re.I
-    ), "GOVERN 1.1 — Instruction to conceal AI involvement"),
+    (
+        re.compile(
+            r"(pretend|claim|act).{0,20}(you are|to be).{0,20}(human|not an AI|a person|real person)",
+            re.I,
+        ),
+        "GOVERN 1.1 — Instruction to deceive users about AI nature",
+    ),
+    (
+        re.compile(
+            r"(hide|conceal|do not (disclose|reveal|mention)).{0,50}(AI|model|automated|algorithm)",
+            re.I,
+        ),
+        "GOVERN 1.1 — Instruction to conceal AI involvement",
+    ),
 ]
 
 
@@ -187,11 +210,15 @@ DECEPTION_PATTERNS = [
 # Audit record  (MANAGE 2.4 monitoring)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class NISTAuditEvent:
     """Structured audit record aligned with NIST AI RMF MANAGE 2.4 monitoring."""
+
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    timestamp: str = field(
+        default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    )
     system_name: str = ""
     operator_name: str = ""
     impact_level: str = ""
@@ -211,6 +238,7 @@ class NISTAuditEvent:
 # ---------------------------------------------------------------------------
 # Main guardrail
 # ---------------------------------------------------------------------------
+
 
 @register_guard("nist_ai_rmf")
 class NISTAIRMFCompliance(GuardrailBase):
@@ -262,8 +290,10 @@ class NISTAIRMFCompliance(GuardrailBase):
         self.operator_name = operator_name
 
         # MANAGE 2.4 — monitoring logs; default on for critical/high
-        self.enable_audit_log = enable_audit_log if enable_audit_log is not None else (
-            impact_level in (ImpactLevel.CRITICAL, ImpactLevel.HIGH)
+        self.enable_audit_log = (
+            enable_audit_log
+            if enable_audit_log is not None
+            else (impact_level in (ImpactLevel.CRITICAL, ImpactLevel.HIGH))
         )
         self.audit_log_path = Path(audit_log_path)
         self.human_oversight_callback = human_oversight_callback
@@ -272,7 +302,8 @@ class NISTAIRMFCompliance(GuardrailBase):
         self.transparency_disclosure = transparency_disclosure or (
             f"[This response was generated by an AI system operated by {operator_name}. "
             "For questions about this AI system, contact your operator.]"
-            if impact_level in (ImpactLevel.CRITICAL, ImpactLevel.HIGH) else None
+            if impact_level in (ImpactLevel.CRITICAL, ImpactLevel.HIGH)
+            else None
         )
 
         self.check_high_harm_domains = check_high_harm_domains
@@ -293,75 +324,94 @@ class NISTAIRMFCompliance(GuardrailBase):
         if self.check_high_harm_domains:
             for pattern, description in HIGH_HARM_DOMAIN_PATTERNS:
                 if pattern.search(content):
-                    findings.append(Finding(
-                        guard_name=self.name,
-                        severity=Severity.HIGH,
-                        category="nist_rmf_high_harm_domain",
-                        description=description,
-                        metadata={"rmf_function": "MAP", "subcategory": "MAP 5.1"},
-                    ))
+                    findings.append(
+                        Finding(
+                            guard_name=self.name,
+                            severity=Severity.HIGH,
+                            category="nist_rmf_high_harm_domain",
+                            description=description,
+                            metadata={"rmf_function": "MAP", "subcategory": "MAP 5.1"},
+                        )
+                    )
                     rmf_functions_triggered.add("MAP")
 
         # --- MAP 2.2 / MEASURE 2.5: Bias and fairness risk ---
         if self.check_bias_risk:
             for pattern, description in BIAS_RISK_PATTERNS:
                 if pattern.search(content):
-                    findings.append(Finding(
-                        guard_name=self.name,
-                        severity=Severity.MEDIUM,
-                        category="nist_rmf_bias_risk",
-                        description=description,
-                        metadata={"rmf_function": "MEASURE", "subcategory": "MEASURE 2.5"},
-                    ))
+                    findings.append(
+                        Finding(
+                            guard_name=self.name,
+                            severity=Severity.MEDIUM,
+                            category="nist_rmf_bias_risk",
+                            description=description,
+                            metadata={"rmf_function": "MEASURE", "subcategory": "MEASURE 2.5"},
+                        )
+                    )
                     rmf_functions_triggered.update({"MAP", "MEASURE"})
 
         # --- GOVERN 1.7 / MANAGE 2.4: Opacity and lack of oversight ---
         if self.check_opacity:
             for pattern, description in OPACITY_PATTERNS:
                 if pattern.search(content):
-                    findings.append(Finding(
-                        guard_name=self.name,
-                        severity=Severity.MEDIUM,
-                        category="nist_rmf_opacity",
-                        description=description,
-                        metadata={"rmf_function": "GOVERN", "subcategory": "GOVERN 1.7"},
-                    ))
+                    findings.append(
+                        Finding(
+                            guard_name=self.name,
+                            severity=Severity.MEDIUM,
+                            category="nist_rmf_opacity",
+                            description=description,
+                            metadata={"rmf_function": "GOVERN", "subcategory": "GOVERN 1.7"},
+                        )
+                    )
                     rmf_functions_triggered.update({"GOVERN", "MANAGE"})
 
         # --- GOVERN 1.1: Deception / hidden AI nature ---
         if self.check_deception:
             for pattern, description in DECEPTION_PATTERNS:
                 if pattern.search(content):
-                    findings.append(Finding(
-                        guard_name=self.name,
-                        severity=Severity.CRITICAL,
-                        category="nist_rmf_deception",
-                        description=description,
-                        metadata={"rmf_function": "GOVERN", "subcategory": "GOVERN 1.1"},
-                    ))
+                    findings.append(
+                        Finding(
+                            guard_name=self.name,
+                            severity=Severity.CRITICAL,
+                            category="nist_rmf_deception",
+                            description=description,
+                            metadata={"rmf_function": "GOVERN", "subcategory": "GOVERN 1.1"},
+                        )
+                    )
                     rmf_functions_triggered.add("GOVERN")
 
         critical_findings = [f for f in findings if f.severity == Severity.CRITICAL]
         has_critical = bool(critical_findings)
 
         # --- MANAGE 1.3: Human oversight gate for critical/high impact ---
-        if self.impact_level in (ImpactLevel.CRITICAL, ImpactLevel.HIGH) and self.human_oversight_callback:
+        if (
+            self.impact_level in (ImpactLevel.CRITICAL, ImpactLevel.HIGH)
+            and self.human_oversight_callback
+        ):
             needs_oversight = any(
                 f.severity in (Severity.HIGH, Severity.CRITICAL) for f in findings
             )
             if needs_oversight:
-                findings.append(Finding(
-                    guard_name=self.name,
-                    severity=Severity.MEDIUM,
-                    category="nist_rmf_human_oversight",
-                    description="MANAGE 1.3 — Human oversight required for this high-impact AI interaction.",
-                    metadata={"rmf_function": "MANAGE", "subcategory": "MANAGE 1.3"},
-                ))
+                findings.append(
+                    Finding(
+                        guard_name=self.name,
+                        severity=Severity.MEDIUM,
+                        category="nist_rmf_human_oversight",
+                        description="MANAGE 1.3 — Human oversight required for this high-impact AI interaction.",
+                        metadata={"rmf_function": "MANAGE", "subcategory": "MANAGE 1.3"},
+                    )
+                )
                 rmf_functions_triggered.add("MANAGE")
 
                 approved = await self.human_oversight_callback(content, context)
                 if not approved:
-                    await self._write_audit_log(content, findings, "blocked_human_oversight", rmf_functions_triggered, context)
+                    await self._write_audit_log(
+                        content,
+                        findings,
+                        "blocked_human_oversight",
+                        rmf_functions_triggered,
+                        context,
+                    )
                     return CheckResult(
                         passed=False,
                         action=Action.HUMAN,
@@ -373,7 +423,9 @@ class NISTAIRMFCompliance(GuardrailBase):
         # --- MANAGE 2.4: Write monitoring log ---
         if self.enable_audit_log:
             action_label = "blocked" if (has_critical and self.strict_mode) else "allowed"
-            await self._write_audit_log(content, findings, action_label, rmf_functions_triggered, context)
+            await self._write_audit_log(
+                content, findings, action_label, rmf_functions_triggered, context
+            )
 
         # --- Block on critical findings (GOVERN 1.1 deception) ---
         if has_critical and self.strict_mode:

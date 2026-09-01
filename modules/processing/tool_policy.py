@@ -28,15 +28,15 @@ from __future__ import annotations
 
 import fnmatch
 from dataclasses import dataclass, field
-from typing import Callable, Awaitable
+from typing import Awaitable, Callable
 
-from core.base import GuardrailBase, GuardrailStage, CheckResult, Action, Finding, Severity
+from core.base import Action, CheckResult, Finding, GuardrailBase, GuardrailStage, Severity
 from core.registry import register_guard
-
 
 # ---------------------------------------------------------------------------
 # Policy definitions
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ToolPolicy:
@@ -51,6 +51,7 @@ class ToolPolicy:
                                "fetch_url": {"url": "https://trusted.domain/*"}}
                     The glob pattern must match the argument value; non-matching = deny.
     """
+
     allow: list[str] = field(default_factory=lambda: [])
     deny: list[str] = field(default_factory=lambda: ["*"])
     argument_rules: dict[str, dict[str, str]] = field(default_factory=dict)
@@ -182,13 +183,15 @@ class ToolPolicyGuard(GuardrailBase):
                 return CheckResult(
                     passed=False,
                     action=Action.BLOCK,
-                    findings=[Finding(
-                        guard_name=self.name,
-                        severity=Severity.HIGH,
-                        category="tool_unauthorized",
-                        description=f"No policy defined for role '{role}' — default deny",
-                        metadata={"tool": tool_name, "role": role, "user_id": user_id},
-                    )],
+                    findings=[
+                        Finding(
+                            guard_name=self.name,
+                            severity=Severity.HIGH,
+                            category="tool_unauthorized",
+                            description=f"No policy defined for role '{role}' — default deny",
+                            metadata={"tool": tool_name, "role": role, "user_id": user_id},
+                        )
+                    ],
                     rejection_message=f"Access denied: no policy configured for role '{role}'.",
                     sanitized_content=content,
                 )
@@ -198,13 +201,15 @@ class ToolPolicyGuard(GuardrailBase):
             return CheckResult(
                 passed=False,
                 action=Action.BLOCK,
-                findings=[Finding(
-                    guard_name=self.name,
-                    severity=Severity.HIGH,
-                    category="tool_denied",
-                    description=f"Tool '{tool_name}' denied for role '{role}'",
-                    metadata={"tool": tool_name, "role": role, "user_id": user_id},
-                )],
+                findings=[
+                    Finding(
+                        guard_name=self.name,
+                        severity=Severity.HIGH,
+                        category="tool_denied",
+                        description=f"Tool '{tool_name}' denied for role '{role}'",
+                        metadata={"tool": tool_name, "role": role, "user_id": user_id},
+                    )
+                ],
                 rejection_message=f"You don't have permission to use the '{tool_name}' tool.",
                 sanitized_content=content,
             )
@@ -215,13 +220,15 @@ class ToolPolicyGuard(GuardrailBase):
             return CheckResult(
                 passed=False,
                 action=Action.BLOCK,
-                findings=[Finding(
-                    guard_name=self.name,
-                    severity=Severity.HIGH,
-                    category="tool_argument_violation",
-                    description=f"Tool '{tool_name}' argument policy violation: {arg_violation}",
-                    metadata={"tool": tool_name, "role": role, "violation": arg_violation},
-                )],
+                findings=[
+                    Finding(
+                        guard_name=self.name,
+                        severity=Severity.HIGH,
+                        category="tool_argument_violation",
+                        description=f"Tool '{tool_name}' argument policy violation: {arg_violation}",
+                        metadata={"tool": tool_name, "role": role, "violation": arg_violation},
+                    )
+                ],
                 rejection_message=f"Tool call blocked: {arg_violation}",
                 sanitized_content=content,
             )
@@ -235,16 +242,21 @@ class ToolPolicyGuard(GuardrailBase):
             return CheckResult(
                 passed=False,
                 action=Action.BLOCK,
-                findings=[Finding(
-                    guard_name=self.name,
-                    severity=Severity.HIGH,
-                    category="tool_budget_exceeded",
-                    description=(
-                        f"Session tool budget exceeded: {total_calls}/"
-                        f"{self.max_tool_calls_per_session} total calls"
-                    ),
-                    metadata={"total_calls": total_calls, "budget": self.max_tool_calls_per_session},
-                )],
+                findings=[
+                    Finding(
+                        guard_name=self.name,
+                        severity=Severity.HIGH,
+                        category="tool_budget_exceeded",
+                        description=(
+                            f"Session tool budget exceeded: {total_calls}/"
+                            f"{self.max_tool_calls_per_session} total calls"
+                        ),
+                        metadata={
+                            "total_calls": total_calls,
+                            "budget": self.max_tool_calls_per_session,
+                        },
+                    )
+                ],
                 rejection_message="Tool call limit reached for this session. Human review required.",
                 sanitized_content=content,
             )
@@ -253,16 +265,22 @@ class ToolPolicyGuard(GuardrailBase):
             return CheckResult(
                 passed=False,
                 action=Action.BLOCK,
-                findings=[Finding(
-                    guard_name=self.name,
-                    severity=Severity.HIGH,
-                    category="tool_budget_exceeded",
-                    description=(
-                        f"Per-tool budget exceeded for '{tool_name}': "
-                        f"{tool_calls}/{self.max_calls_per_tool} calls"
-                    ),
-                    metadata={"tool": tool_name, "tool_calls": tool_calls, "budget": self.max_calls_per_tool},
-                )],
+                findings=[
+                    Finding(
+                        guard_name=self.name,
+                        severity=Severity.HIGH,
+                        category="tool_budget_exceeded",
+                        description=(
+                            f"Per-tool budget exceeded for '{tool_name}': "
+                            f"{tool_calls}/{self.max_calls_per_tool} calls"
+                        ),
+                        metadata={
+                            "tool": tool_name,
+                            "tool_calls": tool_calls,
+                            "budget": self.max_calls_per_tool,
+                        },
+                    )
+                ],
                 rejection_message=f"Tool '{tool_name}' call limit reached for this session.",
                 sanitized_content=content,
             )
@@ -284,13 +302,19 @@ class ToolPolicyGuard(GuardrailBase):
                 return CheckResult(
                     passed=False,
                     action=Action.HUMAN,
-                    findings=[Finding(
-                        guard_name=self.name,
-                        severity=Severity.MEDIUM,
-                        category="tool_approval_required",
-                        description=f"Tool '{tool_name}' requires human approval",
-                        metadata={"tool": tool_name, "role": role, "args": str(tool_args)[:200]},
-                    )],
+                    findings=[
+                        Finding(
+                            guard_name=self.name,
+                            severity=Severity.MEDIUM,
+                            category="tool_approval_required",
+                            description=f"Tool '{tool_name}' requires human approval",
+                            metadata={
+                                "tool": tool_name,
+                                "role": role,
+                                "args": str(tool_args)[:200],
+                            },
+                        )
+                    ],
                     rejection_message=f"The action '{tool_name}' requires human approval before proceeding.",
                     sanitized_content=content,
                 )
@@ -303,13 +327,15 @@ class ToolPolicyGuard(GuardrailBase):
         risk_tier = TOOL_RISK_TIERS.get(tool_name, "unknown")
         findings = []
         if risk_tier in ("high", "critical"):
-            findings.append(Finding(
-                guard_name=self.name,
-                severity=Severity.MEDIUM,
-                category="tool_high_risk",
-                description=f"High-risk tool '{tool_name}' (tier: {risk_tier}) authorized for role '{role}'",
-                metadata={"tool": tool_name, "risk_tier": risk_tier},
-            ))
+            findings.append(
+                Finding(
+                    guard_name=self.name,
+                    severity=Severity.MEDIUM,
+                    category="tool_high_risk",
+                    description=f"High-risk tool '{tool_name}' (tier: {risk_tier}) authorized for role '{role}'",
+                    metadata={"tool": tool_name, "risk_tier": risk_tier},
+                )
+            )
 
         return CheckResult(
             passed=True,

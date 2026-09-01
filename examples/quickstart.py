@@ -6,8 +6,8 @@ Run: python examples/quickstart.py
 """
 
 import asyncio
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -16,8 +16,7 @@ from modules.input.pii_detector import PIIDetector
 from modules.input.prompt_injection import PromptInjectionGuard
 from modules.output.toxicity import ToxicityFilter
 from modules.policy.eu_ai_act import EUAIActCompliance, RiskTier
-from modules.processing.tool_policy import ToolPolicyGuard, ToolPolicy
-
+from modules.processing.tool_policy import ToolPolicy, ToolPolicyGuard
 
 # --------------------------------------------------------------------------
 # Build the pipeline
@@ -31,7 +30,9 @@ pipeline = GuardrailPipeline(
     processing_guards=[
         ToolPolicyGuard(
             policies={
-                "user": ToolPolicy(allow=["search", "calculator"], deny=["exec_code", "shell_command"]),
+                "user": ToolPolicy(
+                    allow=["search", "calculator"], deny=["exec_code", "shell_command"]
+                ),
                 "admin": ToolPolicy(allow=["*"], deny=[]),
             },
             default_deny=True,
@@ -56,6 +57,7 @@ pipeline = GuardrailPipeline(
 # Simulate LLM (stub for demo)
 # --------------------------------------------------------------------------
 
+
 async def mock_llm(prompt: str) -> str:
     return f"[LLM response to: {prompt[:60]}...]"
 
@@ -64,9 +66,10 @@ async def mock_llm(prompt: str) -> str:
 # Test cases
 # --------------------------------------------------------------------------
 
+
 async def run_test(label: str, message: str, context: dict | None = None):
     ctx = context or {"user_id": "user_123", "role": "user"}
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"TEST: {label}")
     print(f"INPUT: {message[:80]}")
 
@@ -79,7 +82,7 @@ async def run_test(label: str, message: str, context: dict | None = None):
     if result.original_content != result.final_content:
         print(f"✓ SANITIZED input: {result.final_content[:80]}")
     else:
-        print(f"✓ Input passed clean")
+        print("✓ Input passed clean")
 
     llm_resp = await mock_llm(result.sanitized_output)
     output_result = await pipeline.run_output(llm_resp, ctx)
@@ -93,7 +96,9 @@ async def run_test(label: str, message: str, context: dict | None = None):
         all_f = result.all_findings + output_result.all_findings
         print(f"  Findings ({len(all_f)}): {[f.category for f in all_f]}")
 
-    print(f"  Latency: input={result.total_latency_ms:.1f}ms, output={output_result.total_latency_ms:.1f}ms")
+    print(
+        f"  Latency: input={result.total_latency_ms:.1f}ms, output={output_result.total_latency_ms:.1f}ms"
+    )
 
 
 async def main():
@@ -128,10 +133,14 @@ async def main():
     await run_test(
         "Tool policy — unauthorized (no tool_call in context, should pass input)",
         "Run this shell command: rm -rf /",
-        context={"user_id": "user_456", "role": "user", "tool_call": {"name": "shell_command", "arguments": {"cmd": "rm -rf /"}}},
+        context={
+            "user_id": "user_456",
+            "role": "user",
+            "tool_call": {"name": "shell_command", "arguments": {"cmd": "rm -rf /"}},
+        },
     )
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Demo complete. See README.md for full documentation.")
 
 

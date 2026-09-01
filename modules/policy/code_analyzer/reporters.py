@@ -17,24 +17,25 @@ import sys
 from datetime import datetime, timezone
 from typing import TextIO
 
-from .analyzer import ScanReport, CodeFinding, Severity
-
+from .analyzer import CodeFinding, ScanReport, Severity
 
 # ---------------------------------------------------------------------------
 # ANSI color codes for terminal output
 # ---------------------------------------------------------------------------
 
+
 class Colors:
     """ANSI escape codes for colored terminal output."""
+
     RESET = "\033[0m"
     BOLD = "\033[1m"
     DIM = "\033[2m"
 
     # Severity colors
-    RED = "\033[91m"      # ERROR
-    YELLOW = "\033[93m"   # WARNING
-    BLUE = "\033[94m"     # INFO
-    GREEN = "\033[92m"    # SUCCESS
+    RED = "\033[91m"  # ERROR
+    YELLOW = "\033[93m"  # WARNING
+    BLUE = "\033[94m"  # INFO
+    GREEN = "\033[92m"  # SUCCESS
 
     # UI elements
     GRAY = "\033[90m"
@@ -45,6 +46,7 @@ class Colors:
 # ---------------------------------------------------------------------------
 # TerminalReporter — human-friendly colored output
 # ---------------------------------------------------------------------------
+
 
 class TerminalReporter:
     """
@@ -94,9 +96,13 @@ class TerminalReporter:
 
         parts = []
         if report.error_count > 0:
-            parts.append(f"{c.RED}{report.error_count} error{'s' if report.error_count != 1 else ''}{c.RESET}")
+            parts.append(
+                f"{c.RED}{report.error_count} error{'s' if report.error_count != 1 else ''}{c.RESET}"
+            )
         if report.warning_count > 0:
-            parts.append(f"{c.YELLOW}{report.warning_count} warning{'s' if report.warning_count != 1 else ''}{c.RESET}")
+            parts.append(
+                f"{c.YELLOW}{report.warning_count} warning{'s' if report.warning_count != 1 else ''}{c.RESET}"
+            )
         if report.info_count > 0:
             parts.append(f"{c.BLUE}{report.info_count} info{c.RESET}")
 
@@ -105,7 +111,9 @@ class TerminalReporter:
         file_count = len(report.scanned_files)
         duration = f"{report.scan_duration_s:.2f}s"
 
-        self._print(f"{icon} {summary} {c.GRAY}({file_count} file{'s' if file_count != 1 else ''} scanned in {duration}){c.RESET}\n")
+        self._print(
+            f"{icon} {summary} {c.GRAY}({file_count} file{'s' if file_count != 1 else ''} scanned in {duration}){c.RESET}\n"
+        )
 
         # Parse errors
         if report.errors:
@@ -148,7 +156,9 @@ class TerminalReporter:
         loc = f"{f.line}:{f.col}" if f.col else str(f.line)
 
         # Main line
-        self._print(f"  {c.GRAY}{loc:<8}{c.RESET} {sev_color}{sev_label}{c.RESET}  {c.CYAN}{f.rule_id}{c.RESET}  {f.title}")
+        self._print(
+            f"  {c.GRAY}{loc:<8}{c.RESET} {sev_color}{sev_label}{c.RESET}  {c.CYAN}{f.rule_id}{c.RESET}  {f.title}"
+        )
 
         # Description
         if f.description:
@@ -159,12 +169,16 @@ class TerminalReporter:
         # Code snippet
         if self.show_snippet and f.snippet:
             self._print(f"           {c.GRAY}{vbar}{c.RESET}")
-            self._print(f"           {c.GRAY}{vbar}{c.RESET} {c.DIM}{f.line}{c.RESET} {c.GRAY}{vbar}{c.RESET} {f.snippet}")
+            self._print(
+                f"           {c.GRAY}{vbar}{c.RESET} {c.DIM}{f.line}{c.RESET} {c.GRAY}{vbar}{c.RESET} {f.snippet}"
+            )
 
         # Suggestion
         if self.show_suggestion and f.suggestion:
             self._print(f"           {c.GRAY}{vbar}{c.RESET}")
-            self._print(f"           {c.GRAY}{corner}{c.RESET} {c.GREEN}Fix:{c.RESET} {f.suggestion}")
+            self._print(
+                f"           {c.GRAY}{corner}{c.RESET} {c.GREEN}Fix:{c.RESET} {f.suggestion}"
+            )
 
         # Reference link
         if f.reference and self.show_suggestion:
@@ -175,10 +189,10 @@ class TerminalReporter:
         """Check if the output stream supports UTF-8 encoding."""
         try:
             # Check encoding attribute
-            encoding = getattr(out, 'encoding', None)
+            encoding = getattr(out, "encoding", None)
             if encoding:
                 # UTF-8 or similar Unicode encodings
-                if 'utf' in encoding.lower() or 'unicode' in encoding.lower():
+                if "utf" in encoding.lower() or "unicode" in encoding.lower():
                     return True
             # Default to False for Windows console (cp1252, cp437, etc.)
             return False
@@ -192,6 +206,7 @@ class TerminalReporter:
 
 class _NoColors:
     """Dummy class that returns empty strings for all color codes."""
+
     def __getattribute__(self, name):
         return ""
 
@@ -199,6 +214,7 @@ class _NoColors:
 # ---------------------------------------------------------------------------
 # JSONReporter — structured JSON for CI/CD
 # ---------------------------------------------------------------------------
+
 
 class JSONReporter:
     """
@@ -274,6 +290,7 @@ class JSONReporter:
 # SARIFReporter — SARIF 2.1.0 for GitHub/GitLab Code Scanning
 # ---------------------------------------------------------------------------
 
+
 class SARIFReporter:
     """
     SARIF 2.1.0 output for GitHub/GitLab Code Scanning integration.
@@ -312,15 +329,13 @@ class SARIFReporter:
                                 {
                                     "id": rule_id,
                                     "name": f.title,
-                                    "shortDescription": {
-                                        "text": f.title
-                                    },
-                                    "fullDescription": {
-                                        "text": f.description or f.title
-                                    },
+                                    "shortDescription": {"text": f.title},
+                                    "fullDescription": {"text": f.description or f.title},
                                     "help": {
                                         "text": f.suggestion or "Review for EU AI Act compliance",
-                                        "markdown": f"{f.description}\n\n**Fix:** {f.suggestion}\n\n[Reference]({f.reference})" if f.suggestion else f.description,
+                                        "markdown": f"{f.description}\n\n**Fix:** {f.suggestion}\n\n[Reference]({f.reference})"
+                                        if f.suggestion
+                                        else f.description,
                                     },
                                     "helpUri": f.reference,
                                     "properties": {
@@ -347,15 +362,15 @@ class SARIFReporter:
                                 {
                                     "physicalLocation": {
                                         "artifactLocation": {
-                                            "uri": f.file.replace("\\", "/"),  # Normalize path separators
+                                            "uri": f.file.replace(
+                                                "\\", "/"
+                                            ),  # Normalize path separators
                                             "uriBaseId": "%SRCROOT%",
                                         },
                                         "region": {
                                             "startLine": f.line,
                                             "startColumn": f.col if f.col else 1,
-                                            "snippet": {
-                                                "text": f.snippet
-                                            } if f.snippet else None,
+                                            "snippet": {"text": f.snippet} if f.snippet else None,
                                         },
                                     }
                                 }
@@ -402,6 +417,7 @@ class SARIFReporter:
     def _hash_location(f: CodeFinding) -> str:
         """Generate a stable hash for deduplication."""
         import hashlib
+
         content = f"{f.file}:{f.line}:{f.rule_id}"
         return hashlib.sha256(content.encode()).hexdigest()[:16]
 
@@ -409,6 +425,7 @@ class SARIFReporter:
 # ---------------------------------------------------------------------------
 # MarkdownReporter — formatted markdown for PR comments
 # ---------------------------------------------------------------------------
+
 
 class MarkdownReporter:
     """
@@ -463,7 +480,9 @@ class MarkdownReporter:
         if report.error_count > 0:
             parts.append(f"**{report.error_count} error{'s' if report.error_count != 1 else ''}**")
         if report.warning_count > 0:
-            parts.append(f"{report.warning_count} warning{'s' if report.warning_count != 1 else ''}")
+            parts.append(
+                f"{report.warning_count} warning{'s' if report.warning_count != 1 else ''}"
+            )
         if report.info_count > 0:
             parts.append(f"{report.info_count} info")
 
@@ -472,7 +491,9 @@ class MarkdownReporter:
         file_count = len(report.scanned_files)
         duration = f"{report.scan_duration_s:.2f}s"
 
-        self._print(f"{status_emoji} — {summary} ({file_count} file{'s' if file_count != 1 else ''} scanned in {duration})\n")
+        self._print(
+            f"{status_emoji} — {summary} ({file_count} file{'s' if file_count != 1 else ''} scanned in {duration})\n"
+        )
 
         # Parse errors
         if report.errors:
@@ -502,7 +523,9 @@ class MarkdownReporter:
                 severity_emoji = self._severity_emoji(f.severity)
                 severity_text = f.severity.value.upper()
 
-                self._print(f"| {loc} | {severity_emoji} {severity_text} | {f.rule_id} | {f.title} |")
+                self._print(
+                    f"| {loc} | {severity_emoji} {severity_text} | {f.rule_id} | {f.title} |"
+                )
 
             self._print("")
 
@@ -530,7 +553,9 @@ class MarkdownReporter:
 
         # Footer
         self._print("---")
-        self._print("*Generated by [euaiact-lint](https://github.com/YOUR_ORG/ai-safety-guardrails) — EU AI Act Static Code Analyzer*")
+        self._print(
+            "*Generated by [euaiact-lint](https://github.com/YOUR_ORG/ai-safety-guardrails) — EU AI Act Static Code Analyzer*"
+        )
 
     @staticmethod
     def _severity_emoji(severity: Severity) -> str:

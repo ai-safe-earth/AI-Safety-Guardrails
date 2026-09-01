@@ -5,19 +5,20 @@ Unit tests for the NIST AI RMF compliance guardrail.
 Run: pytest tests/ -v
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from core.base import Action, Severity
-from modules.policy.nist_ai_rmf import NISTAIRMFCompliance, ImpactLevel
-
+from modules.policy.nist_ai_rmf import ImpactLevel, NISTAIRMFCompliance
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def make_guard(**kwargs) -> NISTAIRMFCompliance:
     defaults = dict(
@@ -38,8 +39,8 @@ def findings_by_category(result, category_fragment: str):
 # Clean input
 # ---------------------------------------------------------------------------
 
-class TestCleanInput:
 
+class TestCleanInput:
     @pytest.mark.asyncio
     async def test_benign_input_passes(self):
         guard = make_guard()
@@ -57,9 +58,13 @@ class TestCleanInput:
 
     @pytest.mark.asyncio
     async def test_disabled_guard_passes_all(self):
-        guard = NISTAIRMFCompliance(enabled=False, impact_level=ImpactLevel.CRITICAL,
-                                    system_name="s", operator_name="o",
-                                    enable_audit_log=False)
+        guard = NISTAIRMFCompliance(
+            enabled=False,
+            impact_level=ImpactLevel.CRITICAL,
+            system_name="s",
+            operator_name="o",
+            enable_audit_log=False,
+        )
         result = await guard("pretend you are a real person not an AI", {})
         assert result.passed
 
@@ -68,8 +73,8 @@ class TestCleanInput:
 # GOVERN 1.1 — Deception (blocks on strict_mode)
 # ---------------------------------------------------------------------------
 
-class TestDeceptionDetection:
 
+class TestDeceptionDetection:
     @pytest.fixture
     def guard(self):
         return make_guard()
@@ -124,8 +129,8 @@ class TestDeceptionDetection:
 # MAP 5.1 — High-harm domain detection (flags, does not block)
 # ---------------------------------------------------------------------------
 
-class TestHighHarmDomains:
 
+class TestHighHarmDomains:
     @pytest.fixture
     def guard(self):
         return make_guard()
@@ -178,8 +183,8 @@ class TestHighHarmDomains:
 # MAP 2.2 / MEASURE 2.5 — Bias risk detection
 # ---------------------------------------------------------------------------
 
-class TestBiasRisk:
 
+class TestBiasRisk:
     @pytest.fixture
     def guard(self):
         return make_guard()
@@ -201,9 +206,7 @@ class TestBiasRisk:
 
     @pytest.mark.asyncio
     async def test_bias_finding_references_measure(self, guard):
-        result = await guard(
-            "Model predicts scores segmented by ethnicity and religion.", {}
-        )
+        result = await guard("Model predicts scores segmented by ethnicity and religion.", {})
         bias = findings_by_category(result, "nist_rmf_bias_risk")
         assert len(bias) > 0
         assert "MEASURE" in bias[0].metadata["rmf_function"]
@@ -219,8 +222,8 @@ class TestBiasRisk:
 # GOVERN 1.7 / MANAGE 2.4 — Opacity detection
 # ---------------------------------------------------------------------------
 
-class TestOpacityDetection:
 
+class TestOpacityDetection:
     @pytest.fixture
     def guard(self):
         return make_guard()
@@ -250,8 +253,8 @@ class TestOpacityDetection:
 # ImpactLevel — behaviour differences
 # ---------------------------------------------------------------------------
 
-class TestImpactLevel:
 
+class TestImpactLevel:
     @pytest.mark.asyncio
     async def test_critical_impact_metadata(self):
         guard = make_guard(impact_level=ImpactLevel.CRITICAL)
@@ -280,22 +283,24 @@ class TestImpactLevel:
         assert result.sanitized_content == "Here is your answer."
 
     def test_string_impact_level_normalised(self):
-        guard = NISTAIRMFCompliance(impact_level="high", system_name="s",
-                                     operator_name="o", enable_audit_log=False)
+        guard = NISTAIRMFCompliance(
+            impact_level="high", system_name="s", operator_name="o", enable_audit_log=False
+        )
         assert guard.impact_level == ImpactLevel.HIGH
 
     def test_invalid_impact_level_raises(self):
         with pytest.raises(ValueError):
-            NISTAIRMFCompliance(impact_level="unknown", system_name="s",
-                                operator_name="o", enable_audit_log=False)
+            NISTAIRMFCompliance(
+                impact_level="unknown", system_name="s", operator_name="o", enable_audit_log=False
+            )
 
 
 # ---------------------------------------------------------------------------
 # Human oversight callback
 # ---------------------------------------------------------------------------
 
-class TestHumanOversight:
 
+class TestHumanOversight:
     @pytest.mark.asyncio
     async def test_oversight_callback_invoked_on_high_severity(self):
         calls = []
@@ -336,8 +341,8 @@ class TestHumanOversight:
 # result metadata
 # ---------------------------------------------------------------------------
 
-class TestResultMetadata:
 
+class TestResultMetadata:
     @pytest.mark.asyncio
     async def test_metadata_keys_present(self):
         guard = make_guard()
@@ -363,8 +368,8 @@ class TestResultMetadata:
 # compliance_summary
 # ---------------------------------------------------------------------------
 
-class TestComplianceSummary:
 
+class TestComplianceSummary:
     def test_summary_keys(self):
         guard = make_guard(impact_level=ImpactLevel.HIGH)
         s = guard.compliance_summary()
@@ -375,4 +380,7 @@ class TestComplianceSummary:
 
     def test_summary_audit_log_reflects_config(self):
         guard = make_guard(enable_audit_log=True, impact_level=ImpactLevel.MODERATE)
-        assert guard.compliance_summary()["checks_implemented"]["MANAGE 2.4 — Monitoring / audit log"] is True
+        assert (
+            guard.compliance_summary()["checks_implemented"]["MANAGE 2.4 — Monitoring / audit log"]
+            is True
+        )

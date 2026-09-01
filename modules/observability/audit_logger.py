@@ -27,9 +27,9 @@ import json
 import sys
 import time
 import uuid
-from dataclasses import dataclass, asdict, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 from core.base import PipelineResult
 
@@ -40,8 +40,11 @@ class AuditRecord:
     Fully structured audit record for one pipeline run stage.
     Compatible with SIEM ingestion and EU AI Act Art. 12 requirements.
     """
+
     record_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp_utc: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    timestamp_utc: str = field(
+        default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    )
     timestamp_unix: float = field(default_factory=time.time)
 
     # Identity
@@ -198,6 +201,7 @@ class AuditLogger:
     async def _post_http(self, payload: str) -> None:
         try:
             import aiohttp
+
             async with aiohttp.ClientSession() as session:
                 await session.post(
                     self.http_endpoint,

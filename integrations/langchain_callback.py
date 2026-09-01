@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import sys
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 
@@ -100,8 +100,7 @@ class LangChainGuardrailCallback:
     def on_chain_error(self, error: Exception | None = None, *args, **kwargs) -> None:
         if error is not None:
             print(
-                f"[LangChainGuardrailCallback] Chain error: "
-                f"{type(error).__name__}: {error}",
+                f"[LangChainGuardrailCallback] Chain error: {type(error).__name__}: {error}",
                 file=sys.stderr,
             )
 

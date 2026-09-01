@@ -34,10 +34,10 @@ from core.base import (
 from core.pipeline import GuardrailPipeline
 from modules.observability.otel import TelemetryProvider, _blocked_by
 
-
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
 
 class _DummyGuard(GuardrailBase):
     name = "dummy_guard"
@@ -86,12 +86,12 @@ def _make_otel_test_provider():
     Build a TelemetryProvider backed by InMemorySpanExporter + InMemoryMetricReader.
     Uses object.__new__ to bypass _setup so no global OTel provider is mutated.
     """
-    from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+    from opentelemetry.sdk.resources import SERVICE_NAME, Resource
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-    from opentelemetry.sdk.metrics import MeterProvider
-    from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
     span_exporter = InMemorySpanExporter()
     metric_reader = InMemoryMetricReader()
@@ -125,8 +125,8 @@ def _make_otel_test_provider():
 # 1.  No-op mode  (exporter="none")
 # ===========================================================================
 
-class TestTelemetryProviderNoOp:
 
+class TestTelemetryProviderNoOp:
     @pytest.fixture
     def provider(self):
         return TelemetryProvider(exporter="none")
@@ -165,8 +165,8 @@ class TestTelemetryProviderNoOp:
 # 2.  _blocked_by helper
 # ===========================================================================
 
-class TestBlockedByHelper:
 
+class TestBlockedByHelper:
     def _blocked_check(self, guard_name=None, use_metadata=False):
         findings = []
         metadata = {}
@@ -203,10 +203,12 @@ class TestBlockedByHelper:
         assert _blocked_by(result) == "toxicity"
 
     def test_returns_first_blocked_guard_when_multiple(self):
-        result = self._result([
-            self._blocked_check(guard_name="first_guard"),
-            self._blocked_check(guard_name="second_guard"),
-        ])
+        result = self._result(
+            [
+                self._blocked_check(guard_name="first_guard"),
+                self._blocked_check(guard_name="second_guard"),
+            ]
+        )
         assert _blocked_by(result) == "first_guard"
 
     def test_falls_back_to_metadata_when_no_findings(self):
@@ -232,8 +234,8 @@ class TestBlockedByHelper:
 # 3.  Pipeline integration — mocked telemetry
 # ===========================================================================
 
-class TestPipelineWithTelemetry:
 
+class TestPipelineWithTelemetry:
     @pytest.fixture
     def mock_tel(self):
         return MagicMock()
@@ -369,8 +371,8 @@ class TestPipelineWithTelemetry:
 # 4.  Real OTel — span attributes  (requires opentelemetry)
 # ===========================================================================
 
-class TestTelemetryProviderOTelSpans:
 
+class TestTelemetryProviderOTelSpans:
     @pytest.fixture(autouse=True)
     def _require_otel(self):
         pytest.importorskip("opentelemetry")
@@ -455,10 +457,13 @@ class TestTelemetryProviderOTelSpans:
         with provider._tracer.start_as_current_span("test") as span:
             provider.record_pipeline_result(result, span=span)
         expected_len = len("test input")
-        assert exporter.get_finished_spans()[0].attributes["guardrail.content_length"] == expected_len
+        assert (
+            exporter.get_finished_spans()[0].attributes["guardrail.content_length"] == expected_len
+        )
 
     def test_blocked_result_sets_error_status(self, setup):
         from opentelemetry.trace import StatusCode
+
         provider, exporter = setup
         result = _make_pipeline_result(blocked=True)
         with provider._tracer.start_as_current_span("test") as span:
@@ -467,6 +472,7 @@ class TestTelemetryProviderOTelSpans:
 
     def test_passing_result_does_not_set_error_status(self, setup):
         from opentelemetry.trace import StatusCode
+
         provider, exporter = setup
         result = _make_pipeline_result(blocked=False)
         with provider._tracer.start_as_current_span("test") as span:
@@ -505,6 +511,7 @@ class TestTelemetryProviderOTelSpans:
 
     def test_blocked_check_sets_error_status_on_span(self, setup):
         from opentelemetry.trace import StatusCode
+
         provider, exporter = setup
         check = CheckResult(passed=False, action=Action.BLOCK)
         with provider._tracer.start_as_current_span("test") as span:
@@ -513,6 +520,7 @@ class TestTelemetryProviderOTelSpans:
 
     def test_passing_check_does_not_set_error_status(self, setup):
         from opentelemetry.trace import StatusCode
+
         provider, exporter = setup
         check = CheckResult(passed=True, action=Action.ALLOW)
         with provider._tracer.start_as_current_span("test") as span:
@@ -524,8 +532,8 @@ class TestTelemetryProviderOTelSpans:
 # 5.  Real OTel — metrics  (requires opentelemetry)
 # ===========================================================================
 
-class TestTelemetryProviderOTelMetrics:
 
+class TestTelemetryProviderOTelMetrics:
     @pytest.fixture(autouse=True)
     def _require_otel(self):
         pytest.importorskip("opentelemetry")

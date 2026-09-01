@@ -46,23 +46,24 @@ import time
 from typing import Optional
 
 from core.base import (
+    Action,
+    CheckResult,
+    Finding,
     GuardrailBase,
     GuardrailStage,
-    CheckResult,
-    Action,
-    Severity,
-    Finding,
     PipelineResult,
+    Severity,
 )
 from core.registry import register_guard
 
 try:
     from nemoguardrails import LLMRails, RailsConfig
+
     _NEMO_AVAILABLE = True
 except ImportError:
     _NEMO_AVAILABLE = False
-    LLMRails = None       # type: ignore[assignment,misc]
-    RailsConfig = None    # type: ignore[assignment,misc]
+    LLMRails = None  # type: ignore[assignment,misc]
+    RailsConfig = None  # type: ignore[assignment,misc]
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +73,9 @@ except ImportError:
 # Patterns NeMo typically uses when it refuses / rails trigger
 _NEMO_BLOCK_PATTERNS: list[re.Pattern] = [
     re.compile(r"i['']?m (not able|unable) to", re.I),
-    re.compile(r"i (can['']?t|cannot|won['']?t|will not) (help|assist|provide|do|answer|discuss)", re.I),
+    re.compile(
+        r"i (can['']?t|cannot|won['']?t|will not) (help|assist|provide|do|answer|discuss)", re.I
+    ),
     re.compile(r"that['']?s (not something i (can|am able to)|outside)", re.I),
     re.compile(r"i['']?m (sorry|afraid)[,.] (but )?i (can['']?t|cannot|won['']?t)", re.I),
     re.compile(r"(prohibited|not allowed|against( the)? (rules|guidelines|policy))", re.I),
@@ -94,6 +97,7 @@ def _is_nemo_block(response: str) -> bool:
 # ---------------------------------------------------------------------------
 # NemoRailsGuard — GuardrailBase at POLICY stage
 # ---------------------------------------------------------------------------
+
 
 @register_guard("nemo_rails")
 class NemoRailsGuard(GuardrailBase):
@@ -149,7 +153,7 @@ class NemoRailsGuard(GuardrailBase):
                 "or:            pip install 'ai-safety-guardrails[nemo]'"
             )
 
-        self._rails = rails           # May be None; built lazily from path
+        self._rails = rails  # May be None; built lazily from path
         self._config_path = rails_config_path
         self._role = role
         self._block_on_refuse = block_on_refuse
@@ -163,9 +167,7 @@ class NemoRailsGuard(GuardrailBase):
     def _get_rails(self) -> "LLMRails":
         if self._rails is None:
             if self._config_path is None:
-                raise ValueError(
-                    "NemoRailsGuard requires either 'rails' or 'rails_config_path'."
-                )
+                raise ValueError("NemoRailsGuard requires either 'rails' or 'rails_config_path'.")
             cfg = RailsConfig.from_path(self._config_path)
             self._rails = LLMRails(cfg)
         return self._rails
@@ -246,6 +248,7 @@ class NemoRailsGuard(GuardrailBase):
 # ---------------------------------------------------------------------------
 # NemoRailsMiddleware — full orchestration (pipeline + NeMo as LLM)
 # ---------------------------------------------------------------------------
+
 
 class NemoRailsMiddleware:
     """
@@ -355,6 +358,7 @@ class NemoRailsMiddleware:
         if nemo_response is None:
             # NeMo hard-errored and fail_open=False
             from core.base import GuardrailStage
+
             return PipelineResult(
                 stage=GuardrailStage.OUTPUT,
                 original_content=sanitized_input,

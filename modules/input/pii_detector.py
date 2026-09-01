@@ -19,50 +19,32 @@ Usage:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from typing import Literal
 
-from core.base import GuardrailBase, GuardrailStage, CheckResult, Action, Finding, Severity
+from core.base import Action, CheckResult, Finding, GuardrailBase, GuardrailStage, Severity
 from core.registry import register_guard
-
 
 # ---------------------------------------------------------------------------
 # PII Pattern Library
 # ---------------------------------------------------------------------------
 
 PII_PATTERNS: dict[str, re.Pattern] = {
-    "EMAIL": re.compile(
-        r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"
-    ),
-    "PHONE_US": re.compile(
-        r"\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b"
-    ),
-    "PHONE_INTL": re.compile(
-        r"\+\d{1,3}[\s-]?\(?\d{1,4}\)?[\s-]?\d{1,4}[\s-]?\d{1,9}"
-    ),
-    "SSN": re.compile(
-        r"\b(?!000|666|9\d{2})\d{3}[- ](?!00)\d{2}[- ](?!0{4})\d{4}\b"
-    ),
+    "EMAIL": re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"),
+    "PHONE_US": re.compile(r"\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b"),
+    "PHONE_INTL": re.compile(r"\+\d{1,3}[\s-]?\(?\d{1,4}\)?[\s-]?\d{1,4}[\s-]?\d{1,9}"),
+    "SSN": re.compile(r"\b(?!000|666|9\d{2})\d{3}[- ](?!00)\d{2}[- ](?!0{4})\d{4}\b"),
     "CREDIT_CARD": re.compile(
         r"\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}"
         r"|3(?:0[0-5]|[68][0-9])[0-9]{11}|6(?:011|5[0-9]{2})[0-9]{12})\b"
     ),
-    "IBAN": re.compile(
-        r"\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}(?:[A-Z0-9]?){0,16}\b"
-    ),
-    "IP_ADDRESS": re.compile(
-        r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
-    ),
+    "IBAN": re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}(?:[A-Z0-9]?){0,16}\b"),
+    "IP_ADDRESS": re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
     "DATE_OF_BIRTH": re.compile(
         r"\b(?:dob|date of birth|born)[:\s]+\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}\b",
         re.IGNORECASE,
     ),
-    "PASSPORT": re.compile(
-        r"\b[A-Z]{1,2}\d{6,9}\b"
-    ),
-    "EU_TAX_ID": re.compile(
-        r"\b[A-Z]{2}\d{8,12}\b"
-    ),
+    "PASSPORT": re.compile(r"\b[A-Z]{1,2}\d{6,9}\b"),
+    "EU_TAX_ID": re.compile(r"\b[A-Z]{2}\d{8,12}\b"),
 }
 
 DEFAULT_ENTITIES = ["EMAIL", "PHONE_US", "PHONE_INTL", "SSN", "CREDIT_CARD", "IP_ADDRESS"]
@@ -88,6 +70,7 @@ PII_TOKEN_MAP_KEY = "_pii_token_map"
 # ---------------------------------------------------------------------------
 # Guard implementation
 # ---------------------------------------------------------------------------
+
 
 @register_guard("pii_detector")
 class PIIDetector(GuardrailBase):
@@ -122,9 +105,11 @@ class PIIDetector(GuardrailBase):
         if use_presidio:
             try:
                 from presidio_analyzer import AnalyzerEngine
+
                 self._presidio_analyzer = AnalyzerEngine()
             except ImportError:
                 import warnings
+
                 warnings.warn(
                     "presidio-analyzer not installed. Falling back to regex-based PII detection. "
                     "Install with: pip install presidio-analyzer presidio-anonymizer",
@@ -181,14 +166,16 @@ class PIIDetector(GuardrailBase):
 
             matches = list(pattern.finditer(sanitized))
             for match in matches:
-                findings.append(Finding(
-                    guard_name=self.name,
-                    severity=Severity.HIGH,
-                    category="pii",
-                    description=f"Detected {entity} in content",
-                    span=(match.start(), match.end()),
-                    metadata={"entity_type": entity},
-                ))
+                findings.append(
+                    Finding(
+                        guard_name=self.name,
+                        severity=Severity.HIGH,
+                        category="pii",
+                        description=f"Detected {entity} in content",
+                        span=(match.start(), match.end()),
+                        metadata={"entity_type": entity},
+                    )
+                )
 
             if matches and self.action_mode == "redact":
                 placeholder = REDACTION_PLACEHOLDERS.get(entity, f"[{entity} REDACTED]")
@@ -196,9 +183,7 @@ class PIIDetector(GuardrailBase):
 
         return findings, sanitized
 
-    def _regex_tokenize(
-        self, content: str, context: dict
-    ) -> tuple[list[Finding], str]:
+    def _regex_tokenize(self, content: str, context: dict) -> tuple[list[Finding], str]:
         """
         Replace each PII match with a reversible token like ``<PII:EMAIL:1>``.
 
@@ -237,14 +222,16 @@ class PIIDetector(GuardrailBase):
                 continue
 
             for match in matches:
-                findings.append(Finding(
-                    guard_name=self.name,
-                    severity=Severity.HIGH,
-                    category="pii",
-                    description=f"Detected {entity} in content",
-                    span=(match.start(), match.end()),
-                    metadata={"entity_type": entity, "tokenized": True},
-                ))
+                findings.append(
+                    Finding(
+                        guard_name=self.name,
+                        severity=Severity.HIGH,
+                        category="pii",
+                        description=f"Detected {entity} in content",
+                        span=(match.start(), match.end()),
+                        metadata={"entity_type": entity, "tokenized": True},
+                    )
+                )
 
             # Replace matches with tokens, reusing the same token for equal values
             def _replace(m: re.Match, _entity: str = entity) -> str:
@@ -291,6 +278,7 @@ class PIIDetector(GuardrailBase):
 # ---------------------------------------------------------------------------
 # PIIRestorer — output guard that reverses tokenization
 # ---------------------------------------------------------------------------
+
 
 @register_guard("pii_restorer")
 class PIIRestorer(GuardrailBase):

@@ -11,16 +11,13 @@ Usage:
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from modules.analysis.data_flow_analyzer import DataFlowAnalyzer, DataFlowReport
-from modules.analysis.data_flow_rules import DATA_FLOW_RULES
-import time
 
+from modules.analysis.data_flow_analyzer import DataFlowAnalyzer
 
 # ---------------------------------------------------------------------------
 # Vulnerable Code Examples (for demonstration)
@@ -43,7 +40,6 @@ def process_message():
 
     return response
 ''',
-
     "pii_in_logs.py": '''
 """Example: PII logged without redaction"""
 import logging
@@ -60,7 +56,6 @@ def register_user():
 
     return {"status": "success"}
 ''',
-
     "secrets_in_model.py": '''
 """Example: Secrets embedded in model artifacts"""
 import torch
@@ -77,7 +72,6 @@ def save_model_config():
 
     torch.save(model_config, 'model_config.pth')
 ''',
-
     "unencrypted_storage.py": '''
 """Example: Sensitive data stored without encryption"""
 import json
@@ -92,7 +86,6 @@ def save_user_data():
 
     return {"status": "saved"}
 ''',
-
     "pii_exfiltration.py": '''
 """Example: PII transmitted to external API"""
 import requests
@@ -108,7 +101,6 @@ def track_user():
         json={'email': email, 'user_id': user_id}
     )
 ''',
-
     "unvalidated_training_data.py": '''
 """Example: Training data without validation"""
 import pandas as pd
@@ -126,7 +118,6 @@ def train_model():
 
     return model
 ''',
-
     "complex_flow.py": '''
 """Example: Complex data flow with multiple transformations"""
 from flask import request
@@ -186,7 +177,6 @@ def process_message():
 
     return response
 ''',
-
     "redacted_logs.py": '''
 """Example: SAFE - PII redacted in logs"""
 import logging
@@ -210,6 +200,7 @@ def register_user():
 # ---------------------------------------------------------------------------
 # Test Runner
 # ---------------------------------------------------------------------------
+
 
 def create_test_files(temp_dir: Path):
     """Create temporary test files."""
@@ -265,12 +256,14 @@ def run_analysis():
                         "high": "[!]",
                         "medium": "[*]",
                         "low": "[i]",
-                        "critical": "[!!]"
+                        "critical": "[!!]",
                     }.get(finding.severity, "[-]")
 
                     print(f"{severity_symbol} {finding.severity.upper()}: {finding.category}")
                     print(f"    Line {finding.sink_line}: {finding.description[:80]}...")
-                    print(f"    Flow: {finding.source_var} (line {finding.source_line}) -> {finding.sink_type}")
+                    print(
+                        f"    Flow: {finding.source_var} (line {finding.source_line}) -> {finding.sink_type}"
+                    )
                     print(f"    Sensitivity: {finding.sensitivity.value}")
                     if finding.suggestion:
                         print(f"    Fix: {finding.suggestion[:80]}...")
@@ -328,11 +321,14 @@ def run_analysis():
         # Detection rate
         expected_vulns = len(VULNERABLE_EXAMPLES)
         detection_rate = (len(set(f.file for f in all_findings)) / expected_vulns) * 100
-        print(f"Detection rate: {detection_rate:.1f}% ({len(set(f.file for f in all_findings))}/{expected_vulns} files)")
+        print(
+            f"Detection rate: {detection_rate:.1f}% ({len(set(f.file for f in all_findings))}/{expected_vulns} files)"
+        )
 
     finally:
         # Cleanup
         import shutil
+
         if temp_dir.exists():
             shutil.rmtree(temp_dir)
 

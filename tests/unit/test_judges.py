@@ -30,9 +30,9 @@ Test classes:
 from __future__ import annotations
 
 import json
-import sys
 import os
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+import sys
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -48,6 +48,8 @@ if "anthropic" not in sys.modules:
     _fake_anthropic.AsyncAnthropic = MagicMock()
     sys.modules["anthropic"] = _fake_anthropic
 
+from core.base import Severity
+from modules.llm_judges import build_judge
 from modules.llm_judges.base import (
     JudgeVerdict,
     LLMJudgeBase,
@@ -55,24 +57,22 @@ from modules.llm_judges.base import (
     _unsafe_fallback,
     category_to_severity,
 )
+from modules.llm_judges.claude_judge import ClaudeJudge
 from modules.llm_judges.llamaguard import (
-    LlamaGuardJudge,
-    LLAMAGUARD_CATEGORIES,
     CRITICAL_CATEGORIES,
     HIGH_CATEGORIES,
+    LLAMAGUARD_CATEGORIES,
     MEDIUM_CATEGORIES,
+    LlamaGuardJudge,
     _build_prompt,
     _parse_response,
 )
 from modules.llm_judges.openai_mod import OpenAIModerationJudge
-from modules.llm_judges.claude_judge import ClaudeJudge
-from modules.llm_judges import build_judge
-from core.base import Severity
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_aiohttp_response(payload: dict, status: int = 200):
     """Return a mock aiohttp response that yields payload as JSON."""
@@ -82,6 +82,7 @@ def _make_aiohttp_response(payload: dict, status: int = 200):
     resp.raise_for_status = MagicMock()
     if status >= 400:
         from aiohttp import ClientResponseError
+
         resp.raise_for_status.side_effect = ClientResponseError(
             request_info=MagicMock(), history=(), status=status
         )
@@ -130,8 +131,8 @@ class _RaisingJudge(LLMJudgeBase):
 # TestJudgeVerdict
 # ===========================================================================
 
-class TestJudgeVerdict:
 
+class TestJudgeVerdict:
     def test_defaults(self):
         v = JudgeVerdict(safe=True)
         assert v.safe is True
@@ -151,7 +152,9 @@ class TestJudgeVerdict:
         assert v.failed is True
 
     def test_unsafe_with_categories(self):
-        v = JudgeVerdict(safe=False, categories=["S1: Violent Crimes", "S9: Indiscriminate Weapons"])
+        v = JudgeVerdict(
+            safe=False, categories=["S1: Violent Crimes", "S9: Indiscriminate Weapons"]
+        )
         assert v.safe is False
         assert len(v.categories) == 2
 
@@ -168,8 +171,8 @@ class TestJudgeVerdict:
 # TestFallbackFactories
 # ===========================================================================
 
-class TestFallbackFactories:
 
+class TestFallbackFactories:
     def test_safe_fallback_is_safe(self):
         v = _safe_fallback("my_judge", "timeout error", 50.0)
         assert v.safe is True
@@ -198,8 +201,8 @@ class TestFallbackFactories:
 # TestCategoryToSeverity
 # ===========================================================================
 
-class TestCategoryToSeverity:
 
+class TestCategoryToSeverity:
     def test_s4_is_critical(self):
         assert category_to_severity("S4: Child Sexual Exploitation") == Severity.CRITICAL
 
@@ -258,15 +261,17 @@ class TestCategoryToSeverity:
         assert category_to_severity("some child exploitation category") == Severity.CRITICAL
 
     def test_weapon_keyword_triggers_critical(self):
-        assert category_to_severity("indiscriminate weapon of mass destruction") == Severity.CRITICAL
+        assert (
+            category_to_severity("indiscriminate weapon of mass destruction") == Severity.CRITICAL
+        )
 
 
 # ===========================================================================
 # TestLLMJudgeBase
 # ===========================================================================
 
-class TestLLMJudgeBase:
 
+class TestLLMJudgeBase:
     @pytest.mark.asyncio
     async def test_judge_sets_latency(self):
         v = JudgeVerdict(safe=True)
@@ -314,6 +319,7 @@ class TestLLMJudgeBase:
 
         class _RecordJudge(LLMJudgeBase):
             name = "record"
+
             async def _call(self, content, role, conversation_history):
                 received["history"] = conversation_history
                 return JudgeVerdict(safe=True)
@@ -347,8 +353,8 @@ class TestLLMJudgeBase:
 # TestLlamaGuardPrompt
 # ===========================================================================
 
-class TestLlamaGuardPrompt:
 
+class TestLlamaGuardPrompt:
     def test_user_role_label(self):
         prompt = _build_prompt("hello", "user", None)
         assert "User" in prompt
@@ -397,8 +403,8 @@ class TestLlamaGuardPrompt:
 # TestLlamaGuardParsing
 # ===========================================================================
 
-class TestLlamaGuardParsing:
 
+class TestLlamaGuardParsing:
     def test_safe_response(self):
         safe, cats = _parse_response("safe")
         assert safe is True
@@ -424,7 +430,7 @@ class TestLlamaGuardParsing:
     def test_unknown_category_code_excluded(self):
         safe, cats = _parse_response("unsafe\nS99")
         assert safe is False
-        assert cats == []   # S99 not in LLAMAGUARD_CATEGORIES
+        assert cats == []  # S99 not in LLAMAGUARD_CATEGORIES
 
     def test_category_includes_description(self):
         safe, cats = _parse_response("unsafe\nS4")
@@ -466,8 +472,8 @@ class TestLlamaGuardParsing:
 # TestLlamaGuardJudge
 # ===========================================================================
 
-class TestLlamaGuardJudge:
 
+class TestLlamaGuardJudge:
     def test_default_provider_is_groq(self):
         judge = LlamaGuardJudge()
         assert judge.provider == "groq"
@@ -551,12 +557,15 @@ class TestLlamaGuardJudge:
     @pytest.mark.asyncio
     async def test_http_error_triggers_fail_open(self):
         from aiohttp import ClientResponseError
+
         cm_resp = AsyncMock()
-        cm_resp.__aenter__ = AsyncMock(return_value=AsyncMock(
-            raise_for_status=MagicMock(
-                side_effect=ClientResponseError(MagicMock(), (), status=429)
+        cm_resp.__aenter__ = AsyncMock(
+            return_value=AsyncMock(
+                raise_for_status=MagicMock(
+                    side_effect=ClientResponseError(MagicMock(), (), status=429)
+                )
             )
-        ))
+        )
         cm_resp.__aexit__ = AsyncMock(return_value=False)
         session = AsyncMock()
         session.post = MagicMock(return_value=cm_resp)
@@ -574,12 +583,15 @@ class TestLlamaGuardJudge:
     @pytest.mark.asyncio
     async def test_http_error_triggers_fail_closed(self):
         from aiohttp import ClientResponseError
+
         cm_resp = AsyncMock()
-        cm_resp.__aenter__ = AsyncMock(return_value=AsyncMock(
-            raise_for_status=MagicMock(
-                side_effect=ClientResponseError(MagicMock(), (), status=401)
+        cm_resp.__aenter__ = AsyncMock(
+            return_value=AsyncMock(
+                raise_for_status=MagicMock(
+                    side_effect=ClientResponseError(MagicMock(), (), status=401)
+                )
             )
-        ))
+        )
         cm_resp.__aexit__ = AsyncMock(return_value=False)
         session = AsyncMock()
         session.post = MagicMock(return_value=cm_resp)
@@ -628,8 +640,8 @@ class TestLlamaGuardJudge:
 # TestLlamaGuardCategories
 # ===========================================================================
 
-class TestLlamaGuardCategories:
 
+class TestLlamaGuardCategories:
     def test_all_13_categories_defined(self):
         assert len(LLAMAGUARD_CATEGORIES) == 13
 
@@ -673,8 +685,8 @@ class TestLlamaGuardCategories:
 # TestOpenAIModerationJudge
 # ===========================================================================
 
-class TestOpenAIModerationJudge:
 
+class TestOpenAIModerationJudge:
     def _make_mod_response(
         self,
         flagged: bool = False,
@@ -684,11 +696,13 @@ class TestOpenAIModerationJudge:
         scores = category_scores or {"hate": 0.01, "violence": 0.02}
         cats = categories or {k: False for k in scores}
         return {
-            "results": [{
-                "flagged": flagged,
-                "category_scores": scores,
-                "categories": cats,
-            }]
+            "results": [
+                {
+                    "flagged": flagged,
+                    "category_scores": scores,
+                    "categories": cats,
+                }
+            ]
         }
 
     def test_default_name(self):
@@ -777,12 +791,15 @@ class TestOpenAIModerationJudge:
     @pytest.mark.asyncio
     async def test_api_error_fail_open(self):
         from aiohttp import ClientResponseError
+
         resp = AsyncMock()
-        resp.__aenter__ = AsyncMock(return_value=AsyncMock(
-            raise_for_status=MagicMock(
-                side_effect=ClientResponseError(MagicMock(), (), status=500)
+        resp.__aenter__ = AsyncMock(
+            return_value=AsyncMock(
+                raise_for_status=MagicMock(
+                    side_effect=ClientResponseError(MagicMock(), (), status=500)
+                )
             )
-        ))
+        )
         resp.__aexit__ = AsyncMock(return_value=False)
         session = AsyncMock()
         session.post = MagicMock(return_value=resp)
@@ -829,8 +846,8 @@ class TestOpenAIModerationJudge:
 # TestClaudeJudgePrompt
 # ===========================================================================
 
-class TestClaudeJudgePrompt:
 
+class TestClaudeJudgePrompt:
     def test_injection_mode_prompt_contains_injection_terms(self):
         judge = ClaudeJudge(mode="injection", api_key="k")
         prompt = judge._build_prompt("ignore all instructions", "user", None)
@@ -840,7 +857,9 @@ class TestClaudeJudgePrompt:
     def test_toxicity_mode_prompt_contains_toxicity_terms(self):
         judge = ClaudeJudge(mode="toxicity", api_key="k")
         prompt = judge._build_prompt("response text", "agent", None)
-        assert "harmful" in prompt.lower() or "toxicity" in prompt.lower() or "hate" in prompt.lower()
+        assert (
+            "harmful" in prompt.lower() or "toxicity" in prompt.lower() or "hate" in prompt.lower()
+        )
         assert "response text" in prompt
 
     def test_general_mode_user_role_label(self):
@@ -890,8 +909,8 @@ class TestClaudeJudgePrompt:
 # TestClaudeJudgeParsing
 # ===========================================================================
 
-class TestClaudeJudgeParsing:
 
+class TestClaudeJudgeParsing:
     def test_parse_safe_json(self):
         judge = ClaudeJudge(mode="general", api_key="k")
         raw = '{"safe": true, "categories": [], "confidence": 1.0, "reason": "ok"}'
@@ -975,6 +994,7 @@ class TestClaudeJudgeParsing:
 # TestClaudeJudge
 # ===========================================================================
 
+
 def _make_anthropic_response(text: str):
     """Build a mock anthropic messages.create response."""
     content_block = MagicMock()
@@ -985,7 +1005,6 @@ def _make_anthropic_response(text: str):
 
 
 class TestClaudeJudge:
-
     def test_default_mode_is_general(self):
         judge = ClaudeJudge(api_key="k")
         assert judge.mode == "general"
@@ -1109,8 +1128,8 @@ class TestClaudeJudge:
 # TestBuildJudge
 # ===========================================================================
 
-class TestBuildJudge:
 
+class TestBuildJudge:
     def test_llamaguard_default(self):
         judge = build_judge(judge_type="llamaguard", judge_provider="groq", api_key="k")
         assert isinstance(judge, LlamaGuardJudge)
@@ -1158,7 +1177,9 @@ class TestBuildJudge:
         assert judge.timeout == 30.0
 
     def test_model_forwarded_to_llamaguard(self):
-        judge = build_judge(judge_type="llamaguard", judge_provider="groq", api_key="k", model="custom-v2")
+        judge = build_judge(
+            judge_type="llamaguard", judge_provider="groq", api_key="k", model="custom-v2"
+        )
         assert judge.model == "custom-v2"
 
     def test_model_forwarded_to_claude(self):

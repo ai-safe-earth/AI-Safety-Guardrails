@@ -19,7 +19,7 @@ Usage:
 from __future__ import annotations
 
 import json
-from typing import Any, Callable
+from typing import Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -56,7 +56,9 @@ class FastAPIGuardrailMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Only process JSON POST requests
-        if request.method != "POST" or "application/json" not in request.headers.get("content-type", ""):
+        if request.method != "POST" or "application/json" not in request.headers.get(
+            "content-type", ""
+        ):
             return await call_next(request)
 
         # Extract context

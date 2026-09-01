@@ -41,18 +41,19 @@ import sys
 from typing import TYPE_CHECKING, Generator, Optional
 
 if TYPE_CHECKING:
-    from core.base import PipelineResult, CheckResult
+    from core.base import CheckResult, PipelineResult
 
 try:
-    from opentelemetry import trace as otel_trace, metrics as otel_metrics
-    from opentelemetry.sdk.resources import Resource, SERVICE_NAME
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+    from opentelemetry import metrics as otel_metrics
+    from opentelemetry import trace as otel_trace
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.sdk.metrics.export import (
         ConsoleMetricExporter,
         PeriodicExportingMetricReader,
     )
+    from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
     from opentelemetry.trace import StatusCode
 
     _OTEL_AVAILABLE = True
@@ -76,9 +77,9 @@ class TelemetryProvider:
     def __init__(
         self,
         service_name: str = "ai-safety-guardrails",
-        exporter: str = "console",          # "otlp" | "console" | "none"
+        exporter: str = "console",  # "otlp" | "console" | "none"
         otlp_endpoint: str = "http://localhost:4317",
-        otlp_protocol: str = "grpc",        # "grpc" | "http"
+        otlp_protocol: str = "grpc",  # "grpc" | "http"
         metric_export_interval_ms: int = 60_000,
         enabled: bool = True,
     ):
@@ -236,9 +237,7 @@ class TelemetryProvider:
             yield span
 
     @contextlib.contextmanager
-    def guard_span(
-        self, guard_name: str, stage: str
-    ) -> Generator[Optional[object], None, None]:
+    def guard_span(self, guard_name: str, stage: str) -> Generator[Optional[object], None, None]:
         """
         Wraps one guardrail check in a child OTel span.
 
@@ -331,6 +330,7 @@ class TelemetryProvider:
 # ------------------------------------------------------------------
 # Internal helpers
 # ------------------------------------------------------------------
+
 
 def _blocked_by(result: "PipelineResult") -> str:
     """Return the guard name that caused the block, or 'unknown'."""

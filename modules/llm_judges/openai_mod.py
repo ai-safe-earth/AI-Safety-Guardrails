@@ -36,20 +36,26 @@ from __future__ import annotations
 import os
 from typing import Literal
 
-from modules.llm_judges.base import LLMJudgeBase, JudgeVerdict
-
+from modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
 
 # OpenAI moderation categories that map to our higher severity findings
 HIGH_SEVERITY_CATEGORIES = {
-    "violence", "violence/graphic",
-    "self-harm", "self-harm/intent", "self-harm/instructions",
+    "violence",
+    "violence/graphic",
+    "self-harm",
+    "self-harm/intent",
+    "self-harm/instructions",
     "sexual/minors",
-    "hate/threatening", "harassment/threatening",
+    "hate/threatening",
+    "harassment/threatening",
     "illicit/violent",
 }
 
 MEDIUM_SEVERITY_CATEGORIES = {
-    "hate", "harassment", "illicit", "sexual",
+    "hate",
+    "harassment",
+    "illicit",
+    "sexual",
 }
 
 
@@ -117,15 +123,13 @@ class OpenAIModerationJudge(LLMJudgeBase):
         flags: dict[str, bool] = result.get("categories", {})
 
         # Collect violated categories above threshold
-        violated = [
-            cat for cat, score in scores.items()
-            if score >= self.threshold
-        ]
+        violated = [cat for cat, score in scores.items() if score >= self.threshold]
 
         # Confidence = highest score among violated categories (or 0 if safe)
         confidence = max((scores[c] for c in violated), default=0.0) if violated else 0.0
 
         import json
+
         return JudgeVerdict(
             safe=not flagged and not violated,
             categories=violated,

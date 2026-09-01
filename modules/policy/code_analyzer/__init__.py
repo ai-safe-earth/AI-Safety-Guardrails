@@ -1,9 +1,9 @@
-from modules.policy.code_analyzer.analyzer import EUAIActCodeAnalyzer, ScanReport, CodeFinding
+from modules.policy.code_analyzer.analyzer import CodeFinding, EUAIActCodeAnalyzer, ScanReport
 from modules.policy.code_analyzer.reporters import (
-    TerminalReporter,
     JSONReporter,
-    SARIFReporter,
     MarkdownReporter,
+    SARIFReporter,
+    TerminalReporter,
 )
 
 __all__ = [

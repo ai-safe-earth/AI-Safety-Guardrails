@@ -61,7 +61,10 @@ class _GuardedMessages:
                 if hasattr(block, "text"):
                     output_result = await self._pipeline.run_output(block.text, context)
                     if output_result.blocked:
-                        block.text = output_result.rejection_message or "Response blocked by safety guardrails."
+                        block.text = (
+                            output_result.rejection_message
+                            or "Response blocked by safety guardrails."
+                        )
                     else:
                         block.text = output_result.sanitized_output
 
@@ -101,6 +104,7 @@ class AnthropicGuardrail:
 
     def __init__(self, pipeline, context_fn=None, **client_kwargs):
         import anthropic
+
         self._client = anthropic.AsyncAnthropic(**client_kwargs)
         self._pipeline = pipeline
         self._context_fn = context_fn or (lambda kwargs: kwargs.get("metadata", {}))

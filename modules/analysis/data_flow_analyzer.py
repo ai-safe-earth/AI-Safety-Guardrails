@@ -36,20 +36,21 @@ import ast
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Iterator, Set, Dict, List, Optional, Tuple
-
+from typing import Dict, List, Optional, Set
 
 # ---------------------------------------------------------------------------
 # Data Sensitivity Classification
 # ---------------------------------------------------------------------------
 
+
 class SensitivityLevel(str, Enum):
     """Sensitivity classification for data."""
-    PUBLIC = "public"          # Non-sensitive, public data
-    INTERNAL = "internal"      # Internal use, not public
+
+    PUBLIC = "public"  # Non-sensitive, public data
+    INTERNAL = "internal"  # Internal use, not public
     CONFIDENTIAL = "confidential"  # Sensitive business data
-    PII = "pii"               # Personally Identifiable Information
-    SECRET = "secret"         # Credentials, API keys, passwords
+    PII = "pii"  # Personally Identifiable Information
+    SECRET = "secret"  # Credentials, API keys, passwords
 
     def __lt__(self, other):
         """Allow comparison for sensitivity levels."""
@@ -59,6 +60,7 @@ class SensitivityLevel(str, Enum):
 
 class DataCategory(str, Enum):
     """Categories of sensitive data."""
+
     # PII Categories
     EMAIL = "email"
     PHONE = "phone"
@@ -84,9 +86,11 @@ class DataCategory(str, Enum):
 # Taint Tracking
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class TaintInfo:
     """Information about tainted data."""
+
     variable_name: str
     sensitivity: SensitivityLevel
     categories: Set[DataCategory] = field(default_factory=set)
@@ -114,6 +118,7 @@ class TaintInfo:
 @dataclass
 class DataFlowFinding:
     """A detected data flow issue."""
+
     severity: str  # "high", "medium", "low"
     category: str
     description: str
@@ -148,6 +153,7 @@ class DataFlowFinding:
 # Pattern Definitions
 # ---------------------------------------------------------------------------
 
+
 class TaintPatterns:
     """Patterns for identifying sources, sinks, and sanitizers."""
 
@@ -159,24 +165,19 @@ class TaintPatterns:
         "request.form": (SensitivityLevel.PII, DataCategory.USER_INPUT),
         "request.data": (SensitivityLevel.PII, DataCategory.USER_INPUT),
         "request.files": (SensitivityLevel.PII, DataCategory.USER_INPUT),
-
         # FastAPI
         "Query(": (SensitivityLevel.PII, DataCategory.USER_INPUT),
         "Body(": (SensitivityLevel.PII, DataCategory.USER_INPUT),
         "Form(": (SensitivityLevel.PII, DataCategory.USER_INPUT),
-
         # Database queries
         "cursor.execute": (SensitivityLevel.CONFIDENTIAL, DataCategory.RAW_DATA),
         "db.query": (SensitivityLevel.CONFIDENTIAL, DataCategory.RAW_DATA),
-
         # File operations
         "open(": (SensitivityLevel.CONFIDENTIAL, DataCategory.RAW_DATA),
         "Path.read_text": (SensitivityLevel.CONFIDENTIAL, DataCategory.RAW_DATA),
-
         # Environment variables (often contain secrets)
         "os.environ": (SensitivityLevel.SECRET, DataCategory.API_KEY),
         "os.getenv": (SensitivityLevel.SECRET, DataCategory.API_KEY),
-
         # Training data
         "load_dataset": (SensitivityLevel.PII, DataCategory.TRAINING_DATA),
         "pd.read_csv": (SensitivityLevel.CONFIDENTIAL, DataCategory.RAW_DATA),
@@ -191,7 +192,6 @@ class TaintPatterns:
         "anthropic.messages.create": "llm_call",
         "model.generate": "llm_call",
         "chat.completions.create": "llm_call",
-
         # Logging
         "logger.info": "logging",
         "logger.debug": "logging",
@@ -199,23 +199,19 @@ class TaintPatterns:
         "logger.error": "logging",
         "print(": "logging",
         "logging.info": "logging",
-
         # File storage
         "open(": "file_write",
         "Path.write_text": "file_write",
         "json.dump": "file_write",
-
         # Model serialization
         "pickle.dump": "model_serialization",
         "joblib.dump": "model_serialization",
         "torch.save": "model_serialization",
         "model.save": "model_serialization",
-
         # Network transmission
         "requests.post": "http_request",
         "requests.get": "http_request",
         "urllib.request": "http_request",
-
         # Database inserts
         "cursor.execute": "database_write",
         "db.insert": "database_write",
@@ -238,6 +234,7 @@ class TaintPatterns:
 # ---------------------------------------------------------------------------
 # AST-based Data Flow Analyzer
 # ---------------------------------------------------------------------------
+
 
 class DataFlowAnalyzer(ast.NodeVisitor):
     """
@@ -263,13 +260,13 @@ class DataFlowAnalyzer(ast.NodeVisitor):
         self.findings.clear()
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 source = f.read()
 
             tree = ast.parse(source, filename=str(file_path))
             self.visit(tree)
 
-        except Exception as e:
+        except Exception:
             # Don't fail on parse errors
             pass
 
@@ -488,8 +485,8 @@ class DataFlowAnalyzer(ast.NodeVisitor):
 
     def _generate_description(self, taint: TaintInfo, sink_type: str) -> str:
         """Generate human-readable description of the issue."""
-        sensitivity_desc = taint.sensitivity.value.replace('_', ' ').title()
-        categories_desc = ', '.join(cat.value for cat in taint.categories)
+        sensitivity_desc = taint.sensitivity.value.replace("_", " ").title()
+        categories_desc = ", ".join(cat.value for cat in taint.categories)
 
         descriptions = {
             "llm_call": f"{sensitivity_desc} data ({categories_desc}) flows to LLM API without validation",
@@ -513,13 +510,23 @@ class DataFlowAnalyzer(ast.NodeVisitor):
             "database_write": "Use database-level encryption for sensitive fields. Consider field-level encryption.",
         }
 
-        return suggestions.get(sink_type, "Apply appropriate sanitization before using sensitive data.")
+        return suggestions.get(
+            sink_type, "Apply appropriate sanitization before using sensitive data."
+        )
 
     def _is_sensitive_param_name(self, param_name: str) -> bool:
         """Check if parameter name suggests sensitive data."""
         sensitive_keywords = [
-            'password', 'secret', 'token', 'api_key', 'private_key',
-            'ssn', 'email', 'phone', 'credit_card', 'user_input',
+            "password",
+            "secret",
+            "token",
+            "api_key",
+            "private_key",
+            "ssn",
+            "email",
+            "phone",
+            "credit_card",
+            "user_input",
         ]
         param_lower = param_name.lower()
         return any(keyword in param_lower for keyword in sensitive_keywords)
@@ -554,16 +561,18 @@ class DataFlowAnalyzer(ast.NodeVisitor):
         if isinstance(current, ast.Name):
             parts.append(current.id)
 
-        return '.'.join(reversed(parts))
+        return ".".join(reversed(parts))
 
 
 # ---------------------------------------------------------------------------
 # Report Generation
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DataFlowReport:
     """Aggregated data flow analysis report."""
+
     findings: List[DataFlowFinding] = field(default_factory=list)
     total_files: int = 0
     scan_duration_s: float = 0.0

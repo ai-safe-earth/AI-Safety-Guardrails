@@ -8,9 +8,9 @@ reading from any real .env file or ambient environment variables.
 The monkeypatch fixture is used when testing environment variable resolution.
 """
 
-import warnings
-import sys
 import os
+import sys
+import warnings
 
 import pytest
 
@@ -18,10 +18,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from config.settings import Settings
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def make(**kwargs) -> Settings:
     """Construct Settings with env_file disabled so only kwargs + env vars apply."""
@@ -32,8 +32,8 @@ def make(**kwargs) -> Settings:
 # Defaults
 # ---------------------------------------------------------------------------
 
-class TestDefaults:
 
+class TestDefaults:
     def test_env_defaults_to_development(self):
         s = make()
         assert s.guardrails_env == "development"
@@ -73,9 +73,13 @@ class TestDefaults:
     def test_api_keys_default_empty(self, monkeypatch):
         # Clear any ambient API keys set in the shell environment
         for var in (
-            "ANTHROPIC_API_KEY", "GROQ_API_KEY", "TOGETHER_API_KEY",
-            "OPENAI_API_KEY", "PERSPECTIVE_API_KEY",
-            "AZURE_CONTENT_SAFETY_KEY", "AZURE_CONTENT_SAFETY_ENDPOINT",
+            "ANTHROPIC_API_KEY",
+            "GROQ_API_KEY",
+            "TOGETHER_API_KEY",
+            "OPENAI_API_KEY",
+            "PERSPECTIVE_API_KEY",
+            "AZURE_CONTENT_SAFETY_KEY",
+            "AZURE_CONTENT_SAFETY_ENDPOINT",
         ):
             monkeypatch.delenv(var, raising=False)
         s = make()
@@ -117,8 +121,8 @@ class TestDefaults:
 # Overrides via keyword arguments
 # ---------------------------------------------------------------------------
 
-class TestOverrides:
 
+class TestOverrides:
     def test_set_env(self):
         s = make(guardrails_env="production")
         assert s.guardrails_env == "production"
@@ -170,8 +174,8 @@ class TestOverrides:
 # Environment variable resolution
 # ---------------------------------------------------------------------------
 
-class TestEnvVarResolution:
 
+class TestEnvVarResolution:
     def test_groq_api_key_from_env(self, monkeypatch):
         monkeypatch.setenv("GROQ_API_KEY", "gsk_from_env")
         s = make()
@@ -212,8 +216,8 @@ class TestEnvVarResolution:
 # Validators
 # ---------------------------------------------------------------------------
 
-class TestValidators:
 
+class TestValidators:
     def test_log_level_lowercased_input_normalised(self):
         s = make(guardrails_log_level="debug")
         assert s.guardrails_log_level == "DEBUG"
@@ -259,8 +263,8 @@ class TestValidators:
 # Properties
 # ---------------------------------------------------------------------------
 
-class TestProperties:
 
+class TestProperties:
     def test_is_production_true(self):
         s = make(guardrails_env="production")
         assert s.is_production is True
@@ -290,8 +294,8 @@ class TestProperties:
 # judge_kwargs()
 # ---------------------------------------------------------------------------
 
-class TestJudgeKwargs:
 
+class TestJudgeKwargs:
     def test_returns_dict_with_required_keys(self):
         s = make()
         kw = s.judge_kwargs()
@@ -336,12 +340,14 @@ class TestJudgeKwargs:
     def test_judge_kwargs_feeds_build_judge(self):
         """judge_kwargs() output is accepted by build_judge() without error."""
         from modules.llm_judges import build_judge
+
         s = make(default_judge_type="llamaguard", default_judge_provider="groq")
         judge = build_judge(**s.judge_kwargs())
         assert judge.name == "llamaguard3_groq"
 
     def test_judge_kwargs_claude(self):
         from modules.llm_judges import build_judge
+
         s = make(default_judge_type="claude")
         judge = build_judge(**s.judge_kwargs())
         assert "claude" in judge.name
@@ -351,8 +357,8 @@ class TestJudgeKwargs:
 # Production safety warnings
 # ---------------------------------------------------------------------------
 
-class TestProductionWarnings:
 
+class TestProductionWarnings:
     def test_fail_open_in_production_warns(self):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -371,9 +377,7 @@ class TestProductionWarnings:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             make(guardrails_env="development", guardrails_fail_open=True)
-        guardrail_warnings = [
-            w for w in caught if "GUARDRAILS_FAIL_OPEN" in str(w.message)
-        ]
+        guardrail_warnings = [w for w in caught if "GUARDRAILS_FAIL_OPEN" in str(w.message)]
         assert len(guardrail_warnings) == 0
 
     def test_no_warning_when_safe_in_production(self):
@@ -381,7 +385,8 @@ class TestProductionWarnings:
             warnings.simplefilter("always")
             make(guardrails_env="production")
         guardrail_warnings = [
-            w for w in caught
+            w
+            for w in caught
             if "GUARDRAILS_FAIL_OPEN" in str(w.message)
             or "GUARDRAILS_DISABLE_ALL" in str(w.message)
         ]
@@ -392,14 +397,12 @@ class TestProductionWarnings:
 # .env file loading
 # ---------------------------------------------------------------------------
 
-class TestDotEnvLoading:
 
+class TestDotEnvLoading:
     def test_env_file_values_loaded(self, tmp_path):
         env_file = tmp_path / ".env"
         env_file.write_text(
-            "GROQ_API_KEY=gsk_from_file\n"
-            "GUARDRAILS_ENV=staging\n"
-            "DEFAULT_JUDGE_TIMEOUT=20.0\n"
+            "GROQ_API_KEY=gsk_from_file\nGUARDRAILS_ENV=staging\nDEFAULT_JUDGE_TIMEOUT=20.0\n"
         )
         s = Settings(_env_file=str(env_file))
         assert s.groq_api_key == "gsk_from_file"
@@ -440,9 +443,7 @@ class TestDotEnvLoading:
         monkeypatch.delenv("GROQ_API_KEY", raising=False)
         env_file = tmp_path / ".env"
         env_file.write_text(
-            "# This is a comment\n"
-            "GROQ_API_KEY=gsk_real\n"
-            "# ANTHROPIC_API_KEY=should_be_ignored\n"
+            "# This is a comment\nGROQ_API_KEY=gsk_real\n# ANTHROPIC_API_KEY=should_be_ignored\n"
         )
         s = Settings(_env_file=str(env_file))
         assert s.groq_api_key == "gsk_real"

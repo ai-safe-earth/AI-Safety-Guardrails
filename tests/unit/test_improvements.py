@@ -14,9 +14,8 @@ Tests for the six codebase improvements:
 from __future__ import annotations
 
 import asyncio
-import io
-import sys
 import os
+import sys
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -35,8 +34,8 @@ if "anthropic" not in sys.modules:
 # 1.  LangChain callback — _run_async
 # ===========================================================================
 
+from core.base import Action, GuardrailStage, PipelineResult
 from integrations.langchain_callback import LangChainGuardrailCallback, _run_async
-from core.base import GuardrailStage, PipelineResult, Action
 
 
 def _make_pipeline_result(blocked=False, sanitized="clean", msg="blocked"):
@@ -51,30 +50,30 @@ def _make_pipeline_result(blocked=False, sanitized="clean", msg="blocked"):
 
 
 class TestRunAsync:
-
     def test_runs_coroutine_from_sync(self):
         async def _coro():
             return 42
+
         assert _run_async(_coro()) == 42
 
     def test_returns_value(self):
         async def _add(a, b):
             return a + b
+
         assert _run_async(_add(2, 3)) == 5
 
     @pytest.mark.asyncio
     async def test_runs_from_async_context(self):
         """When there IS a running loop, _run_async uses a thread."""
+
         async def _coro():
             return "ok"
-        result = await asyncio.get_event_loop().run_in_executor(
-            None, _run_async, _coro()
-        )
+
+        result = await asyncio.get_event_loop().run_in_executor(None, _run_async, _coro())
         assert result == "ok"
 
 
 class TestLangChainCallback:
-
     def _make_pipeline(self, blocked=False, output_blocked=False):
         pipeline = MagicMock()
         in_result = _make_pipeline_result(blocked=blocked, sanitized="safe input")
@@ -141,11 +140,10 @@ class TestLangChainCallback:
 # 2.  Anthropic middleware — deep copy
 # ===========================================================================
 
-from integrations.anthropic_middleware import _GuardedMessages, _BlockedResponse
+from integrations.anthropic_middleware import _BlockedResponse, _GuardedMessages
 
 
 class TestAnthropicMiddleware:
-
     def _make_inner(self, response_text="LLM reply"):
         block = MagicMock()
         block.text = response_text
@@ -239,7 +237,6 @@ class TestAnthropicMiddleware:
 # ===========================================================================
 
 from modules.observability.audit_logger import AuditLogger
-from core.base import PipelineResult, GuardrailStage
 
 
 def _make_result():
@@ -253,7 +250,6 @@ def _make_result():
 
 
 class TestAuditLoggerErrors:
-
     @pytest.mark.asyncio
     async def test_file_write_failure_prints_to_stderr(self, tmp_path, capsys):
         log_path = tmp_path / "audit.jsonl"
@@ -302,12 +298,11 @@ class TestAuditLoggerErrors:
 # 4.  Config validation
 # ===========================================================================
 
-from core.pipeline import GuardrailPipeline
 from core.exceptions import GuardrailConfigError
+from core.pipeline import GuardrailPipeline
 
 
 class TestConfigValidation:
-
     def test_none_stage_section_returns_empty_guards(self, tmp_path):
         cfg = tmp_path / "cfg.yaml"
         cfg.write_text("pipeline:\n  fail_open: false\ninput: null\n")
@@ -330,8 +325,7 @@ class TestConfigValidation:
     def test_unknown_module_raises_with_name(self, tmp_path):
         cfg = tmp_path / "cfg.yaml"
         cfg.write_text(
-            "pipeline:\n  fail_open: false\n"
-            "input:\n  totally_fake_guard:\n    enabled: true\n"
+            "pipeline:\n  fail_open: false\ninput:\n  totally_fake_guard:\n    enabled: true\n"
         )
         with pytest.raises(GuardrailConfigError, match="totally_fake_guard"):
             GuardrailPipeline.from_config(str(cfg))
@@ -339,8 +333,7 @@ class TestConfigValidation:
     def test_unknown_module_error_lists_registered(self, tmp_path):
         cfg = tmp_path / "cfg.yaml"
         cfg.write_text(
-            "pipeline:\n  fail_open: false\n"
-            "input:\n  no_such_guard:\n    enabled: true\n"
+            "pipeline:\n  fail_open: false\ninput:\n  no_such_guard:\n    enabled: true\n"
         )
         with pytest.raises(GuardrailConfigError, match="Registered modules"):
             GuardrailPipeline.from_config(str(cfg))
@@ -354,10 +347,7 @@ class TestConfigValidation:
 
     def test_module_cfg_bad_type_raises(self, tmp_path):
         cfg = tmp_path / "cfg.yaml"
-        cfg.write_text(
-            "pipeline:\n  fail_open: false\n"
-            "input:\n  pii_detector: not_a_dict\n"
-        )
+        cfg.write_text("pipeline:\n  fail_open: false\ninput:\n  pii_detector: not_a_dict\n")
         with pytest.raises(GuardrailConfigError, match="mapping"):
             GuardrailPipeline.from_config(str(cfg))
 
@@ -365,8 +355,7 @@ class TestConfigValidation:
         """Disabled modules should be skipped even if unregistered."""
         cfg = tmp_path / "cfg.yaml"
         cfg.write_text(
-            "pipeline:\n  fail_open: false\n"
-            "input:\n  ghost_module:\n    enabled: false\n"
+            "pipeline:\n  fail_open: false\ninput:\n  ghost_module:\n    enabled: false\n"
         )
         pipeline = GuardrailPipeline.from_config(str(cfg))
         assert pipeline.input_guards == []
@@ -377,11 +366,9 @@ class TestConfigValidation:
 # ===========================================================================
 
 from modules.input.rate_limiter import RateLimiter
-from core.base import Action
 
 
 class TestRateLimiter:
-
     @pytest.mark.asyncio
     async def test_allows_within_limit(self):
         limiter = RateLimiter(requests_per_minute=5, tokens_per_day=0)
@@ -413,8 +400,8 @@ class TestRateLimiter:
         # 5 tokens per day; "hello world" = 2 tokens
         limiter = RateLimiter(requests_per_minute=0, tokens_per_day=5)
         ctx = {"user_id": "u3"}
-        await limiter.check("hello world", ctx)   # 2 tokens used
-        await limiter.check("hello world", ctx)   # 4 tokens used
+        await limiter.check("hello world", ctx)  # 2 tokens used
+        await limiter.check("hello world", ctx)  # 4 tokens used
         result = await limiter.check("hello world", ctx)  # would need 6 total → blocked
         assert result.action == Action.BLOCK
         assert "tokens_per_day" in result.findings[0].category
@@ -456,8 +443,7 @@ class TestRateLimiter:
     @pytest.mark.asyncio
     async def test_custom_rejection_message(self):
         limiter = RateLimiter(
-            requests_per_minute=1, tokens_per_day=0,
-            rejection_message="Too fast!"
+            requests_per_minute=1, tokens_per_day=0, rejection_message="Too fast!"
         )
         ctx = {"user_id": "u6"}
         await limiter.check("msg", ctx)
@@ -482,6 +468,7 @@ class TestRateLimiter:
     @pytest.mark.asyncio
     async def test_registered_as_rate_limiter(self):
         from core.registry import REGISTRY
+
         assert "rate_limiter" in REGISTRY
 
 
@@ -489,12 +476,13 @@ class TestRateLimiter:
 # 6.  CachedJudge
 # ===========================================================================
 
-from modules.llm_judges.cache import CachedJudge
 from modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
+from modules.llm_judges.cache import CachedJudge
 
 
 class _CountingJudge(LLMJudgeBase):
     """Judge that counts how many times _call() is invoked."""
+
     name = "counting_judge"
 
     def __init__(self, safe=True, fail_open=True):
@@ -508,7 +496,6 @@ class _CountingJudge(LLMJudgeBase):
 
 
 class TestCachedJudge:
-
     @pytest.mark.asyncio
     async def test_first_call_hits_underlying_judge(self):
         base = _CountingJudge()

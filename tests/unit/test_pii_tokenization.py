@@ -12,13 +12,13 @@ from __future__ import annotations
 
 import pytest
 
-from modules.input.pii_detector import PIIDetector, PIIRestorer, PII_TOKEN_MAP_KEY
 from core.base import Action
-
+from modules.input.pii_detector import PII_TOKEN_MAP_KEY, PIIDetector, PIIRestorer
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def make_detector(**kwargs) -> PIIDetector:
     d = PIIDetector()
@@ -36,8 +36,8 @@ def make_restorer() -> PIIRestorer:
 # PIIDetector — tokenize mode
 # ---------------------------------------------------------------------------
 
-class TestPIIDetectorTokenize:
 
+class TestPIIDetectorTokenize:
     @pytest.mark.asyncio
     async def test_email_replaced_with_token(self):
         detector = make_detector(action="tokenize", entities=["EMAIL"])
@@ -142,15 +142,13 @@ class TestPIIDetectorTokenize:
 # PIIRestorer — output guard
 # ---------------------------------------------------------------------------
 
-class TestPIIRestorer:
 
+class TestPIIRestorer:
     @pytest.mark.asyncio
     async def test_restores_single_token(self):
         restorer = make_restorer()
         context = {PII_TOKEN_MAP_KEY: {"<PII:EMAIL:1>": "alice@example.com"}}
-        result = await restorer.check(
-            "You can reach <PII:EMAIL:1> for support.", context
-        )
+        result = await restorer.check("You can reach <PII:EMAIL:1> for support.", context)
         assert result.sanitized_content == "You can reach alice@example.com for support."
 
     @pytest.mark.asyncio
@@ -162,9 +160,7 @@ class TestPIIRestorer:
                 "<PII:SSN:1>": "123-45-6789",
             }
         }
-        result = await restorer.check(
-            "Email <PII:EMAIL:1>, SSN <PII:SSN:1>.", context
-        )
+        result = await restorer.check("Email <PII:EMAIL:1>, SSN <PII:SSN:1>.", context)
         assert "alice@example.com" in result.sanitized_content
         assert "123-45-6789" in result.sanitized_content
         assert "<PII:" not in result.sanitized_content
@@ -173,9 +169,7 @@ class TestPIIRestorer:
     async def test_restores_repeated_token(self):
         restorer = make_restorer()
         context = {PII_TOKEN_MAP_KEY: {"<PII:EMAIL:1>": "alice@example.com"}}
-        result = await restorer.check(
-            "<PII:EMAIL:1> sent to <PII:EMAIL:1>.", context
-        )
+        result = await restorer.check("<PII:EMAIL:1> sent to <PII:EMAIL:1>.", context)
         assert result.sanitized_content == "alice@example.com sent to alice@example.com."
 
     @pytest.mark.asyncio
@@ -232,8 +226,8 @@ class TestPIIRestorer:
 # End-to-end: detector + restorer with shared context
 # ---------------------------------------------------------------------------
 
-class TestTokenizeEndToEnd:
 
+class TestTokenizeEndToEnd:
     @pytest.mark.asyncio
     async def test_full_round_trip(self):
         """Simulate: user input → tokenize → LLM echoes token → restore."""
@@ -281,9 +275,11 @@ class TestTokenizeEndToEnd:
     @pytest.mark.asyncio
     async def test_restorer_registered_in_registry(self):
         from core.registry import REGISTRY
+
         assert "pii_restorer" in REGISTRY
 
     @pytest.mark.asyncio
     async def test_detector_tokenize_registered(self):
         from core.registry import REGISTRY
+
         assert "pii_detector" in REGISTRY

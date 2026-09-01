@@ -3,9 +3,10 @@ core/registry.py
 ----------------
 Global registry for guardrail classes, enabling config-driven loading.
 """
+
 from __future__ import annotations
 
-from typing import Callable, Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Type
 
 if TYPE_CHECKING:
     from core.base import GuardrailBase

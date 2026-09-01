@@ -28,18 +28,16 @@ Usage:
 from __future__ import annotations
 
 import base64
-import binascii
 import re
 import unicodedata
 from typing import Iterator
-from dataclasses import dataclass
 
 from core.base import Finding, Severity
-
 
 # ---------------------------------------------------------------------------
 # Unicode Attack Detection
 # ---------------------------------------------------------------------------
+
 
 class UnicodeBypassDetector:
     """
@@ -55,40 +53,49 @@ class UnicodeBypassDetector:
 
     # Zero-width and invisible characters
     INVISIBLE_CHARS = {
-        '\u200B': 'ZERO WIDTH SPACE',
-        '\u200C': 'ZERO WIDTH NON-JOINER',
-        '\u200D': 'ZERO WIDTH JOINER',
-        '\u200E': 'LEFT-TO-RIGHT MARK',
-        '\u200F': 'RIGHT-TO-LEFT MARK',
-        '\u202A': 'LEFT-TO-RIGHT EMBEDDING',
-        '\u202B': 'RIGHT-TO-LEFT EMBEDDING',
-        '\u202C': 'POP DIRECTIONAL FORMATTING',
-        '\u202D': 'LEFT-TO-RIGHT OVERRIDE',
-        '\u202E': 'RIGHT-TO-LEFT OVERRIDE',
-        '\u2060': 'WORD JOINER',
-        '\u2061': 'FUNCTION APPLICATION',
-        '\u2062': 'INVISIBLE TIMES',
-        '\u2063': 'INVISIBLE SEPARATOR',
-        '\u2064': 'INVISIBLE PLUS',
-        '\uFEFF': 'ZERO WIDTH NO-BREAK SPACE',
+        "\u200b": "ZERO WIDTH SPACE",
+        "\u200c": "ZERO WIDTH NON-JOINER",
+        "\u200d": "ZERO WIDTH JOINER",
+        "\u200e": "LEFT-TO-RIGHT MARK",
+        "\u200f": "RIGHT-TO-LEFT MARK",
+        "\u202a": "LEFT-TO-RIGHT EMBEDDING",
+        "\u202b": "RIGHT-TO-LEFT EMBEDDING",
+        "\u202c": "POP DIRECTIONAL FORMATTING",
+        "\u202d": "LEFT-TO-RIGHT OVERRIDE",
+        "\u202e": "RIGHT-TO-LEFT OVERRIDE",
+        "\u2060": "WORD JOINER",
+        "\u2061": "FUNCTION APPLICATION",
+        "\u2062": "INVISIBLE TIMES",
+        "\u2063": "INVISIBLE SEPARATOR",
+        "\u2064": "INVISIBLE PLUS",
+        "\ufeff": "ZERO WIDTH NO-BREAK SPACE",
     }
 
     # Common homoglyph mappings (Latin to lookalikes)
     HOMOGLYPH_MAP = {
-        'a': ['а', 'ɑ', 'α', 'ａ'],  # Cyrillic, Greek, Fullwidth
-        'e': ['е', 'е', 'ｅ'],
-        'i': ['і', 'ı', 'ɪ', 'ｉ'],
-        'o': ['о', 'ο', 'օ', 'ｏ'],
-        'p': ['р', 'ρ', 'ｐ'],
-        'c': ['с', 'ϲ', 'ｃ'],
-        'x': ['х', 'χ', 'ｘ'],
-        'y': ['у', 'ү', 'ｙ'],
+        "a": ["а", "ɑ", "α", "ａ"],  # Cyrillic, Greek, Fullwidth
+        "e": ["е", "е", "ｅ"],
+        "i": ["і", "ı", "ɪ", "ｉ"],
+        "o": ["о", "ο", "օ", "ｏ"],
+        "p": ["р", "ρ", "ｐ"],
+        "c": ["с", "ϲ", "ｃ"],
+        "x": ["х", "χ", "ｘ"],
+        "y": ["у", "ү", "ｙ"],
     }
 
     # Dangerous keywords to check after normalization
     INJECTION_KEYWORDS = [
-        'ignore', 'previous', 'instructions', 'system', 'prompt',
-        'jailbreak', 'dan', 'override', 'admin', 'root', 'sudo',
+        "ignore",
+        "previous",
+        "instructions",
+        "system",
+        "prompt",
+        "jailbreak",
+        "dan",
+        "override",
+        "admin",
+        "root",
+        "sudo",
     ]
 
     def detect_invisible_chars(self, content: str) -> Iterator[Finding]:
@@ -111,17 +118,17 @@ class UnicodeBypassDetector:
                         "char_code": f"U+{ord(char):04X}",
                         "char_name": self.INVISIBLE_CHARS[char],
                         "context": context,
-                        "risk": "May hide injection commands or split detection patterns"
+                        "risk": "May hide injection commands or split detection patterns",
                     },
                 )
 
     def detect_rtl_override(self, content: str) -> Iterator[Finding]:
         """Detect Right-to-Left override attacks."""
-        rtl_pattern = re.compile(r'[\u202E\u202B]')
+        rtl_pattern = re.compile(r"[\u202E\u202B]")
 
         for match in rtl_pattern.finditer(content):
             # Check if there's suspicious content after RTL marker
-            remaining = content[match.end():match.end() + 100]
+            remaining = content[match.end() : match.end() + 100]
 
             yield Finding(
                 guard_name="advanced_injection",
@@ -132,7 +139,7 @@ class UnicodeBypassDetector:
                 metadata={
                     "char_code": f"U+{ord(match.group()):04X}",
                     "following_text": remaining[:50],
-                    "risk": "RTL override can hide malicious instructions by reversing display order"
+                    "risk": "RTL override can hide malicious instructions by reversing display order",
                 },
             )
 
@@ -154,9 +161,9 @@ class UnicodeBypassDetector:
                     description=f"Homoglyph substitution detected for keyword '{keyword}'",
                     span=(norm_idx, norm_idx + len(keyword)),
                     metadata={
-                        "original_chars": content[norm_idx:norm_idx + len(keyword)],
+                        "original_chars": content[norm_idx : norm_idx + len(keyword)],
                         "normalized_to": keyword,
-                        "risk": "Using lookalike characters to bypass keyword filters"
+                        "risk": "Using lookalike characters to bypass keyword filters",
                     },
                 )
 
@@ -166,14 +173,14 @@ class UnicodeBypassDetector:
 
         for char in content:
             if char.isalpha():
-                script_name = unicodedata.name(char, '').split()[0]
+                script_name = unicodedata.name(char, "").split()[0]
                 scripts.add(script_name)
 
         # Suspicious if mixing Latin with Cyrillic or Greek
         suspicious_combinations = [
-            {'LATIN', 'CYRILLIC'},
-            {'LATIN', 'GREEK'},
-            {'LATIN', 'ARABIC'},
+            {"LATIN", "CYRILLIC"},
+            {"LATIN", "GREEK"},
+            {"LATIN", "ARABIC"},
         ]
 
         for combo in suspicious_combinations:
@@ -185,7 +192,7 @@ class UnicodeBypassDetector:
                     description=f"Suspicious script mixing detected: {', '.join(sorted(scripts))}",
                     metadata={
                         "scripts": list(scripts),
-                        "risk": "Mixed scripts often indicate homoglyph attacks or obfuscation"
+                        "risk": "Mixed scripts often indicate homoglyph attacks or obfuscation",
                     },
                 )
                 break
@@ -203,12 +210,13 @@ class UnicodeBypassDetector:
                     break
             result.append(normalized)
 
-        return ''.join(result)
+        return "".join(result)
 
 
 # ---------------------------------------------------------------------------
 # Many-Shot Confusion Attack Detection
 # ---------------------------------------------------------------------------
+
 
 class ManyShotDetector:
     """
@@ -225,9 +233,9 @@ class ManyShotDetector:
     """
 
     EXAMPLE_PATTERNS = [
-        re.compile(r'example\s+\d+:', re.I),
-        re.compile(r'\d+\.\s+\w+:', re.I),  # "1. User:", "2. Assistant:"
-        re.compile(r'(?:user|human|assistant|system):\s*.{10,}', re.I),
+        re.compile(r"example\s+\d+:", re.I),
+        re.compile(r"\d+\.\s+\w+:", re.I),  # "1. User:", "2. Assistant:"
+        re.compile(r"(?:user|human|assistant|system):\s*.{10,}", re.I),
     ]
 
     def detect_many_shot(self, content: str, threshold: int = 5) -> Iterator[Finding]:
@@ -243,11 +251,11 @@ class ManyShotDetector:
 
             if len(matches) >= threshold:
                 # Check if last examples contain injection keywords
-                last_examples = content[matches[-3].start():]  # Last 3 examples
+                last_examples = content[matches[-3].start() :]  # Last 3 examples
 
                 injection_detected = any(
                     keyword in last_examples.lower()
-                    for keyword in ['ignore', 'jailbreak', 'override', 'system', 'admin']
+                    for keyword in ["ignore", "jailbreak", "override", "system", "admin"]
                 )
 
                 severity = Severity.HIGH if injection_detected else Severity.MEDIUM
@@ -262,7 +270,7 @@ class ManyShotDetector:
                         "pattern": pattern.pattern,
                         "injection_in_tail": injection_detected,
                         "last_examples_preview": last_examples[:200],
-                        "risk": "Many-shot attacks use excessive examples to confuse the model"
+                        "risk": "Many-shot attacks use excessive examples to confuse the model",
                     },
                 )
                 break
@@ -271,6 +279,7 @@ class ManyShotDetector:
 # ---------------------------------------------------------------------------
 # Multi-Layer Encoding Detection
 # ---------------------------------------------------------------------------
+
 
 class EncodingDetector:
     """
@@ -285,8 +294,17 @@ class EncodingDetector:
     """
 
     ENCODING_KEYWORDS = [
-        'decode', 'decrypt', 'unescape', 'unhex', 'deobfuscate',
-        'base64', 'b64', 'hex', 'url', 'rot13', 'unicode',
+        "decode",
+        "decrypt",
+        "unescape",
+        "unhex",
+        "deobfuscate",
+        "base64",
+        "b64",
+        "hex",
+        "url",
+        "rot13",
+        "unicode",
     ]
 
     def detect_encoding_layers(self, content: str) -> Iterator[Finding]:
@@ -299,22 +317,24 @@ class EncodingDetector:
             decoded = self._try_decode(current)
 
             if decoded and decoded != current:
-                decoded_layers.append({
-                    'depth': depth + 1,
-                    'encoding': self._identify_encoding(current),
-                    'decoded': decoded[:200],
-                })
+                decoded_layers.append(
+                    {
+                        "depth": depth + 1,
+                        "encoding": self._identify_encoding(current),
+                        "decoded": decoded[:200],
+                    }
+                )
                 current = decoded
             else:
                 break
 
         # Check if decoded content contains injection patterns
         if decoded_layers:
-            final_content = decoded_layers[-1]['decoded'].lower()
+            final_content = decoded_layers[-1]["decoded"].lower()
 
             injection_found = any(
                 keyword in final_content
-                for keyword in ['ignore', 'jailbreak', 'system', 'prompt', 'override']
+                for keyword in ["ignore", "jailbreak", "system", "prompt", "override"]
             )
 
             if injection_found or len(decoded_layers) > 1:
@@ -327,17 +347,14 @@ class EncodingDetector:
                         "layers": decoded_layers,
                         "injection_detected": injection_found,
                         "final_decoded": final_content,
-                        "risk": "Chained encoding used to bypass detection"
+                        "risk": "Chained encoding used to bypass detection",
                     },
                 )
 
     def detect_encoding_instructions(self, content: str) -> Iterator[Finding]:
         """Detect instructions to decode encoded payloads."""
         for keyword in self.ENCODING_KEYWORDS:
-            pattern = re.compile(
-                rf'\b{keyword}\b.{{0,30}}(following|this|below|attached)',
-                re.I
-            )
+            pattern = re.compile(rf"\b{keyword}\b.{{0,30}}(following|this|below|attached)", re.I)
 
             for match in pattern.finditer(content):
                 yield Finding(
@@ -349,7 +366,7 @@ class EncodingDetector:
                     metadata={
                         "instruction": match.group(),
                         "encoding_type": keyword,
-                        "risk": "Attempting to make model decode obfuscated injection"
+                        "risk": "Attempting to make model decode obfuscated injection",
                     },
                 )
 
@@ -357,8 +374,8 @@ class EncodingDetector:
         """Try multiple decoding methods."""
         # Try base64
         try:
-            if re.match(r'^[A-Za-z0-9+/]+=*$', text.strip()):
-                decoded = base64.b64decode(text.strip()).decode('utf-8', errors='ignore')
+            if re.match(r"^[A-Za-z0-9+/]+=*$", text.strip()):
+                decoded = base64.b64decode(text.strip()).decode("utf-8", errors="ignore")
                 if decoded and len(decoded) > 3:
                     return decoded
         except Exception:
@@ -366,8 +383,8 @@ class EncodingDetector:
 
         # Try hex
         try:
-            if re.match(r'^[0-9a-fA-F]+$', text.strip()):
-                decoded = bytes.fromhex(text.strip()).decode('utf-8', errors='ignore')
+            if re.match(r"^[0-9a-fA-F]+$", text.strip()):
+                decoded = bytes.fromhex(text.strip()).decode("utf-8", errors="ignore")
                 if decoded and len(decoded) > 3:
                     return decoded
         except Exception:
@@ -376,6 +393,7 @@ class EncodingDetector:
         # Try URL decode
         try:
             import urllib.parse
+
             decoded = urllib.parse.unquote(text)
             if decoded != text and len(decoded) > 10:
                 return decoded
@@ -386,18 +404,19 @@ class EncodingDetector:
 
     def _identify_encoding(self, text: str) -> str:
         """Identify which encoding was likely used."""
-        if re.match(r'^[A-Za-z0-9+/]+=*$', text.strip()):
-            return 'base64'
-        if re.match(r'^[0-9a-fA-F]+$', text.strip()):
-            return 'hex'
-        if '%' in text and re.search(r'%[0-9a-fA-F]{2}', text):
-            return 'url'
-        return 'unknown'
+        if re.match(r"^[A-Za-z0-9+/]+=*$", text.strip()):
+            return "base64"
+        if re.match(r"^[0-9a-fA-F]+$", text.strip()):
+            return "hex"
+        if "%" in text and re.search(r"%[0-9a-fA-F]{2}", text):
+            return "url"
+        return "unknown"
 
 
 # ---------------------------------------------------------------------------
 # Token Smuggling Detection
 # ---------------------------------------------------------------------------
+
 
 class TokenSmugglingDetector:
     """
@@ -412,15 +431,15 @@ class TokenSmugglingDetector:
 
     SMUGGLING_PATTERNS = [
         # Pipe delimiters
-        (re.compile(r'\|[a-z]+\|', re.I), 'pipe_delimiter'),
+        (re.compile(r"\|[a-z]+\|", re.I), "pipe_delimiter"),
         # Dots between characters
-        (re.compile(r'\b[a-z](?:\.[a-z]){3,}\b', re.I), 'dot_separation'),
+        (re.compile(r"\b[a-z](?:\.[a-z]){3,}\b", re.I), "dot_separation"),
         # Excessive spaces within words
-        (re.compile(r'\b[a-z]+(?: [a-z]+){3,}\b', re.I), 'space_injection'),
+        (re.compile(r"\b[a-z]+(?: [a-z]+){3,}\b", re.I), "space_injection"),
         # Underscores as separators
-        (re.compile(r'\b[a-z]+(?:_[a-z]+){2,}\b', re.I), 'underscore_separation'),
+        (re.compile(r"\b[a-z]+(?:_[a-z]+){2,}\b", re.I), "underscore_separation"),
         # Mixed case obfuscation
-        (re.compile(r'\b[a-zA-Z]*(?:[A-Z][a-z]+){3,}\b'), 'camel_case_obfuscation'),
+        (re.compile(r"\b[a-zA-Z]*(?:[A-Z][a-z]+){3,}\b"), "camel_case_obfuscation"),
     ]
 
     def detect_smuggling(self, content: str) -> Iterator[Finding]:
@@ -428,10 +447,10 @@ class TokenSmugglingDetector:
         for pattern, technique in self.SMUGGLING_PATTERNS:
             for match in pattern.finditer(content):
                 # Normalize the matched text (remove separators)
-                normalized = re.sub(r'[|.\s_]', '', match.group()).lower()
+                normalized = re.sub(r"[|.\s_]", "", match.group()).lower()
 
                 # Check if normalized version contains injection keywords
-                dangerous_keywords = ['ignore', 'system', 'jailbreak', 'override', 'admin']
+                dangerous_keywords = ["ignore", "system", "jailbreak", "override", "admin"]
 
                 if any(keyword in normalized for keyword in dangerous_keywords):
                     yield Finding(
@@ -444,7 +463,7 @@ class TokenSmugglingDetector:
                             "original": match.group(),
                             "normalized": normalized,
                             "technique": technique,
-                            "risk": "Using separators to bypass keyword detection"
+                            "risk": "Using separators to bypass keyword detection",
                         },
                     )
 
@@ -452,6 +471,7 @@ class TokenSmugglingDetector:
 # ---------------------------------------------------------------------------
 # Character-Level Obfuscation Detection
 # ---------------------------------------------------------------------------
+
 
 class ObfuscationDetector:
     """
@@ -465,9 +485,17 @@ class ObfuscationDetector:
     """
 
     LEETSPEAK_MAP = {
-        '0': 'o', '1': 'i', '3': 'e', '4': 'a',
-        '5': 's', '7': 't', '8': 'b', '9': 'g',
-        '@': 'a', '$': 's', '!': 'i',
+        "0": "o",
+        "1": "i",
+        "3": "e",
+        "4": "a",
+        "5": "s",
+        "7": "t",
+        "8": "b",
+        "9": "g",
+        "@": "a",
+        "$": "s",
+        "!": "i",
     }
 
     def detect_leetspeak(self, content: str) -> Iterator[Finding]:
@@ -478,7 +506,7 @@ class ObfuscationDetector:
             normalized = normalized.replace(leet, normal)
 
         # Check if normalization revealed injection keywords
-        injection_keywords = ['ignore', 'jailbreak', 'system', 'override', 'admin']
+        injection_keywords = ["ignore", "jailbreak", "system", "override", "admin"]
 
         for keyword in injection_keywords:
             if keyword in normalized.lower() and keyword not in content.lower():
@@ -496,20 +524,20 @@ class ObfuscationDetector:
                         metadata={
                             "original": match.group(),
                             "normalized": keyword,
-                            "risk": "Using leetspeak to bypass keyword filters"
+                            "risk": "Using leetspeak to bypass keyword filters",
                         },
                     )
 
     def detect_character_repetition(self, content: str) -> Iterator[Finding]:
         """Detect excessive character repetition used for obfuscation."""
         # Pattern: iiiiignore, jaaaailbreak, etc.
-        pattern = re.compile(r'\b\w*([a-z])\1{3,}\w*\b', re.I)
+        pattern = re.compile(r"\b\w*([a-z])\1{3,}\w*\b", re.I)
 
         for match in pattern.finditer(content):
             # Remove repeated characters
-            normalized = re.sub(r'([a-z])\1+', r'\1', match.group(), flags=re.I).lower()
+            normalized = re.sub(r"([a-z])\1+", r"\1", match.group(), flags=re.I).lower()
 
-            injection_keywords = ['ignore', 'jailbreak', 'system', 'override']
+            injection_keywords = ["ignore", "jailbreak", "system", "override"]
 
             if any(keyword in normalized for keyword in injection_keywords):
                 yield Finding(
@@ -521,7 +549,7 @@ class ObfuscationDetector:
                     metadata={
                         "original": match.group(),
                         "normalized": normalized,
-                        "risk": "Using repeated characters to bypass detection"
+                        "risk": "Using repeated characters to bypass detection",
                     },
                 )
 
@@ -541,12 +569,13 @@ class ObfuscationDetector:
             else:
                 pattern_chars.append(char)
 
-        return re.compile(''.join(pattern_chars), re.I)
+        return re.compile("".join(pattern_chars), re.I)
 
 
 # ---------------------------------------------------------------------------
 # Main Advanced Detector Class
 # ---------------------------------------------------------------------------
+
 
 class AdvancedInjectionDetectors:
     """

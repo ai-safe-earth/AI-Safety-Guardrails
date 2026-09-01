@@ -72,7 +72,7 @@ class Settings(BaseSettings):
         env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False,
-        extra="ignore",          # ignore unknown env vars
+        extra="ignore",  # ignore unknown env vars
         populate_by_name=True,
     )
 
@@ -149,7 +149,7 @@ class Settings(BaseSettings):
     default_judge_type: Literal["llamaguard", "openai_mod", "claude"] = Field(
         default="llamaguard",
         description="Default judge type used when LLMInputFilter/LLMOutputFilter/LLMToolFilter "
-                    "are loaded from YAML config without an explicit judge_type.",
+        "are loaded from YAML config without an explicit judge_type.",
     )
 
     default_judge_provider: Literal["groq", "together", "ollama", "openai", "huggingface"] = Field(
@@ -166,7 +166,7 @@ class Settings(BaseSettings):
     default_judge_fail_open: bool = Field(
         default=True,
         description="Whether judge API failures allow traffic through (fail-open). "
-                    "True = fail open (safe for prod latency); False = fail closed (strict).",
+        "True = fail open (safe for prod latency); False = fail closed (strict).",
     )
 
     ollama_base_url: str = Field(
@@ -238,7 +238,7 @@ class Settings(BaseSettings):
     otel_exporter_otlp_endpoint: str = Field(
         default="",
         description="OpenTelemetry OTLP exporter endpoint (e.g. http://localhost:4317). "
-                    "Leave empty to disable OpenTelemetry export.",
+        "Leave empty to disable OpenTelemetry export.",
     )
 
     otel_service_name: str = Field(
@@ -279,13 +279,13 @@ class Settings(BaseSettings):
     guardrails_disable_all: bool = Field(
         default=False,
         description="Disable all guardrails globally. For local development only. "
-                    "Never set True in production.",
+        "Never set True in production.",
     )
 
     guardrails_mock_judges: bool = Field(
         default=False,
         description="Return safe=True for all LLM judge calls. "
-                    "Useful in unit tests to avoid API calls.",
+        "Useful in unit tests to avoid API calls.",
     )
 
     # -----------------------------------------------------------------------
@@ -301,6 +301,7 @@ class Settings(BaseSettings):
     def _warn_production_unsafe(self) -> "Settings":
         """Warn if unsafe settings are active in production."""
         import warnings
+
         if self.guardrails_env == "production":
             if self.guardrails_fail_open:
                 warnings.warn(

@@ -36,7 +36,7 @@ import time
 from collections import OrderedDict
 from typing import Literal
 
-from modules.llm_judges.base import LLMJudgeBase, JudgeVerdict
+from modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
 
 
 class CachedJudge(LLMJudgeBase):
@@ -101,7 +101,7 @@ class CachedJudge(LLMJudgeBase):
                         confidence=verdict.confidence,
                         raw_response=verdict.raw_response,
                         judge_name=verdict.judge_name,
-                        latency_ms=0.0,   # cache hit has ~0 latency
+                        latency_ms=0.0,  # cache hit has ~0 latency
                         error=verdict.error,
                     )
                 # Expired — remove
@@ -169,7 +169,8 @@ class CachedJudge(LLMJudgeBase):
         """Return cache statistics."""
         now = time.monotonic()
         expired = sum(
-            1 for _, (_, stored_at) in self._cache.items()
+            1
+            for _, (_, stored_at) in self._cache.items()
             if self._ttl > 0 and (now - stored_at) >= self._ttl
         )
         return {
