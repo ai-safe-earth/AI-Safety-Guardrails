@@ -36,6 +36,10 @@ from typing import Iterator
 # ---------------------------------------------------------------------------
 
 
+# A rule measured below this precision does not fire without --experimental.
+MIN_PRECISION = 0.80
+
+
 class Severity(str, Enum):
     ERROR = "error"  # Likely non-compliant — must fix before deploy
     WARNING = "warning"  # Potentially non-compliant — legal review recommended
@@ -121,6 +125,23 @@ class BaseRule:
     description: str = ""
     suggestion: str = ""
     reference: str = "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689"
+
+    # Precision measured against the bench/ corpus: tp / (tp + fp) over
+    # hand-labelled findings. `None` means NOT YET MEASURED -- it does not mean
+    # bad, and it must never be filled in with a guess. Run bench/run.py, label
+    # bench/findings.csv, then bench/score.py prints the value to paste here.
+    measured_precision: float | None = None
+
+    def fires_by_default(self, threshold: float = MIN_PRECISION) -> bool:
+        """
+        Whether this rule runs without `--experimental`.
+
+        Unmeasured rules keep firing: absence of a measurement is not evidence
+        of imprecision, and gating everything unmeasured would silence the
+        entire linter until the corpus is labelled. Only a rule measured BELOW
+        the threshold is demoted to experimental.
+        """
+        return self.measured_precision is None or self.measured_precision >= threshold
 
     def check_ast(
         self,

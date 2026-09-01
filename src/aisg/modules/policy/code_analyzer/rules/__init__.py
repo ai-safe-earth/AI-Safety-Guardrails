@@ -22,7 +22,12 @@ import ast
 import re
 from typing import Iterator
 
-from aisg.modules.policy.code_analyzer.analyzer import BaseRule, CodeFinding, Severity
+from aisg.modules.policy.code_analyzer.analyzer import (
+    MIN_PRECISION,
+    BaseRule,
+    CodeFinding,
+    Severity,
+)
 
 # ===========================================================================
 # ARTICLE 5 — Prohibited Practices
@@ -818,3 +823,52 @@ ALL_RULES: list[BaseRule] = [
 RULES_PROHIBITED = [r for r in ALL_RULES if r.article.startswith("Art. 5")]
 RULES_HIGH_RISK = [r for r in ALL_RULES if not r.article.startswith("Art. 5")]
 RULES_ERRORS_ONLY = [r for r in ALL_RULES if r.severity == Severity.ERROR]
+
+# ---------------------------------------------------------------------------
+# Precision gating
+# ---------------------------------------------------------------------------
+# A rule whose measured precision falls below MIN_PRECISION is demoted: it only
+# runs under `aisg lint --experimental`. Precision comes from bench/ -- run the
+# corpus, hand-label bench/findings.csv, and bench/score.py emits the value to
+# set as `measured_precision` on the rule class.
+#
+# No rule declares a precision yet, because the corpus has not been labelled.
+# `measured_precision = None` means UNMEASURED, and unmeasured rules keep firing
+# by default: silencing a rule needs evidence, and gating every unmeasured rule
+# would mute the whole linter. Only a measured sub-threshold rule is demoted.
+
+# These are evaluated on every call, not snapshotted at import: a rule's
+# measured_precision may be set after this module loads (a test, a downstream
+# override), and a stale snapshot would gate the wrong rules -- silently.
+
+
+def default_rules(threshold: float = MIN_PRECISION) -> list[BaseRule]:
+    """Rules that fire without --experimental."""
+    return [r for r in ALL_RULES if r.fires_by_default(threshold)]
+
+
+def experimental_rules(threshold: float = MIN_PRECISION) -> list[BaseRule]:
+    """Rules measured below `threshold`, which need --experimental to run."""
+    return [r for r in ALL_RULES if not r.fires_by_default(threshold)]
+
+
+def unmeasured_rules() -> list[BaseRule]:
+    """Rules with no measured precision yet. Unmeasured is not a score."""
+    return [r for r in ALL_RULES if r.measured_precision is None]
+
+
+def select_rules(
+    experimental: bool = False,
+    errors_only: bool = False,
+    threshold: float = MIN_PRECISION,
+) -> list[BaseRule]:
+    """
+    The rule set a CLI run should use.
+
+    `experimental=True` adds rules measured below `threshold`; without it they
+    stay silent no matter what else is requested.
+    """
+    rules = list(ALL_RULES) if experimental else default_rules(threshold)
+    if errors_only:
+        rules = [r for r in rules if r.severity == Severity.ERROR]
+    return rules

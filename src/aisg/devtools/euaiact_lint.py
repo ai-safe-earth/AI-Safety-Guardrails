@@ -37,14 +37,18 @@ import subprocess
 import sys
 
 from aisg.devtools._config import apply_tool_config
-from aisg.modules.policy.code_analyzer.analyzer import EUAIActCodeAnalyzer
+from aisg.modules.policy.code_analyzer.analyzer import MIN_PRECISION, EUAIActCodeAnalyzer, Severity
 from aisg.modules.policy.code_analyzer.reporters import (
     JSONReporter,
     MarkdownReporter,
     SARIFReporter,
     TerminalReporter,
 )
-from aisg.modules.policy.code_analyzer.rules import ALL_RULES, RULES_ERRORS_ONLY
+from aisg.modules.policy.code_analyzer.rules import (
+    ALL_RULES,
+    experimental_rules,
+    select_rules,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -129,6 +133,14 @@ Examples:
         help="Exit with code 1 if any WARNING findings exist (in addition to errors)",
     )
     p.add_argument(
+        "--experimental",
+        action="store_true",
+        help=(
+            "Also run rules whose measured precision is below the "
+            "default-on threshold (see bench/precision.md)"
+        ),
+    )
+    p.add_argument(
         "--list-rules",
         action="store_true",
         help="Print all available rules and exit",
@@ -144,10 +156,28 @@ Examples:
 def list_rules() -> None:
     from aisg.modules.policy.code_analyzer.rules import ALL_RULES
 
-    print(f"{'Rule ID':<16} {'Severity':<10} {'Article':<22} Title")
-    print("-" * 90)
+    print(
+        f"{'Rule ID':<16} {'Severity':<10} {'Precision':<11} {'Default':<9} {'Article':<22} Title"
+    )
+    print("-" * 118)
     for rule in sorted(ALL_RULES, key=lambda r: r.rule_id):
-        print(f"{rule.rule_id:<16} {rule.severity.value:<10} {rule.article:<22} {rule.title}")
+        if rule.measured_precision is None:
+            prec = "unmeasured"
+        else:
+            prec = f"{rule.measured_precision:.3f}"
+        default = "on" if rule.fires_by_default() else "EXPERIMENTAL"
+        print(
+            f"{rule.rule_id:<16} {rule.severity.value:<10} {prec:<11} {default:<9} "
+            f"{rule.article:<22} {rule.title}"
+        )
+    print()
+    print(
+        f"Precision is measured against the bench/ corpus; below {MIN_PRECISION:.2f} a rule "
+        "only runs with --experimental."
+    )
+    print(
+        "'unmeasured' means the corpus has not been labelled for that rule yet -- it is not a score."
+    )
 
 
 def get_git_diff(staged: bool = False) -> str:
@@ -173,17 +203,36 @@ def main(argv: list[str] | None = None) -> int:
         list_rules()
         return 0
 
-    # Select rules
-    if args.errors_only:
-        rules = RULES_ERRORS_ONLY
-    elif args.rules:
+    # Select rules. Rules measured below MIN_PRECISION are excluded unless
+    # --experimental is given, or the user names them explicitly with --rules.
+    experimental = getattr(args, "experimental", False)
+    if args.rules:
         wanted = {r.strip() for r in args.rules.split(",")}
         rules = [r for r in ALL_RULES if r.rule_id in wanted]
         if not rules:
             print(f"Error: No rules matched {args.rules}", file=sys.stderr)
             return 2
+        if args.errors_only:
+            rules = [r for r in rules if r.severity == Severity.ERROR]
+        # Naming a rule is an explicit request, so honour it -- but say so,
+        # rather than silently returning nothing.
+        demoted = [r.rule_id for r in rules if not r.fires_by_default()]
+        if demoted and not experimental:
+            print(
+                f"Note: including below-threshold rule(s) {', '.join(demoted)} "
+                "because --rules named them explicitly.",
+                file=sys.stderr,
+            )
     else:
-        rules = ALL_RULES
+        rules = select_rules(experimental=experimental, errors_only=args.errors_only)
+        demoted_rules = experimental_rules()
+        if not experimental and demoted_rules:
+            skipped = ", ".join(r.rule_id for r in demoted_rules)
+            print(
+                f"Note: {len(demoted_rules)} below-threshold rule(s) not run "
+                f"({skipped}). Use --experimental to include them.",
+                file=sys.stderr,
+            )
 
     analyzer = EUAIActCodeAnalyzer(rules=rules)
     exclude_dirs = [d.strip() for d in args.exclude.split(",")]

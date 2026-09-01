@@ -46,3 +46,13 @@ nul
 
 # Windows Explorer folder settings
 desktop.ini
+
+# Benchmark corpus checkouts (transient, re-fetched by bench/run.py)
+bench/.cache/
+
+# Raw benchmark reports: ~56MB of derived data. The corpus is SHA-pinned, so
+# `python bench/run.py` regenerates them byte-for-byte. They must exist locally
+# for bench/score.py to quote false positives verbatim -- they just don't need
+# to live in git history. Drop these two lines if you want them committed.
+bench/results/*.json
+bench/results/*.sarif

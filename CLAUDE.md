@@ -119,6 +119,28 @@ module-level `settings = Settings()` singleton at import time. `.env` resolves t
    extra root property the 2.1.0 spec does not define — GitHub Code Scanning accepts it, a
    strict schema validator may not.
 
+## Rule precision gating
+
+Every `euaiact-lint` rule carries `measured_precision: float | None` (on
+`BaseRule`). Below `MIN_PRECISION` (0.80, in `code_analyzer/analyzer.py`) a rule
+only runs with `aisg lint --experimental`.
+
+**`None` means UNMEASURED, not perfect, and never guess a value for it.**
+Unmeasured rules keep firing by default — silencing a rule needs evidence, and
+gating everything unmeasured would mute the linter entirely. As of now every
+rule is `None`: the corpus exists but has not been hand-labelled.
+
+Selection is via `select_rules()` / `default_rules()` / `experimental_rules()`
+in `code_analyzer/rules/__init__.py`. These evaluate on every call rather than
+snapshotting at import — a stale snapshot gates the wrong rules silently.
+`--rules` naming a demoted rule explicitly still runs it, with a note on stderr.
+
+Precision comes from `bench/` and nowhere else: `bench/run.py` scans a
+SHA-pinned corpus of 20 LLM repos, a human labels `bench/findings.csv`
+(`tp`/`fp`/`unclear`), and `bench/score.py` emits `bench/precision.md` plus a
+paste-ready `measured_precision = ...` line. `score.py` refuses to run on a
+partly-labelled CSV. See `bench/README.md`.
+
 ## Adding a guard
 
 Subclass `GuardrailBase`, set `name`/`stage`, decorate with `@register_guard("name")`, implement

@@ -1,0 +1,177 @@
+# bench/corpus.yaml
+# ---------------------------------------------------------------------
+# Benchmark corpus for measuring euaiact-lint rule precision.
+#
+# 20 public repositories that make LLM calls, spanning agent frameworks,
+# RAG stacks, prompting libraries, gateways and chat UIs. Each is pinned to
+# an exact commit so a precision number stays reproducible: re-running the
+# harness months later scans byte-identical source.
+#
+# SHAs resolved from each repo's default branch HEAD on 2026-09-01 via
+# `git ls-remote`. They are recorded verbatim -- to refresh the corpus,
+# re-run that command and update `sha`, do not edit by hand.
+#
+# `branch` is recorded for provenance only. The harness fetches `sha`.
+# ---------------------------------------------------------------------
+
+corpus_resolved: 2026-09-01
+repos:
+  - name: langchain
+    repo: langchain-ai/langchain
+    url: https://github.com/langchain-ai/langchain.git
+    sha: b4d46a503e7de6fa3bb9c78d67510e2ee7bf238b
+    branch: master
+    category: framework
+    note: "The reference LangChain codebase; heaviest concentration of LLM call sites."
+
+  - name: llama_index
+    repo: run-llama/llama_index
+    url: https://github.com/run-llama/llama_index.git
+    sha: 9f42cf0bd45a756f86ca325e343b9be9031d7928
+    branch: main
+    category: framework
+    note: "LlamaIndex core: retrieval + LLM orchestration."
+
+  - name: AutoGPT
+    repo: Significant-Gravitas/AutoGPT
+    url: https://github.com/Significant-Gravitas/AutoGPT.git
+    sha: 32a43d005c0c42079ceba68d9a49c28e0eeaa6c7
+    branch: master
+    category: agent
+    note: "Long-running autonomous agent with tool execution."
+
+  - name: MetaGPT
+    repo: geekan/MetaGPT
+    url: https://github.com/geekan/MetaGPT.git
+    sha: 11cdf466d042aece04fc6cfd13b28e1a70341b1f
+    branch: main
+    category: agent
+    note: "Multi-agent software company simulation."
+
+  - name: autogen
+    repo: microsoft/autogen
+    url: https://github.com/microsoft/autogen.git
+    sha: 027ecf0a379bcc1d09956d46d12d44a3ad9cee14
+    branch: main
+    category: agent
+    note: "Multi-agent conversation framework."
+
+  - name: crewAI
+    repo: crewAIInc/crewAI
+    url: https://github.com/crewAIInc/crewAI.git
+    sha: ec53d6f53448fcc7842f4d4d5f3272d2e7782557
+    branch: main
+    category: agent
+    note: "Role-based agent orchestration built on LangChain."
+
+  - name: private-gpt
+    repo: zylon-ai/private-gpt
+    url: https://github.com/zylon-ai/private-gpt.git
+    sha: cdf4d332dfb44de4736f26014501e45f9309e2dc
+    branch: main
+    category: rag
+    note: "Local RAG over private documents; PII-adjacent by design."
+
+  - name: haystack
+    repo: deepset-ai/haystack
+    url: https://github.com/deepset-ai/haystack.git
+    sha: 7d27ee2f09789f2856a0de6c59b738b4d92cd091
+    branch: main
+    category: rag
+    note: "Production RAG pipelines."
+
+  - name: dspy
+    repo: stanfordnlp/dspy
+    url: https://github.com/stanfordnlp/dspy.git
+    sha: 59ce7601ec40cd2160ac64f476f9053efdc1599e
+    branch: main
+    category: prompting
+    note: "Programmatic prompt optimisation."
+
+  - name: guidance
+    repo: guidance-ai/guidance
+    url: https://github.com/guidance-ai/guidance.git
+    sha: 21b1d90dfbebff4b141df70c714c8af15aa5f4af
+    branch: main
+    category: prompting
+    note: "Constrained generation / templating over LLMs."
+
+  - name: litellm
+    repo: BerriAI/litellm
+    url: https://github.com/BerriAI/litellm.git
+    sha: ec3f8183c3a5b40b5ca55fb915b7b6f4873d9112
+    branch: litellm_internal_staging
+    category: gateway
+    note: "Unified proxy across 100+ LLM providers; dense in API-key handling."
+
+  - name: ragas
+    repo: explodinggradients/ragas
+    url: https://github.com/explodinggradients/ragas.git
+    sha: 298b68274234c060deacab3cf5fb52aa3a20e885
+    branch: main
+    category: eval
+    note: "RAG evaluation harness; LLM-as-judge call sites."
+
+  - name: mem0
+    repo: mem0ai/mem0
+    url: https://github.com/mem0ai/mem0.git
+    sha: 71fba8d46436f88569d600f81a55208c38ad30b5
+    branch: main
+    category: memory
+    note: "Long-term memory layer storing user data across sessions."
+
+  - name: marvin
+    repo: PrefectHQ/marvin
+    url: https://github.com/PrefectHQ/marvin.git
+    sha: e81f5faf4c4fcde7cd622180c70293ee5bc027bf
+    branch: main
+    category: framework
+    note: "AI engineering toolkit with structured outputs."
+
+  - name: gpt-researcher
+    repo: assafelovic/gpt-researcher
+    url: https://github.com/assafelovic/gpt-researcher.git
+    sha: 6f998577d547b1e54ec662dac63583aa11e3b84b
+    branch: main
+    category: agent
+    note: "Autonomous web research agent."
+
+  - name: FastChat
+    repo: lm-sys/FastChat
+    url: https://github.com/lm-sys/FastChat.git
+    sha: 587d5cfa1609a43d192cedb8441cac3c17db105d
+    branch: main
+    category: chatbot
+    note: "Serving + chat UI for open models."
+
+  - name: gpt-engineer
+    repo: AntonOsika/gpt-engineer
+    url: https://github.com/AntonOsika/gpt-engineer.git
+    sha: a90fcd543eedcc0ff2c34561bc0785d2ba83c47e
+    branch: main
+    category: agent
+    note: "Code-generating agent that writes to disk."
+
+  - name: chainlit
+    repo: Chainlit/chainlit
+    url: https://github.com/Chainlit/chainlit.git
+    sha: 190ea74239d9e84b26e7c91bc2882dd038942564
+    branch: main
+    category: chatbot
+    note: "Chat UI framework for LLM apps."
+
+  - name: babyagi
+    repo: yoheinakajima/babyagi
+    url: https://github.com/yoheinakajima/babyagi.git
+    sha: fa8930ebe72a82e5ad57b356e7cbec96290e5bb2
+    branch: main
+    category: agent
+    note: "Minimal task-driven autonomous agent."
+
+  - name: ChatDev
+    repo: OpenBMB/ChatDev
+    url: https://github.com/OpenBMB/ChatDev.git
+    sha: 4fb2db0ea90375ce1059f44fe03ffbd191a7a169
+    branch: main
+    category: agent
+    note: "Multi-agent virtual software company."
