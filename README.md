@@ -783,6 +783,33 @@ The card records **assertions, not findings**. Risk classification is a legal
 determination — `aisg` writes down your answer and does not classify anything.
 The generated file says so inline, above `risk_tier`.
 
+### `aisg measure` — what each guard catches, breaks, and costs
+
+```bash
+aisg measure
+aisg measure --config config/eu_high_risk.yaml
+aisg measure --max-p99-ms 50
+```
+
+Runs 48 attack cases **and 42 benign cases** through your pipeline in-process,
+and reports per guard: catch rate by attack family, how much legitimate traffic
+it breaks, and p50/p99 added latency.
+
+The benign corpus is the half that matters. Measuring attacks alone makes
+"block everything" the winning strategy — every attack caught, clean report.
+The benign cases are *adversarially* benign: support traffic containing order
+numbers, security engineers asking how to defend against injection, moderation
+teams quoting the phrases they filter. Any assistant serving developers or
+trust-and-safety teams hits these constantly.
+
+A guard is demoted from default-on when its measured false-positive rate
+exceeds 5%, its precision falls below 0.80, or it breaches a `--max-p99-ms`
+budget you set. Latency has no default limit: 200ms is unremarkable in a batch
+job and fatal on an interactive path, so the suite reports the number and lets
+you set the bar.
+
+Output is `measure-report.json` (schema `aisg/1`) plus a terminal table.
+
 ### `aisg probe` — send an attack corpus at a live endpoint
 
 ```bash

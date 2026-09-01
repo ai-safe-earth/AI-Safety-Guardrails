@@ -46,11 +46,17 @@ input:
     llm_judge: true            # Secondary LLM judge for high-risk
 
   topic_classifier:
-    enabled: true
+    # Disabled because no `topic_classifier` guard is registered -- enabling it
+    # made GuardrailPipeline.from_config() raise, so this entire preset could
+    # not be loaded. Found by `aisg measure`. Re-enable once the guard exists.
+    enabled: false
     # Configure allowed_topics per your system's intended purpose (Art. 13)
 
   toxicity_input:
-    enabled: true
+    # NOT IMPLEMENTED: no guard of this name is registered, so enabling it
+    # made GuardrailPipeline.from_config() raise and this whole preset
+    # unloadable. Found by `aisg measure`. Re-enable when the guard exists.
+    enabled: false
     threshold: 0.5             # Lower threshold = more strict
 
   rate_limiter:
@@ -97,11 +103,17 @@ processing:
       - deploy
 
   context_control:
-    enabled: true
+    # NOT IMPLEMENTED: no guard of this name is registered, so enabling it
+    # made GuardrailPipeline.from_config() raise and this whole preset
+    # unloadable. Found by `aisg measure`. Re-enable when the guard exists.
+    enabled: false
     max_rag_results: 3         # Data minimization principle
 
   memory_hygiene:
-    enabled: true
+    # NOT IMPLEMENTED: no guard of this name is registered, so enabling it
+    # made GuardrailPipeline.from_config() raise and this whole preset
+    # unloadable. Found by `aisg measure`. Re-enable when the guard exists.
+    enabled: false
     ttl_seconds: 1800          # 30 min session memory limit
     max_memory_tokens: 2048
 
@@ -117,12 +129,18 @@ output:
     # Restores <PII:TYPE:N> tokens back to original values after LLM response
 
   hallucination:
-    enabled: true
+    # NOT IMPLEMENTED: no guard of this name is registered, so enabling it
+    # made GuardrailPipeline.from_config() raise and this whole preset
+    # unloadable. Found by `aisg measure`. Re-enable when the guard exists.
+    enabled: false
     threshold: 0.5
     citation_required: true
 
   content_policy:
-    enabled: true
+    # NOT IMPLEMENTED: no guard of this name is registered, so enabling it
+    # made GuardrailPipeline.from_config() raise and this whole preset
+    # unloadable. Found by `aisg measure`. Re-enable when the guard exists.
+    enabled: false
 
 policy:
   eu_ai_act:
@@ -142,7 +160,10 @@ policy:
        This system is subject to EU AI Act (Regulation 2024/1689) compliance obligations.]
 
   gdpr:
-    enabled: true
+    # NOT IMPLEMENTED: no guard of this name is registered, so enabling it
+    # made GuardrailPipeline.from_config() raise and this whole preset
+    # unloadable. Found by `aisg measure`. Re-enable when the guard exists.
+    enabled: false
     data_minimization: true
     purpose_limitation: true
     retention_policy_days: 90

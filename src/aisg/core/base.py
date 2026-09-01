@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
+from .measurement import DEFAULT_THRESHOLDS, Profile, Thresholds
+
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -180,6 +182,26 @@ class GuardrailBase(ABC):
     stage: GuardrailStage = GuardrailStage.INPUT
     description: str = ""
     version: str = "1.0.0"
+
+    # What this guard was measured to do: what it catches, what it breaks, what
+    # it costs. Populate from `aisg measure`, never by hand. An empty Profile
+    # means UNMEASURED -- which is not the same as good, and is reported as
+    # unmeasured everywhere rather than as passing.
+    profile: Profile = Profile()
+
+    def fires_by_default(self, thresholds: Thresholds | None = None) -> bool:
+        """
+        Whether this guard runs without --experimental.
+
+        An unmeasured guard keeps running: silencing one needs evidence, and
+        gating everything unmeasured would mute the suite. Only a guard measured
+        past a threshold -- too imprecise, too noisy on benign traffic, or too
+        slow for the configured budget -- is demoted.
+        """
+        return (thresholds or DEFAULT_THRESHOLDS).accepts(self.profile)
+
+    def demotion_reasons(self, thresholds: Thresholds | None = None) -> list[str]:
+        return (thresholds or DEFAULT_THRESHOLDS).failures(self.profile)
 
     def __init__(self, enabled: bool = True, **kwargs: Any):
         self.enabled = enabled

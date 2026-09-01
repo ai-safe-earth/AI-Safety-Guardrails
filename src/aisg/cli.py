@@ -33,6 +33,7 @@ Commands:
   misalign    AI misalignment static analysis      (was: misalignment-check)
   init        Write an ai-system-card.yaml for the system under assessment
   probe       Send a fixed attack corpus to a live endpoint and report what got through
+  measure     Report what each guard catches, what it breaks, and what it costs
 
 Run `aisg <command> --help` for a command's own options.
 
@@ -44,6 +45,7 @@ Examples:
   aisg misalign src/ --fail-on-warnings
   aisg init --defaults
   aisg probe http://localhost:8000/chat --response-path '$.response'
+  aisg measure
 """
 
 
@@ -71,11 +73,18 @@ def _probe(argv: Sequence[str]) -> int:
     return probe_main(list(argv))
 
 
+def _measure(argv: Sequence[str]) -> int:
+    from aisg.devtools.measure import main as measure_main
+
+    return measure_main(list(argv))
+
+
 COMMANDS: dict[str, Callable[[Sequence[str]], int]] = {
     "lint": _lint,
     "misalign": _misalign,
     "init": _init,
     "probe": _probe,
+    "measure": _measure,
 }
 
 

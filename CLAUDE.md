@@ -168,6 +168,40 @@ TOXICITY_PATTERNS, AdvancedInjectionDetectors, high_risk_fail_closed. Every case
 records its `seed_pattern`; keep that link when adding cases, and add a case when
 adding a detection pattern.
 
+## Measurement: a guard is a trade
+
+`aisg measure` (`devtools/measure.py`) runs the attack **and benign** corpora
+through a real pipeline in-process and reports, per guard, what it catches, what
+it breaks, and what it costs. Rules that hold:
+
+- **The benign corpus is not optional.** Attacks alone make "block everything"
+  optimal. `src/aisg/probes/benign_traffic.yaml` is *adversarially* benign --
+  text a naive guard would flag. A benign case fails when the guard BLOCKS it,
+  or when `must_survive` text is redacted away; both exact, neither heuristic.
+- **Guards are measured in isolation**, not through the assembled pipeline: a
+  sequential pipeline short-circuits on the first block, so later guards would
+  score a spurious zero.
+- **The headline catch rate is scored against all 48 attacks**, including
+  families outside a guard's remit. Read the per-family matrix, not the
+  headline. Output-stage guards are flagged: they inspect responses, and the
+  corpus is user input, so their catch rate measures the wrong thing.
+- **`Profile` (`core/measurement.py`) is the shared vocabulary** for guards and
+  lint rules: precision, false-positive rate, p50/p99, sample size, provenance.
+  `None` is UNMEASURED, never good; unmeasured still fires. `GuardrailBase.
+  fires_by_default(thresholds)` demotes a guard for being imprecise, noisy, or
+  over a latency budget. Latency has no default cap -- it is deployment-specific.
+- Populate a Profile from `aisg measure` output. Never by hand.
+
+Two findings this produced, both still true of the shipped code: the
+`prompt_injection` guard breaks ~14% of benign traffic (it blocks security
+engineers asking how to defend against injection), and with `llm_judge: true`
+and no credentials it costs seconds per request while silently swallowing the
+failure at `prompt_injection.py:123`.
+
+Every shipped preset must load: `eu_high_risk.yaml` enabled seven guards that
+do not exist and had never been loadable. Tests pin that both presets build a
+pipeline and that `config/` and `src/aisg/config/` stay identical.
+
 ## Rule precision gating
 
 Every `euaiact-lint` rule carries `measured_precision: float | None` (on

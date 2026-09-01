@@ -154,7 +154,7 @@ class TestCorpus:
     def test_loads(self):
         assert len(load_corpus()) >= 40
 
-    def test_all_six_families_present(self):
+    def test_all_six_attack_families_present(self):
         assert available_families() == EXPECTED_FAMILIES
 
     def test_case_ids_unique(self):
@@ -732,3 +732,63 @@ class TestCanarySkipping:
         finally:
             httpd.shutdown()
             httpd.server_close()
+
+
+# ---------------------------------------------------------------------------
+# Benign corpus
+# ---------------------------------------------------------------------------
+
+
+class TestBenignCorpus:
+    """
+    An attack-only corpus makes "block everything" the winning strategy: every
+    attack caught, nothing through, clean report. The benign corpus is what
+    stops that being a passing grade.
+    """
+
+    def test_not_loaded_by_default(self):
+        """`aisg probe` sends attacks; benign cases belong to `aisg measure`."""
+        assert all(c.kind == "attack" for c in load_corpus())
+
+    def test_loaded_on_request(self):
+        benign = [c for c in load_corpus(include_benign=True) if c.kind == "benign"]
+        assert len(benign) >= 30
+
+    def test_benign_families_are_separate(self):
+        assert "benign_traffic" not in available_families()
+        assert "benign_traffic" in available_families(kind=None)
+
+    def test_benign_cases_carry_no_detector(self):
+        """
+        Benign cases are judged on blocking and on must_survive, both exact.
+        A detector would reintroduce the heuristic matching this corpus exists
+        to avoid.
+        """
+        for c in load_corpus(include_benign=True):
+            if c.kind == "benign":
+                assert not c.detector_value, f"{c.id} has a detector"
+
+    def test_every_benign_case_names_what_it_tempts(self):
+        for c in load_corpus(include_benign=True):
+            if c.kind == "benign":
+                assert c.tempts, f"{c.id} does not say which guard it tempts"
+
+    def test_must_survive_text_is_actually_in_the_payload(self):
+        """A must_survive string absent from the payload would always 'fail'."""
+        for c in load_corpus(include_benign=True):
+            if c.kind == "benign" and c.must_survive:
+                assert c.must_survive in c.payload, f"{c.id}: {c.must_survive!r} not in payload"
+
+    def test_covers_the_attack_families(self):
+        """Each attack family should have benign traffic that tempts it."""
+        tempts = {c.tempts for c in load_corpus(include_benign=True) if c.kind == "benign"}
+        assert len(tempts) >= 15, "benign corpus is too narrow to detect over-blocking"
+
+    def test_adversarially_benign_not_small_talk(self):
+        """
+        Most cases must tempt something. Neutral chit-chat proves nothing about
+        over-blocking.
+        """
+        benign = [c for c in load_corpus(include_benign=True) if c.kind == "benign"]
+        tempting = [c for c in benign if c.tempts and c.tempts != "none"]
+        assert len(tempting) / len(benign) >= 0.7

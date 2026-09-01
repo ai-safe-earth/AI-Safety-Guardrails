@@ -79,6 +79,12 @@ class ProbeCase:
     # in the payload, so an endpoint that parrots input back would trip every
     # detector without the model ever complying -- see is_reflection().
     reflection_is_success: bool = False
+    # Benign cases carry no detector. They fail when the pipeline BLOCKS
+    # them, or when `must_survive` text is missing from the sanitized
+    # output -- both exact, neither heuristic.
+    kind: str = "attack"  # attack | benign
+    must_survive: str = ""
+    tempts: str = ""
 
 
 @dataclass
@@ -93,7 +99,7 @@ class CaseResult:
     extras: dict = field(default_factory=dict)
 
 
-VALID_BEHAVIOURS = {"block", "sanitize", "refuse"}
+VALID_BEHAVIOURS = {"block", "sanitize", "refuse", "allow"}
 VALID_DETECTORS = {"substring", "regex"}
 
 # Status codes that plausibly mean "the endpoint rejected this payload" -- a
@@ -109,6 +115,7 @@ REJECTION_CODES = {400, 403, 406, 409, 413, 422}
 def load_corpus(
     families: list[str] | None = None,
     system_canary: str | None = None,
+    include_benign: bool = False,
 ) -> list[ProbeCase]:
     """
     Load every probes/*.yaml shipped with the package.
@@ -137,12 +144,22 @@ def load_corpus(
             continue
         needs_canary = str(data.get("requires", "") or "") == "system_canary"
         reflection_ok = bool(data.get("reflection_is_success", False))
+        kind = str(data.get("kind", "attack"))
+        if kind not in ("attack", "benign"):
+            raise SystemExit(f"{entry.name}: kind must be attack or benign, got {kind!r}")
+        if kind == "benign" and not include_benign:
+            continue
         for raw in data.get("cases", []):
             det = raw.get("detector") or {}
             dtype = det.get("type", "substring")
+            if kind == "benign" and det:
+                raise SystemExit(
+                    f"{entry.name}: benign case {raw.get('id')} must not carry a "
+                    "detector -- benign cases are judged on blocking, not on markers"
+                )
             if dtype not in VALID_DETECTORS:
                 raise SystemExit(f"{entry.name}: case {raw.get('id')} has detector type {dtype!r}")
-            behaviour = raw.get("expected_behaviour", "block")
+            behaviour = raw.get("expected_behaviour", "allow" if kind == "benign" else "block")
             if behaviour not in VALID_BEHAVIOURS:
                 raise SystemExit(
                     f"{entry.name}: case {raw.get('id')} has expected_behaviour {behaviour!r}"
@@ -172,6 +189,9 @@ def load_corpus(
                     note=str(raw.get("note", "") or ""),
                     requires_canary=needs_canary and not system_canary,
                     reflection_is_success=reflection_ok,
+                    kind=kind,
+                    must_survive=str(raw.get("must_survive", "") or ""),
+                    tempts=str(raw.get("tempts", "") or ""),
                 )
             )
     if wanted is not None and not cases:
@@ -180,16 +200,25 @@ def load_corpus(
     return cases
 
 
-def available_families() -> set[str]:
+def available_families(kind: str | None = "attack") -> set[str]:
+    """
+    Family names in the shipped corpus.
+
+    Defaults to attack families only -- `aisg probe` sends attacks, and the
+    benign corpus is consumed by `aisg measure`. Pass kind=None for both.
+    """
     try:
         import yaml
     except ModuleNotFoundError:  # pragma: no cover
         return set()
     out = set()
     for entry in resources.files("aisg.probes").iterdir():
-        if entry.name.endswith(".yaml"):
-            data = yaml.safe_load(entry.read_text(encoding="utf-8")) or {}
-            out.add(data.get("family") or entry.name[: -len(".yaml")])
+        if not entry.name.endswith(".yaml"):
+            continue
+        data = yaml.safe_load(entry.read_text(encoding="utf-8")) or {}
+        if kind is not None and str(data.get("kind", "attack")) != kind:
+            continue
+        out.add(data.get("family") or entry.name[: -len(".yaml")])
     return out
 
 
