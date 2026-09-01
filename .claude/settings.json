@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/ruff_fix.py",
+            "timeout": 45,
+            "statusMessage": "ruff format + fix"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -40,3 +40,9 @@ Thumbs.db
 # Secrets baseline (detect-secrets)
 .secrets.baseline
 nul
+
+# VS Code Local History
+.history/
+
+# Windows Explorer folder settings
+desktop.ini
