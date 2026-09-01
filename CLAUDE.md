@@ -49,8 +49,10 @@ local verification is the only real gate.
 - Codebase conventions not enforced by any config: `from __future__ import annotations` at the top
   of every module, PEP 604 unions (`str | None`), double quotes, and a
   `"""module/path.py\n---------\n"""` docstring header on every file.
-- mypy is configured but non-strict and **nothing runs it**. `tests/fixtures/` is mypy-excluded
-  (it holds deliberately broken linter input) but *not* ruff-excluded — its 7 `F821` are intentional.
+- mypy is configured but non-strict and **nothing runs it**.
+- `tests/fixtures/` is excluded from both ruff and mypy — it holds deliberately broken linter
+  input. `tests/*` and `examples/*` carry a `per-file-ignores` for `E402`, since they must
+  call `sys.path.insert` before importing the package.
 
 ## Pipeline invariants
 
@@ -102,10 +104,15 @@ module-level `settings = Settings()` singleton at import time. `.env` resolves t
 3. `config/` is excluded from `[tool.setuptools.packages.find]`, so `default.yaml` /
    `eu_high_risk.yaml` do not ship in the wheel — `GuardrailPipeline.from_config("config/...")`
    works from a checkout but not from an installed package.
-4. `PolicyViolationError` is imported by `modules/policy/eu_ai_act.py` and `nist_ai_rmf.py` but
-   never raised; those guards signal via `CheckResult` instead.
-5. The tree is not lint-clean repo-wide (~150 ruff errors, most files unformatted). Ruff is
-   configured but nothing enforces it in CI.
+4. `ruff check .` reports 8 `F841` unused-variable findings, left in place deliberately. Two
+   look like real bugs rather than dead code: `modules/llm_judges/claude_judge.py` parses
+   `reason` from the model's JSON but `JudgeVerdict` has no such field, so the explanation is
+   dropped; `modules/llm_judges/openai_mod.py` parses per-category `flags` and never uses
+   them. Do not blind-delete the rest — some are side-effecting calls in tests.
+5. `examples/advanced_injection_demo.py:68` raises `AttributeError` — it calls `.encode()` on
+   the `bytes` returned by `base64.b64encode`. Examples are not covered by pytest.
+6. Console output uses `✓`/`✗`, which crashes on a cp1252 Windows terminal. Run examples with
+   `PYTHONIOENCODING=utf-8`.
 
 ## Adding a guard
 
