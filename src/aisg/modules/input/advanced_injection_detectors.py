@@ -434,8 +434,15 @@ class TokenSmugglingDetector:
         (re.compile(r"\|[a-z]+\|", re.I), "pipe_delimiter"),
         # Dots between characters
         (re.compile(r"\b[a-z](?:\.[a-z]){3,}\b", re.I), "dot_separation"),
-        # Excessive spaces within words
-        (re.compile(r"\b[a-z]+(?: [a-z]+){3,}\b", re.I), "space_injection"),
+        # Characters smuggled apart by spaces: "i g n o r e".
+        #
+        # This was `\b[a-z]+(?: [a-z]+){3,}\b`, which matches any four
+        # consecutive words -- "what is the capital of france" fired it. It was
+        # the only technique here producing benign hits (4/42 in `aisg measure`)
+        # and its attack hits were incidental, since attack payloads are also
+        # English sentences. Real space smuggling separates single characters,
+        # so that is what this now looks for.
+        (re.compile(r"\b(?:[a-z] ){3,}[a-z]\b", re.I), "space_injection"),
         # Underscores as separators
         (re.compile(r"\b[a-z]+(?:_[a-z]+){2,}\b", re.I), "underscore_separation"),
         # Mixed case obfuscation

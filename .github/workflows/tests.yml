@@ -85,6 +85,32 @@ jobs:
       - name: ruff format --check
         run: ruff format --check .
 
+  measure:
+    name: guards stay inside their budgets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -e ".[devtools]"
+
+      - name: Measure the default pipeline
+        # The ratchet. `aisg measure` exits 1 when any guard breaches a
+        # threshold, so a guard that starts over-blocking or slows down fails
+        # the build instead of quietly degrading. Detection-only testing cannot
+        # catch either -- "block everything" passes an attack corpus perfectly.
+        run: aisg measure --max-p99-ms 25
+
+      - name: Upload the measurement
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: measure-report
+          path: measure-report.json
+          retention-days: 90
+
   build:
     name: wheel builds and exposes only `aisg`
     runs-on: ubuntu-latest

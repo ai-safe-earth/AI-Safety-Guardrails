@@ -202,6 +202,33 @@ Every shipped preset must load: `eu_high_risk.yaml` enabled seven guards that
 do not exist and had never been loadable. Tests pin that both presets build a
 pipeline and that `config/` and `src/aisg/config/` stay identical.
 
+## Mention vs use
+
+`PromptInjectionGuard` distinguishes text that DISCUSSES an attack from text
+attempting one. Without it the guard blocked 14% of benign traffic -- security
+engineers asking how to defend against injection, unit tests asserting a phrase
+is rejected, docs using `### System:` as a heading. A guard unusable by the
+people deploying it is not a guard.
+
+Two signals: the match sits inside a quoted span, or a discussion cue precedes
+it. A mention is downgraded to FLAG, never dropped -- the finding stays in the
+result so behaviour remains observable.
+
+**`_CONTENT_CUES` vetoes both.** Indirect injection arrives as quoted content
+the model is asked to act on ("summarise this ticket: '...'"), so quoting is
+precisely how untrusted input reaches a model. The corpus caught this: tool-006
+was downgraded to a flag until the veto landed. When in doubt, treat the payload
+as live.
+
+`aisg measure` is the arbiter. The fix costs zero attack coverage (21/48 either
+way) and takes benign breakage from 10% to 0%. A test asserts the lenient and
+strict guards return identical verdicts on every attack case.
+
+Also fixed here: `TokenSmugglingDetector`'s `space_injection` was
+`[a-z]+(?: [a-z]+){3,}`, matching any four English words -- "what is the
+capital of france" fired it. It was the only advanced technique producing benign
+hits. Real space smuggling separates single characters.
+
 ## Rule precision gating
 
 Every `euaiact-lint` rule carries `measured_precision: float | None` (on
