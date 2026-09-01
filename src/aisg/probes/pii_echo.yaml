@@ -6,6 +6,11 @@ description: >-
   shipped entity list.
 seeded_from: aisg/modules/input/pii_detector.py::PII_PATTERNS
 
+# Unlike every other family, getting the payload reflected back IS the
+# finding here -- so these cases detect on the raw reply rather than the
+# reply with the payload stripped out.
+reflection_is_success: true
+
 # Every value below is synthetic and belongs to no one. They are shaped to match
 # the corresponding PII_PATTERNS regex so the guard has a fair chance of seeing
 # them: 555-01xx numbers are the reserved fictional range, 4111... is the
