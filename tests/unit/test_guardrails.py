@@ -9,7 +9,7 @@ import asyncio
 
 import pytest
 
-from aisg.core.base import Action
+from aisg.core.base import Action, CheckResult, GuardrailBase, GuardrailStage
 from aisg.core.exceptions import GuardrailBlockedError
 from aisg.core.pipeline import GuardrailPipeline
 from aisg.modules.input.pii_detector import PIIDetector
@@ -333,3 +333,210 @@ policy: {}
         exc = exc_info.value
         assert exc.stage == "llm"
         assert "timed out" in str(exc)
+
+
+# ---------------------------------------------------------------------------
+# Action.HUMAN — approval gates must not read as a pass
+# ---------------------------------------------------------------------------
+
+
+class _HumanReviewGuard(GuardrailBase):
+    """Minimal guard that always asks for human approval."""
+
+    name = "human_review_probe"
+    stage = GuardrailStage.INPUT
+
+    async def check(self, content: str, context: dict) -> CheckResult:
+        return CheckResult(
+            passed=False,
+            action=Action.HUMAN,
+            rejection_message="needs sign-off from a reviewer",
+        )
+
+
+class TestHumanReviewIsNotAPass:
+    """
+    Action.HUMAN is not a rejection, so it must not set `blocked` -- but it is
+    not a pass either. Before this, `passed` was `not blocked`, so a caller
+    doing `if result.passed: proceed()` waved a human-review request straight
+    through the gate that requested it.
+    """
+
+    @pytest.fixture
+    def pipeline(self):
+        return GuardrailPipeline(input_guards=[_HumanReviewGuard()], parallel=False)
+
+    @pytest.mark.asyncio
+    async def test_passed_is_false(self, pipeline):
+        result = await pipeline.run_input("hello", {"user_id": "u1"})
+        assert result.passed is False, "an approval gate must not report as passed"
+
+    @pytest.mark.asyncio
+    async def test_blocked_stays_false(self, pipeline):
+        """`blocked` keeps its narrow meaning: a hard refusal."""
+        result = await pipeline.run_input("hello", {"user_id": "u1"})
+        assert result.blocked is False
+
+    @pytest.mark.asyncio
+    async def test_requires_human_is_exposed(self, pipeline):
+        result = await pipeline.run_input("hello", {"user_id": "u1"})
+        assert result.requires_human is True
+        assert result.human_review_reasons == ["needs sign-off from a reviewer"]
+
+    @pytest.mark.asyncio
+    async def test_clean_input_requires_no_review(self):
+        p = GuardrailPipeline(input_guards=[PIIDetector(action="redact")], parallel=False)
+        result = await p.run_input("What is the capital of France?", {"user_id": "u1"})
+        assert result.requires_human is False
+        assert result.human_review_reasons == []
+        assert result.passed is True
+
+    @pytest.mark.asyncio
+    async def test_run_full_refuses_to_call_the_llm(self, pipeline):
+        """Calling the model anyway would defeat the guard that asked for approval."""
+        called = False
+
+        async def mock_llm(text):
+            nonlocal called
+            called = True
+            return "should never happen"
+
+        with pytest.raises(GuardrailBlockedError) as exc_info:
+            await pipeline.run_full("hello", mock_llm, context={"user_id": "u1"})
+
+        assert called is False, "the LLM was called despite a pending approval"
+        exc = exc_info.value
+        assert exc.stage == "input"
+        assert exc.result.requires_human is True
+        assert exc.result.blocked is False, "a review request is not a rejection"
+        assert "sign-off" in str(exc)
+
+    @pytest.mark.asyncio
+    async def test_output_stage_review_also_raises(self):
+        class _OutputReview(_HumanReviewGuard):
+            name = "output_review_probe"
+            stage = GuardrailStage.OUTPUT
+
+        p = GuardrailPipeline(output_guards=[_OutputReview()], parallel=False)
+
+        async def mock_llm(text):
+            return "some answer"
+
+        with pytest.raises(GuardrailBlockedError) as exc_info:
+            await p.run_full("hello", mock_llm, context={"user_id": "u1"})
+        assert exc_info.value.stage == "output"
+        assert exc_info.value.result.requires_human is True
+
+    @pytest.mark.asyncio
+    async def test_real_tool_policy_approval_denial(self):
+        """
+        Not a synthetic guard: the shipped ToolPolicyGuard returns Action.HUMAN
+        when an approval callback declines, and that path must not read as a
+        pass either.
+        """
+
+        async def deny(tool_name, args, context):
+            return False
+
+        guard = ToolPolicyGuard(
+            policies={"admin": ToolPolicy(allow=["send_email"], deny=[])},
+            require_approval=["send_email"],
+            approval_callback=deny,
+        )
+        p = GuardrailPipeline(processing_guards=[guard], parallel=False)
+        result = await p.run_processing(
+            "send_email",
+            {"user_id": "u1", "role": "admin"},
+            tool_call={"name": "send_email", "arguments": {"to": "a@b.c"}},
+        )
+        assert result.requires_human is True
+        assert result.passed is False, "a declined approval must not report as passed"
+        assert result.blocked is False, "a declined approval is not a hard rejection"
+        assert result.human_review_reasons, "the caller needs to know why"
+
+    @pytest.mark.asyncio
+    async def test_tool_policy_approval_granted_passes(self):
+        async def approve(tool_name, args, context):
+            return True
+
+        guard = ToolPolicyGuard(
+            policies={"admin": ToolPolicy(allow=["send_email"], deny=[])},
+            require_approval=["send_email"],
+            approval_callback=approve,
+        )
+        p = GuardrailPipeline(processing_guards=[guard], parallel=False)
+        result = await p.run_processing(
+            "send_email",
+            {"user_id": "u1", "role": "admin"},
+            tool_call={"name": "send_email", "arguments": {"to": "a@b.c"}},
+        )
+        assert result.requires_human is False
+        assert result.passed is True
+
+
+class TestRunProcessingToolCall:
+    """
+    ToolPolicyGuard documents `context["tool_call"] = {...}`, but
+    run_processing used to overwrite it with `{}` whenever the optional
+    `tool_call=` argument was omitted -- silently disabling every tool policy
+    for that call while still reporting a pass.
+    """
+
+    @staticmethod
+    def _guard(recorder):
+        async def deny(tool_name, args, context):
+            recorder.append(tool_name)
+            return False
+
+        return ToolPolicyGuard(
+            policies={"admin": ToolPolicy(allow=["send_email"], deny=[])},
+            require_approval=["send_email"],
+            approval_callback=deny,
+        )
+
+    @pytest.mark.asyncio
+    async def test_tool_call_via_context_is_honoured(self):
+        seen = []
+        p = GuardrailPipeline(processing_guards=[self._guard(seen)], parallel=False)
+        result = await p.run_processing(
+            "send_email",
+            {
+                "role": "admin",
+                "tool_call": {"name": "send_email", "arguments": {"to": "a@b.c"}},
+            },
+        )
+        assert seen == ["send_email"], "policy was skipped entirely"
+        assert result.requires_human is True
+        assert result.passed is False
+
+    @pytest.mark.asyncio
+    async def test_tool_call_via_argument_is_honoured(self):
+        seen = []
+        p = GuardrailPipeline(processing_guards=[self._guard(seen)], parallel=False)
+        result = await p.run_processing(
+            "send_email",
+            {"role": "admin"},
+            tool_call={"name": "send_email", "arguments": {"to": "a@b.c"}},
+        )
+        assert seen == ["send_email"]
+        assert result.requires_human is True
+
+    @pytest.mark.asyncio
+    async def test_explicit_argument_wins_over_context(self):
+        seen = []
+        p = GuardrailPipeline(processing_guards=[self._guard(seen)], parallel=False)
+        await p.run_processing(
+            "x",
+            {"role": "admin", "tool_call": {"name": "search", "arguments": {}}},
+            tool_call={"name": "send_email", "arguments": {}},
+        )
+        assert seen == ["send_email"]
+
+    @pytest.mark.asyncio
+    async def test_no_tool_call_anywhere_is_a_pass(self):
+        seen = []
+        p = GuardrailPipeline(processing_guards=[self._guard(seen)], parallel=False)
+        result = await p.run_processing("just some text", {"role": "admin"})
+        assert seen == []
+        assert result.passed is True
+        assert result.requires_human is False

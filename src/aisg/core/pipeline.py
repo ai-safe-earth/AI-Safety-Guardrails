@@ -91,9 +91,17 @@ class GuardrailPipeline:
     ) -> PipelineResult:
         """
         Run processing-stage guardrails (tool policies, context controls).
-        Pass the tool_call dict for tool-policy checks.
+
+        Pass the tool call either as the `tool_call` argument or as
+        `context["tool_call"]` -- ToolPolicyGuard's own docstring documents the
+        latter. The explicit argument wins when both are given; previously an
+        omitted argument overwrote a context-supplied tool_call with `{}`,
+        silently disabling every tool policy for that call.
         """
-        ctx = {**(context or {}), "tool_call": tool_call or {}}
+        ctx = {**(context or {})}
+        if tool_call:
+            ctx["tool_call"] = tool_call
+        ctx.setdefault("tool_call", {})
         return await self._run_stage(
             GuardrailStage.PROCESSING, content, self.processing_guards, ctx
         )
@@ -120,7 +128,9 @@ class GuardrailPipeline:
             PipelineResult from the output stage.
 
         Raises:
-            GuardrailBlockedError if input or output is blocked.
+            GuardrailBlockedError if input or output is blocked, or if a guard
+            requires human review -- run_full cannot proceed past an approval
+            gate. Inspect `exc.result.requires_human` to tell the two apart.
         """
         # 1. Input
         input_result = await self.run_input(user_input, context)
@@ -128,6 +138,16 @@ class GuardrailPipeline:
             raise GuardrailBlockedError(
                 stage="input",
                 message=input_result.rejection_message or "Request blocked by safety guardrails.",
+                result=input_result,
+            )
+        if input_result.requires_human:
+            # Calling the LLM anyway would defeat the guard that asked for
+            # approval. Callers wanting the request queued rather than raised
+            # should use run_input() and inspect requires_human themselves.
+            raise GuardrailBlockedError(
+                stage="input",
+                message="; ".join(input_result.human_review_reasons)
+                or "Request requires human review before proceeding.",
                 result=input_result,
             )
 
@@ -153,6 +173,13 @@ class GuardrailPipeline:
             raise GuardrailBlockedError(
                 stage="output",
                 message=output_result.rejection_message or "Response blocked by safety guardrails.",
+                result=output_result,
+            )
+        if output_result.requires_human:
+            raise GuardrailBlockedError(
+                stage="output",
+                message="; ".join(output_result.human_review_reasons)
+                or "Response requires human review before it can be returned.",
                 result=output_result,
             )
 
@@ -247,11 +274,17 @@ class GuardrailPipeline:
 
             total_ms = (time.perf_counter() - start) * 1000
 
+            # Action.HUMAN is not a rejection, so it must not set `blocked` --
+            # but it is certainly not a pass either. A caller doing
+            # `if result.passed: proceed()` would otherwise wave a
+            # human-review request straight through the gate that requested it.
+            needs_human = any(c.requires_human for c in checks)
+
             pipeline_result = PipelineResult(
                 stage=stage,
                 original_content=content,
                 final_content=current_content,
-                passed=not blocked,
+                passed=not blocked and not needs_human,
                 blocked=blocked,
                 checks=checks,
                 rejection_message=rejection_message,

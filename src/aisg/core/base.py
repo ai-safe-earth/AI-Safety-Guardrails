@@ -123,6 +123,34 @@ class PipelineResult:
         return self.final_content
 
     @property
+    def requires_human(self) -> bool:
+        """
+        True when any guard returned Action.HUMAN -- the content is not rejected,
+        but a person must approve before it proceeds.
+
+        This is distinct from `blocked`, which means a hard refusal. A caller
+        that only inspects `blocked` would wave a human-review request straight
+        through, so `passed` is False whenever this is True.
+        """
+        return any(c.requires_human for c in self.checks)
+
+    @property
+    def human_review_reasons(self) -> list[str]:
+        """Messages from the guards that asked for human review."""
+        out = []
+        for c in self.checks:
+            if not c.requires_human:
+                continue
+            if c.rejection_message:
+                out.append(c.rejection_message)
+            elif c.findings:
+                # CheckResult carries no guard identity; Finding does.
+                out.append(f"{c.findings[0].guard_name} requires human review")
+            else:
+                out.append("human review required")
+        return out
+
+    @property
     def all_findings(self) -> list[Finding]:
         return [f for c in self.checks for f in c.findings]
 

@@ -74,10 +74,14 @@ These are enforced by the code but easy to violate:
 - **`parallel=True` changes semantics.** Guards see the *original* content and redactions are
   folded in afterwards, so redaction chains do not compose; sequential mode short-circuits on the
   first `BLOCK`, parallel does not. `GuardrailStage.PROCESSING` is always forced sequential.
-- **`Action.HUMAN` does not set `PipelineResult.blocked`.** `ToolPolicyGuard` (approval
-  denied/timeout) and `EUAIActCompliance` (Art. 14 gate) return `HUMAN` with `passed=False`, yet
-  `.blocked` stays `False` and `.passed` stays `True`. Callers must inspect
-  `result.checks[*].requires_human` — checking `.blocked` alone lets human-review requests through.
+- **`Action.HUMAN` sets `passed=False` but not `blocked`.** `ToolPolicyGuard` (approval
+  denied/timeout), `EUAIActCompliance` (Art. 14) and `NISTAIRMFCompliance` return it. `.blocked`
+  stays narrow — a hard rejection — while `PipelineResult.requires_human` and
+  `.human_review_reasons` carry the approval signal. `run_full()` raises rather than calling the
+  LLM past an approval gate; inspect `exc.result.requires_human` to tell it from a block.
+- **`run_processing` takes the tool call as an argument or in the context.** It used to overwrite
+  `context["tool_call"]` with `{}` when the argument was omitted, silently disabling every tool
+  policy while still reporting a pass. The explicit argument wins when both are given.
 - **`fail_open=True` swallows guard exceptions entirely** — no `CheckResult`, no finding, nothing
   in the audit log.
 - Judge fail-open is layered and the layers disagree: `LLMJudgeBase.judge()` returns a safe
