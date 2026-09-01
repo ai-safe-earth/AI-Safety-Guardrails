@@ -33,18 +33,22 @@ Exit codes:
 """
 
 import argparse
+import os
 import subprocess
 import sys
-import os
 
 # Make sure the repo root is on the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from devtools._config import apply_tool_config
 from modules.policy.code_analyzer.analyzer import EUAIActCodeAnalyzer
-from modules.policy.code_analyzer.rules import ALL_RULES, RULES_ERRORS_ONLY
 from modules.policy.code_analyzer.reporters import (
-    TerminalReporter, JSONReporter, SARIFReporter, MarkdownReporter,
+    JSONReporter,
+    MarkdownReporter,
+    SARIFReporter,
+    TerminalReporter,
 )
+from modules.policy.code_analyzer.rules import ALL_RULES, RULES_ERRORS_ONLY
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -71,13 +75,15 @@ Examples:
         help="File(s) or directory(ies) to scan (default: current directory)",
     )
     p.add_argument(
-        "--format", "-f",
+        "--format",
+        "-f",
         choices=["terminal", "json", "sarif", "markdown"],
         default="terminal",
         help="Output format (default: terminal)",
     )
     p.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         default=None,
         help="Write output to file instead of stdout",
     )
@@ -141,6 +147,7 @@ Examples:
 
 def list_rules() -> None:
     from modules.policy.code_analyzer.rules import ALL_RULES
+
     print(f"{'Rule ID':<16} {'Severity':<10} {'Article':<22} Title")
     print("-" * 90)
     for rule in sorted(ALL_RULES, key=lambda r: r.rule_id):
@@ -161,6 +168,7 @@ def get_git_diff(staged: bool = False) -> str:
 
 def main() -> int:
     parser = build_parser()
+    apply_tool_config(parser, "euaiact-lint")
     args = parser.parse_args()
 
     if args.list_rules:
@@ -190,12 +198,15 @@ def main() -> int:
             return 0
         report = analyzer.scan_diff(diff_text)
     else:
-        from modules.policy.code_analyzer.analyzer import ScanReport
         import time
+
+        from modules.policy.code_analyzer.analyzer import ScanReport
+
         report = ScanReport()
         start = time.perf_counter()
         for path in args.paths:
             from pathlib import Path
+
             p = Path(path)
             if p.is_file():
                 sub = analyzer.scan_file(p)
