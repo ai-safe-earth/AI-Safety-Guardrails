@@ -62,10 +62,14 @@ anthropic = [
     "anthropic>=0.40",
 ]
 
-# LLM safety judges
-# - LlamaGuard via Groq/Together/Ollama uses only aiohttp (already a core dep)
-# - HuggingFace local inference requires the extras below
-llamaguard = [
+# LlamaGuard 3 via Groq, Together, Ollama or OpenAI needs nothing beyond the
+# core aiohttp dependency. Listed for discoverability.
+llamaguard = []
+
+# Local LlamaGuard inference through transformers. ~2GB of wheels for one of
+# five providers, so it is deliberately not part of `llamaguard` or `all` --
+# installing the judge should not drag in torch.
+llamaguard-local = [
     "transformers>=4.40",
     "torch>=2.2",
     "accelerate>=0.30",

@@ -69,7 +69,6 @@ Safe Response to User
 | Policy | `NemoRailsGuard` | NVIDIA NeMo Guardrails dialog-level safety at policy stage |
 | Observability | `AuditLogger` | Structured JSONL audit trail with correct `blocked_by` attribution |
 | Observability | `TelemetryProvider` | OpenTelemetry traces (per-stage + per-guard spans) and metrics |
-| Analysis | `DataFlowAnalyzer` | AST-based taint analysis with sanitizer tracking |
 
 ---
 
@@ -119,8 +118,6 @@ ai-safety-guardrails/
 │   │   │   ├── claude_judge.py  # Claude safety judge (injection / toxicity / general)
 │   │   │   └── cache.py         # CachedJudge — LRU + TTL wrapper
 │   │   │
-│   │   ├── analysis/
-│   │   │   └── data_flow_analyzer.py
 │   │   │
 │   │   └── observability/
 │   │       ├── audit_logger.py  # Structured JSONL audit trail
