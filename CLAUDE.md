@@ -184,7 +184,12 @@ Precision comes from `bench/` and nowhere else: `bench/run.py` scans a
 SHA-pinned corpus of 20 LLM repos, a human labels `bench/findings.csv`
 (`tp`/`fp`/`unclear`), and `bench/score.py` emits `bench/precision.md` plus a
 paste-ready `measured_precision = ...` line. `score.py` refuses to run on a
-partly-labelled CSV. See `bench/README.md`.
+partly-labelled CSV.
+
+`findings.csv` is a **sample** — at most 40 findings per rule, drawn round-robin
+across repos. The unsampled 25,568 live in `findings-all.csv`. Sampling is
+deterministic and nested, so re-running or lowering `--sample-per-rule` never
+orphans a labelled row; tests pin both properties. See `bench/README.md`.
 
 ## Adding a guard
 

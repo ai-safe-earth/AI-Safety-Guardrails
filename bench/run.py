@@ -38,6 +38,12 @@ CORPUS = BENCH / "corpus.yaml"
 RESULTS = BENCH / "results"
 CACHE = BENCH / ".cache"
 CSV_PATH = BENCH / "findings.csv"
+CSV_ALL_PATH = BENCH / "findings-all.csv"
+
+# Findings kept per rule for hand-labelling. The full corpus produces
+# ~25k findings, which nobody labels; precision needs roughly 30-50 judged
+# findings per rule, not thousands. 0 disables sampling.
+DEFAULT_SAMPLE_PER_RULE = 40
 
 CSV_COLUMNS = ["repo", "file", "line", "rule_id", "message", "verdict"]
 
@@ -174,6 +180,40 @@ def rows_from_json(name: str, jf: Path) -> list[dict]:
     return rows
 
 
+def sample_per_rule(rows: list[dict], per_rule: int) -> list[dict]:
+    """
+    Keep at most `per_rule` findings for each rule, spread across repos.
+
+    Round-robin over repos rather than taking the first N, so a rule is not
+    measured entirely against whichever repo happens to sort first -- one
+    codebase's idiosyncrasies would masquerade as the rule's precision.
+
+    Deterministic: the same findings.csv yields the same sample every run, so
+    labelling work is never invalidated by a re-run.
+    """
+    if per_rule <= 0:
+        return rows
+
+    by_rule: dict[str, dict[str, list[dict]]] = {}
+    for row in rows:
+        by_rule.setdefault(row["rule_id"], {}).setdefault(row["repo"], []).append(row)
+
+    kept: list[dict] = []
+    for rule in sorted(by_rule):
+        per_repo = by_rule[rule]
+        for repo in per_repo:
+            per_repo[repo].sort(key=lambda r: (r["file"], int(r["line"] or 0)))
+        repos = sorted(per_repo)
+        taken, idx = 0, 0
+        while taken < per_rule and any(per_repo[r] for r in repos):
+            repo = repos[idx % len(repos)]
+            if per_repo[repo]:
+                kept.append(per_repo[repo].pop(0))
+                taken += 1
+            idx += 1
+    return kept
+
+
 def merge_preserving_verdicts(new_rows: list[dict]) -> list[dict]:
     """
     Re-running the harness must never destroy labelling work already done.
@@ -207,6 +247,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--only", nargs="*", default=None, help="Limit to these corpus names")
     p.add_argument("--keep-clones", action="store_true", help="Leave checkouts in bench/.cache")
     p.add_argument("--experimental", action="store_true", help="Include sub-threshold rules")
+    p.add_argument(
+        "--sample-per-rule",
+        type=int,
+        default=DEFAULT_SAMPLE_PER_RULE,
+        metavar="N",
+        help=(
+            f"Findings kept per rule in findings.csv, spread across repos "
+            f"(default: {DEFAULT_SAMPLE_PER_RULE}; 0 = keep everything). "
+            "The complete set is always written to findings-all.csv."
+        ),
+    )
     args = p.parse_args(argv)
 
     repos = load_corpus()
@@ -266,21 +317,39 @@ def main(argv: list[str] | None = None) -> int:
         all_rows.extend(rows_from_json(jf.stem, jf))
 
     all_rows = merge_preserving_verdicts(all_rows)
-    all_rows.sort(key=lambda r: (r["rule_id"], r["repo"], r["file"], int(r["line"] or 0)))
+    order = lambda r: (r["rule_id"], r["repo"], r["file"], int(r["line"] or 0))  # noqa: E731
+    all_rows.sort(key=order)
 
-    with CSV_PATH.open("w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=CSV_COLUMNS)
-        w.writeheader()
-        w.writerows(all_rows)
+    def write(path: Path, rows: list[dict]) -> None:
+        with path.open("w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=CSV_COLUMNS)
+            w.writeheader()
+            w.writerows(rows)
 
-    unlabelled = sum(1 for r in all_rows if not r["verdict"])
-    distinct = len({r["rule_id"] for r in all_rows})
+    # The complete set is always kept, so sampling never loses evidence.
+    write(CSV_ALL_PATH, all_rows)
+
+    sampled = sample_per_rule(all_rows, args.sample_per_rule)
+    sampled.sort(key=order)
+    write(CSV_PATH, sampled)
+
+    unlabelled = sum(1 for r in sampled if not r["verdict"])
+    distinct = len({r["rule_id"] for r in sampled})
     print("\n" + "=" * 70)
     print(
         f"{len(all_rows)} findings across {len(repos) - len(failures)} repos "
-        f"in {time.time() - started:.0f}s -> {CSV_PATH}"
+        f"in {time.time() - started:.0f}s"
     )
     print(f"{distinct} distinct rules fired")
+    print(f"\nfull set  -> {CSV_ALL_PATH}  ({len(all_rows)} rows)")
+    if args.sample_per_rule > 0:
+        print(
+            f"to label  -> {CSV_PATH}  ({len(sampled)} rows, "
+            f"<={args.sample_per_rule} per rule spread across repos)"
+        )
+        print("            --sample-per-rule 0 keeps everything")
+    else:
+        print(f"to label  -> {CSV_PATH}  ({len(sampled)} rows, sampling disabled)")
     if failures:
         print(f"\n{len(failures)} repo(s) did not complete:")
         for f in failures:

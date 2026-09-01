@@ -22,11 +22,30 @@ python bench/score.py        # 3. emit precision.md
 python bench/run.py                      # all 20 repos
 python bench/run.py --only babyagi dspy  # a subset
 python bench/run.py --keep-clones        # keep checkouts in bench/.cache
+python bench/run.py --sample-per-rule 20 # a smaller labelling set
+python bench/run.py --sample-per-rule 0  # no sampling; every finding
 ```
 
 Each repo is fetched at the exact SHA pinned in `corpus.yaml`, scanned, and
-deleted again unless `--keep-clones`. Raw reports land in `bench/results/` and
-every finding becomes one row in `bench/findings.csv`.
+deleted again unless `--keep-clones`. Raw reports land in `bench/results/`.
+
+Two CSVs come out:
+
+| file | contents |
+|---|---|
+| `findings-all.csv` | every finding — 25,568 of them. Evidence, not a worklist. |
+| `findings.csv` | **the file you label**: at most 40 per rule, spread across repos. 544 rows. |
+
+The full corpus is far too large to hand-label, and it does not need to be:
+precision needs roughly 30–50 judged findings per rule, not thousands. The
+sample is drawn round-robin across repos so a rule is not measured entirely
+against whichever codebase sorts first — one project's idiosyncrasies would
+otherwise masquerade as the rule's precision.
+
+Sampling is **deterministic** and **nested**: the same results always yield the
+same sample, and a smaller `--sample-per-rule` is a strict subset of a larger
+one. Neither re-running nor tightening the cap can orphan a row you already
+labelled. `--sample-per-rule 0` keeps everything.
 
 Re-running is safe: verdicts already entered are carried over by
 `(repo, file, line, rule_id)`, so labelling work survives a re-scan.
@@ -113,8 +132,9 @@ Changing a pin invalidates the verdicts for that repo. Re-label them.
 | `corpus.yaml` | yes | The 20 repos and their pinned SHAs |
 | `run.py` | yes | Clone → lint → `findings.csv` |
 | `score.py` | yes | Labelled CSV → `precision.md` |
-| `findings.csv` | yes | One row per finding; `verdict` filled in by hand |
-| `results/*.json` | yes | Raw reports, source of the verbatim snippets |
-| `results/*.sarif` | yes | Raw SARIF per repo |
+| `findings.csv` | yes | The sampled labelling set; `verdict` filled in by hand |
+| `findings-all.csv` | yes | Every finding, unsampled. Reference only |
+| `results/*.json` | no | Raw reports, source of the verbatim snippets. ~56MB, regenerable |
+| `results/*.sarif` | no | Raw SARIF per repo (gitignored with the JSON) |
 | `precision.md` | yes | Generated. Do not edit; re-run `score.py` |
 | `.cache/` | no | Transient checkouts (gitignored) |
