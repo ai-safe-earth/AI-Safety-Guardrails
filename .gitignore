@@ -37,8 +37,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Secrets baseline (detect-secrets)
-.secrets.baseline
+# NOTE: .secrets.baseline is intentionally NOT ignored. detect-secrets
+# baselines are meant to be committed -- the pre-commit hook is configured
+# with --baseline .secrets.baseline and fails on a fresh clone without it.
 nul
 
 # VS Code Local History

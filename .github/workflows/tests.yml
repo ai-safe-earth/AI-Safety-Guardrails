@@ -1,0 +1,135 @@
+# .github/workflows/tests.yml
+# ---------------------------------------------------------------------------
+# The test and lint gate.
+#
+# eu-ai-act-compliance.yml runs only the compliance linter, so until this
+# existed the test suite guarded nothing on push. The suite is fully mocked --
+# no API keys, no network -- so it runs anywhere.
+# ---------------------------------------------------------------------------
+
+name: Tests
+
+on:
+  pull_request:
+    branches: [main, develop, "release/**"]
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor and the ceiling of requires-python = ">=3.10".
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          # Editable install proves the packaging works, not just the source tree.
+          # settings/otel/metrics are included because the suite covers them --
+          # without them those tests skip, and a silent skip is not a pass.
+          pip install -e ".[dev,devtools,settings,otel,metrics]"
+
+      - name: Optional deps really are installed
+        # These tests skip themselves when their extra is missing. A silent skip
+        # would look like a pass, so assert the extras are present before running.
+        run: |
+          python -c "
+          import importlib, sys
+          missing = [m for m in ('pydantic_settings', 'opentelemetry')
+                     if importlib.util.find_spec(m) is None]
+          sys.exit(f'optional deps missing, tests would silently skip: {missing}') if missing else None
+          print('optional deps present')
+          "
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Confirm the suite needs no API keys
+        # A test that quietly starts depending on a real provider would pass
+        # locally and fail for everyone else. Fail loudly instead.
+        env:
+          GROQ_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+          OPENAI_API_KEY: ""
+          TOGETHER_API_KEY: ""
+        run: pytest -q
+
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install ruff
+      - name: ruff check
+        run: ruff check .
+      - name: ruff format --check
+        run: ruff format --check .
+
+  build:
+    name: wheel builds and exposes only `aisg`
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install build
+      - run: python -m build --wheel
+      - name: No top-level name collisions
+        # The whole point of the src/aisg layout: a published wheel must not
+        # claim `core`, `modules`, `config` or any other common name.
+        run: |
+          python - <<'PY'
+          import glob, sys, zipfile
+          whl = glob.glob("dist/*.whl")[0]
+          top = {n.split("/")[0] for n in zipfile.ZipFile(whl).namelist()}
+          pkgs = {t for t in top if not t.endswith(".dist-info")}
+          print("top-level in wheel:", sorted(pkgs))
+          if pkgs != {"aisg"}:
+              sys.exit(f"wheel exposes more than `aisg`: {sorted(pkgs)}")
+          PY
+
+      - name: Packaged config presets are readable from the wheel
+        run: |
+          pip install dist/*.whl
+          cd /tmp
+          python -c "
+          from aisg.config import preset_path
+          from aisg.core.pipeline import GuardrailPipeline
+          p = preset_path('default.yaml')
+          assert p.is_file(), p
+          GuardrailPipeline.from_config(p)
+          print('packaged presets OK:', p.name)
+          "
+
+      - name: Probe corpus loads from the wheel
+        run: |
+          cd /tmp
+          python -c "
+          from aisg.devtools.probe import load_corpus, available_families
+          cases = load_corpus(system_canary='CI-CANARY')
+          assert len(cases) >= 40, len(cases)
+          assert len(available_families()) == 6
+          print(f'{len(cases)} probe cases across {len(available_families())} families')
+          "

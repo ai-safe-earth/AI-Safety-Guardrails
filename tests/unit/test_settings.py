@@ -12,7 +12,32 @@ import warnings
 
 import pytest
 
-from aisg.config.settings import Settings
+# settings.py raises ImportError at import time without pydantic-settings.
+# Skip rather than break collection for a minimal install; CI installs the
+# `settings` extra so these run there.
+pytest.importorskip("pydantic_settings", reason="needs the [settings] extra")
+
+from aisg.config.settings import Settings  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolate_settings_env(monkeypatch):
+    """
+    Make every test in this module hermetic.
+
+    pydantic-settings reads real environment variables and lets them override
+    both defaults and .env file values, so a developer's shell leaks into the
+    assertions. That is not hypothetical -- an empty GROQ_API_KEY was enough to
+    fail test_env_file_values_loaded, and GUARDRAILS_ENV=production was enough
+    to fail test_env_defaults_to_development.
+
+    Tests that want an env var set do so with monkeypatch.setenv, which runs
+    after this fixture.
+    """
+    for field in Settings.model_fields:
+        monkeypatch.delenv(field.upper(), raising=False)
+        monkeypatch.delenv(field.lower(), raising=False)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -405,10 +430,7 @@ class TestDotEnvLoading:
         assert s.guardrails_env == "staging"
         assert s.default_judge_timeout == 20.0
 
-    def test_multiple_keys_from_env_file(self, tmp_path, monkeypatch):
-        # Ensure ambient env vars don't override the file values we're testing
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    def test_multiple_keys_from_env_file(self, tmp_path):
         env_file = tmp_path / ".env"
         env_file.write_text(
             "ANTHROPIC_API_KEY=sk-ant-file\n"
