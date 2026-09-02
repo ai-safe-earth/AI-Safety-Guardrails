@@ -25,6 +25,7 @@ targets are refused unless --i-have-authorization is passed.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import ipaddress
 import json
 import re
@@ -33,6 +34,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -54,7 +56,15 @@ __all__ = [
     "reflection_ratio",
     "is_reflection",
     "is_loopback",
+    "build_report",
+    "corpus_digest",
+    "utc_now_iso",
 ]
+
+
+def utc_now_iso() -> str:
+    """Current UTC time as ISO 8601 'YYYY-MM-DDTHH:MM:SSZ' -- the report's `generated_at`."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +230,26 @@ def available_families(kind: str | None = "attack") -> set[str]:
             continue
         out.add(data.get("family") or entry.name[: -len(".yaml")])
     return out
+
+
+def corpus_digest(template: str) -> str:
+    """
+    sha256 over every shipped probes/*.yaml (sorted by name) plus the request
+    template. Two reports with the same digest were produced from the same
+    payloads sent the same way; a changed digest means the report is not
+    comparable to the last one, whatever its date says.
+    """
+    h = hashlib.sha256()
+    root = resources.files("aisg.probes")
+    for entry in sorted(root.iterdir(), key=lambda p: p.name):
+        if not entry.name.endswith(".yaml"):
+            continue
+        h.update(entry.name.encode("utf-8"))
+        h.update(b"\n")
+        h.update(entry.read_bytes())
+        h.update(b"\n")
+    h.update(template.encode("utf-8"))
+    return h.hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -563,8 +593,19 @@ def build_report(results: list[CaseResult], url: str, response_path: str, templa
 
     return {
         "schema": SCHEMA_VERSION,
+        "generated_at": utc_now_iso(),
         "tool": {"name": "aisg probe", "corpus_families": sorted(families)},
-        "target": {"url": url, "response_path": response_path, "request_template": template},
+        "target": {
+            "url": url,
+            "response_path": response_path,
+            "request_template": template,
+            # Always empty: a black-box probe sees an HTTP endpoint, never the
+            # model behind it. Nothing here guesses one.
+            "models": [],
+        },
+        # Identifies WHAT was sent, not when: the corpus files plus the request
+        # template. Reports with different digests are not comparable.
+        "config_digest": corpus_digest(template),
         "summary": {
             "sent": sent,
             "passed": sent - failed - errors - skipped - inconclusive,

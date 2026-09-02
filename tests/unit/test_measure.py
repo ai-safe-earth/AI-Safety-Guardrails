@@ -352,3 +352,209 @@ class TestShippedPresetsLoad:
             packaged = preset_path(name).read_text(encoding="utf-8")
             dev = (root / name).read_text(encoding="utf-8")
             assert packaged == dev, f"{name} differs between config/ and src/aisg/config/"
+
+
+# ---------------------------------------------------------------------------
+# Report provenance: generated_at, models, config_digest
+# ---------------------------------------------------------------------------
+
+_TS_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+_HEX64 = "^[0-9a-f]{64}$"
+
+# A loadable pipeline whose only guard names a judge model in the config.
+# The judge itself stays off, so nothing is called; the point is that the
+# config NAMES the model.
+_NAMED_MODEL_CONFIG = (
+    "input:\n"
+    "  prompt_injection:\n"
+    "    enabled: true\n"
+    "    sensitivity: medium\n"
+    "    llm_judge: false\n"
+    "    llm_judge_model: example-judge-model-v1\n"
+)
+
+
+class TestReportProvenance:
+    """
+    A report read from disk later is only as trustworthy as its provenance:
+    when it was produced, which config it measured, and which models that
+    config named. Each is recorded, none is guessed.
+    """
+
+    @staticmethod
+    def _report(config_path, measurements=None):
+        from aisg.devtools.measure import build_report
+
+        ms = measurements or [GuardMeasurement(guard_name="x", stage="input")]
+        return build_report(ms, config_path, 1, 1, DEFAULT_THRESHOLDS)
+
+    def test_keys_present_after_a_real_measurement(self):
+        from aisg.config import preset_path
+        from aisg.modules.input.pii_detector import PIIDetector
+
+        cases = load_corpus(include_benign=True)[:6]
+        m = asyncio.run(measure_guard(PIIDetector(action="redact"), cases))
+        report = self._report(preset_path("default.yaml"), [m])
+        assert {"generated_at", "models", "config_digest"} <= set(report)
+        assert report["guards"][0]["name"] == "pii_detector"
+
+    def test_generated_at_follows_schema(self):
+        from aisg.config import preset_path
+
+        report = self._report(preset_path("default.yaml"))
+        assert list(report)[:2] == ["schema", "generated_at"]
+
+    def test_generated_at_is_utc_iso_8601(self):
+        from datetime import datetime
+
+        from aisg.config import preset_path
+
+        ts = self._report(preset_path("default.yaml"))["generated_at"]
+        assert ts.endswith("Z")
+        datetime.strptime(ts, _TS_FORMAT)
+
+    def test_existing_keys_keep_their_order(self):
+        from aisg.config import preset_path
+
+        keys = list(self._report(preset_path("default.yaml")))
+        tail = [k for k in keys if k not in ("generated_at", "models", "config_digest")]
+        assert tail == ["schema", "config", "corpus", "thresholds", "disclaimer", "guards"]
+
+    def test_keyless_config_names_no_model(self):
+        """The packaged default names no judge model; nothing may be invented for it."""
+        from aisg.config import preset_path
+        from aisg.devtools.measure import config_models
+
+        assert config_models(preset_path("default.yaml")) == []
+        assert self._report(preset_path("default.yaml"))["models"] == []
+
+    def test_guard_default_model_is_never_reported(self, tmp_path):
+        """
+        prompt_injection has a built-in default judge model. A config that
+        enables the guard without naming one must still report [] -- the
+        report records what the config says, not what the class would fall
+        back to.
+        """
+        from aisg.devtools.measure import config_models
+
+        cfg = tmp_path / "p.yaml"
+        cfg.write_text("input:\n  prompt_injection:\n    enabled: true\n", encoding="utf-8")
+        assert config_models(cfg) == []
+
+    def test_models_named_by_the_config_are_reported(self, tmp_path):
+        from aisg.devtools.measure import config_models
+
+        cfg = tmp_path / "p.yaml"
+        cfg.write_text(_NAMED_MODEL_CONFIG, encoding="utf-8")
+        assert config_models(cfg) == ["example-judge-model-v1"]
+        assert self._report(cfg)["models"] == ["example-judge-model-v1"]
+
+    def test_models_are_sorted_and_unique_across_stages(self, tmp_path):
+        """Both real key spellings count: judge_model (LLM*Filter) and llm_judge_model."""
+        from aisg.devtools.measure import config_models
+
+        cfg = tmp_path / "p.yaml"
+        cfg.write_text(
+            "input:\n"
+            "  prompt_injection:\n"
+            "    llm_judge_model: zeta-judge\n"
+            "  llm_input_filter:\n"
+            "    judge_model: alpha-judge\n"
+            "processing:\n"
+            "  llm_tool_filter:\n"
+            "    judge_model: alpha-judge\n",
+            encoding="utf-8",
+        )
+        assert config_models(cfg) == ["alpha-judge", "zeta-judge"]
+
+    def test_disabled_guard_models_are_not_reported(self, tmp_path):
+        """A disabled guard is not part of the measured pipeline."""
+        from aisg.devtools.measure import config_models
+
+        cfg = tmp_path / "p.yaml"
+        cfg.write_text(
+            "input:\n  prompt_injection:\n    enabled: false\n    llm_judge_model: off-model\n",
+            encoding="utf-8",
+        )
+        assert config_models(cfg) == []
+
+    def test_non_string_model_values_are_ignored(self, tmp_path):
+        from aisg.devtools.measure import config_models
+
+        cfg = tmp_path / "p.yaml"
+        cfg.write_text("input:\n  x:\n    model: 3\n    judge_model: ''\n", encoding="utf-8")
+        assert config_models(cfg) == []
+
+    def test_no_file_means_no_digest_and_no_models(self):
+        from aisg.devtools.measure import config_digest, config_models
+
+        assert config_digest(None) is None
+        assert config_models(None) == []
+        assert self._report(None)["config_digest"] is None
+
+    def test_config_digest_is_sha256_of_the_file_bytes(self, tmp_path):
+        import hashlib
+        import re
+
+        from aisg.devtools.measure import config_digest
+
+        cfg = tmp_path / "p.yaml"
+        cfg.write_text(_NAMED_MODEL_CONFIG, encoding="utf-8")
+        digest = config_digest(cfg)
+        assert re.match(_HEX64, digest)
+        assert digest == hashlib.sha256(cfg.read_bytes()).hexdigest()
+        assert self._report(cfg)["config_digest"] == digest
+
+    def test_config_digest_is_stable_across_runs(self, tmp_path):
+        cfg = tmp_path / "p.yaml"
+        cfg.write_text(_NAMED_MODEL_CONFIG, encoding="utf-8")
+        assert self._report(cfg)["config_digest"] == self._report(cfg)["config_digest"]
+
+    def test_config_digest_changes_when_the_file_changes(self, tmp_path):
+        cfg = tmp_path / "p.yaml"
+        cfg.write_text(_NAMED_MODEL_CONFIG, encoding="utf-8")
+        before = self._report(cfg)["config_digest"]
+        cfg.write_text(_NAMED_MODEL_CONFIG + "    sensitivity: high\n", encoding="utf-8")
+        assert self._report(cfg)["config_digest"] != before
+
+    def test_no_guard_carries_a_precision(self):
+        """The corpus is a stand-in; it cannot ground a precision figure."""
+        from aisg.config import preset_path
+
+        for guard in self._report(preset_path("default.yaml"))["guards"]:
+            assert "precision" not in guard
+
+    def test_never_claims_compliance(self):
+        import json
+
+        from aisg.config import preset_path
+
+        blob = json.dumps(self._report(preset_path("default.yaml"))).lower()
+        for banned in (
+            "is compliant",
+            "compliance verified",
+            "certified",
+            "meets the requirements",
+        ):
+            assert banned not in blob, f"report claims compliance: {banned!r}"
+        assert "not an assessment" in blob
+
+    def test_main_writes_provenance_to_the_report(self, tmp_path, capsys):
+        """End to end through the CLI, against a config that names a model."""
+        import hashlib
+        import json
+        from datetime import datetime
+
+        from aisg.devtools.measure import main
+
+        cfg = tmp_path / "p.yaml"
+        cfg.write_text(_NAMED_MODEL_CONFIG, encoding="utf-8")
+        out = tmp_path / "measure-report.json"
+        code = main(["--config", str(cfg), "--families", "prompt_injection", "-o", str(out)])
+        assert code in (0, 1)
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert list(data)[:2] == ["schema", "generated_at"]
+        datetime.strptime(data["generated_at"], _TS_FORMAT)
+        assert data["models"] == ["example-judge-model-v1"]
+        assert data["config_digest"] == hashlib.sha256(cfg.read_bytes()).hexdigest()
+        assert f"generated_at: {data['generated_at']}" in capsys.readouterr().out

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import statistics
 import sys
@@ -34,15 +35,31 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import yaml
+
 from aisg.core.base import Action, GuardrailBase
 from aisg.core.measurement import Profile, Thresholds
 from aisg.core.pipeline import GuardrailPipeline
-from aisg.devtools.probe import ProbeCase, load_corpus
+from aisg.devtools.probe import ProbeCase, load_corpus, utc_now_iso
 
 SCHEMA_VERSION = "aisg/1"
 DEFAULT_REPORT = "measure-report.json"
 
-__all__ = ["main", "build_parser", "measure_guard", "GuardMeasurement"]
+# Guard-config keys that name an LLM-judge model. `judge_model` is what the
+# LLM*Filter guards take, `llm_judge_model` is PromptInjectionGuard's; the
+# other two are the plain spellings a hand-written config might use.
+MODEL_KEYS = ("model", "model_name", "judge_model", "llm_judge_model")
+STAGE_KEYS = ("input", "processing", "output", "policy")
+
+__all__ = [
+    "main",
+    "build_parser",
+    "build_report",
+    "measure_guard",
+    "config_digest",
+    "config_models",
+    "GuardMeasurement",
+]
 
 
 @dataclass
@@ -165,6 +182,120 @@ def collect_guards(pipeline: GuardrailPipeline) -> list[GuardrailBase]:
                 seen.add(id(g))
                 guards.append(g)
     return guards
+
+
+# ---------------------------------------------------------------------------
+# Report provenance: what was measured, from which config, naming which models
+# ---------------------------------------------------------------------------
+
+
+def config_digest(config_path: str | Path | None) -> str | None:
+    """
+    sha256 of the config file's bytes, or None when there is no file to digest.
+
+    Pins a report to the exact config it measured. A report whose digest no
+    longer matches the deployed config describes a pipeline that is not the
+    one running, however recent its `generated_at`.
+    """
+    if config_path is None:
+        return None
+    try:
+        return hashlib.sha256(Path(config_path).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def config_models(config_path: str | Path | None) -> list[str]:
+    """
+    Model ids the config NAMES for its LLM judges, sorted and unique.
+
+    Only what an enabled guard's config spells out under one of MODEL_KEYS
+    counts. A guard's built-in default model is never reported: an empty list
+    means the config names no model, not that no model would run. Unreadable
+    or malformed configs also yield [] -- the pipeline build reports those.
+    """
+    if config_path is None:
+        return []
+    try:
+        cfg = yaml.safe_load(Path(config_path).read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return []
+    if not isinstance(cfg, dict):
+        return []
+    names: set[str] = set()
+    for stage in STAGE_KEYS:
+        stage_cfg = cfg.get(stage)
+        if not isinstance(stage_cfg, dict):
+            continue
+        for guard_cfg in stage_cfg.values():
+            if not isinstance(guard_cfg, dict) or not guard_cfg.get("enabled", True):
+                continue
+            for key in MODEL_KEYS:
+                value = guard_cfg.get(key)
+                if isinstance(value, str) and value.strip():
+                    names.add(value.strip())
+    return sorted(names)
+
+
+def build_report(
+    measurements: list[GuardMeasurement],
+    config_path: str | Path | None,
+    attacks: int,
+    benign: int,
+    thresholds: Thresholds,
+) -> dict:
+    """
+    The JSON document `aisg measure` writes. Pure: no I/O beyond reading the
+    config file for its digest and named models.
+
+    Deliberately absent: any precision figure (the corpus is a stand-in and
+    cannot ground one) and any compliance verdict.
+    """
+    measured_on = f"aisg probe corpus ({attacks} attack + {benign} benign)"
+    return {
+        "schema": SCHEMA_VERSION,
+        "generated_at": utc_now_iso(),
+        "models": config_models(config_path),
+        "config_digest": config_digest(config_path),
+        "config": str(config_path),
+        "corpus": {"attacks": attacks, "benign": benign},
+        "thresholds": {
+            "min_precision": thresholds.min_precision,
+            "max_false_positive_rate": thresholds.max_false_positive_rate,
+            "max_p99_latency_ms": thresholds.max_p99_latency_ms,
+        },
+        "disclaimer": (
+            "Measured against the shipped corpora, which stand in for real traffic "
+            "and do not replace it. Not an assessment of compliance with any "
+            "regulation, and not evidence that untested inputs are handled."
+        ),
+        "guards": [
+            {
+                "name": m.guard_name,
+                "stage": m.stage,
+                "unavailable": m.unavailable,
+                "attacks_seen": m.attacks_seen,
+                "attacks_caught": m.attacks_caught,
+                "catch_rate": m.catch_rate,
+                "catch_rate_by_family": {
+                    fam: {**v, "rate": v["caught"] / v["seen"] if v["seen"] else None}
+                    for fam, v in sorted(m.per_family.items())
+                },
+                "benign_seen": m.benign_seen,
+                "benign_broken": m.benign_broken,
+                "benign_modified": m.benign_modified,
+                "false_positive_rate": m.false_positive_rate,
+                "p50_latency_ms": m.p50,
+                "p99_latency_ms": m.p99,
+                "threshold_failures": thresholds.failures(m.to_profile(measured_on)),
+                "catch_rate_meaningful": m.stage != "output",
+                "broken_examples": m.broken_examples,
+                "missed_examples": m.missed_examples,
+                "errors": m.errors[:5],
+            }
+            for m in measurements
+        ],
+    }
 
 
 def render_table(rows: list[GuardMeasurement], thresholds: Thresholds) -> str:
@@ -337,47 +468,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     measured_on = f"aisg probe corpus ({len(attacks)} attack + {len(benign)} benign)"
-    report = {
-        "schema": SCHEMA_VERSION,
-        "config": str(config_path),
-        "corpus": {"attacks": len(attacks), "benign": len(benign)},
-        "thresholds": {
-            "min_precision": thresholds.min_precision,
-            "max_false_positive_rate": thresholds.max_false_positive_rate,
-            "max_p99_latency_ms": thresholds.max_p99_latency_ms,
-        },
-        "disclaimer": (
-            "Measured against the shipped corpora, which stand in for real traffic "
-            "and do not replace it. Not an assessment of compliance with any "
-            "regulation, and not evidence that untested inputs are handled."
-        ),
-        "guards": [
-            {
-                "name": m.guard_name,
-                "stage": m.stage,
-                "unavailable": m.unavailable,
-                "attacks_seen": m.attacks_seen,
-                "attacks_caught": m.attacks_caught,
-                "catch_rate": m.catch_rate,
-                "catch_rate_by_family": {
-                    fam: {**v, "rate": v["caught"] / v["seen"] if v["seen"] else None}
-                    for fam, v in sorted(m.per_family.items())
-                },
-                "benign_seen": m.benign_seen,
-                "benign_broken": m.benign_broken,
-                "benign_modified": m.benign_modified,
-                "false_positive_rate": m.false_positive_rate,
-                "p50_latency_ms": m.p50,
-                "p99_latency_ms": m.p99,
-                "threshold_failures": thresholds.failures(m.to_profile(measured_on)),
-                "catch_rate_meaningful": m.stage != "output",
-                "broken_examples": m.broken_examples,
-                "missed_examples": m.missed_examples,
-                "errors": m.errors[:5],
-            }
-            for m in measurements
-        ],
-    }
+    report = build_report(measurements, config_path, len(attacks), len(benign), thresholds)
 
     demoted = [m for m in measurements if thresholds.failures(m.to_profile(measured_on))]
     unavailable = [m for m in measurements if m.unavailable]
@@ -409,6 +500,7 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
         )
         print(f"Report: {args.output}")
+        print(f"generated_at: {report['generated_at']}")
     except OSError as exc:
         print(f"Error: could not write {args.output}: {exc}", file=sys.stderr)
         return 2

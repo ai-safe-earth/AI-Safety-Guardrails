@@ -28,6 +28,7 @@ from aisg.devtools.probe import (
     available_families,
     build_body,
     build_report,
+    corpus_digest,
     detector_hit,
     extract_path,
     is_loopback,
@@ -579,6 +580,94 @@ class TestTable:
         r = CaseResult(case=c, status="passed", http_status=200, response_text="ok")
         data = build_report([r], "http://127.0.0.1/x", "$.response", "{}")
         assert data["summary"]["sent"] == 1 and data["summary"]["passed"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Report provenance: generated_at, config_digest, target.models
+# ---------------------------------------------------------------------------
+
+_TS_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+_HEX64 = "^[0-9a-f]{64}$"
+_TEMPLATE = '{"message":"' + PLACEHOLDER + '"}'
+
+
+class TestReportProvenance:
+    """
+    A probe report read later must say when it ran and exactly what it sent.
+    What it cannot say is which model answered: the probe sees an endpoint.
+    """
+
+    @staticmethod
+    def _pure(template: str = _TEMPLATE) -> dict:
+        from aisg.devtools.probe import CaseResult
+
+        r = CaseResult(case=make_case(), status="passed", http_status=200, response_text="ok")
+        return build_report([r], "http://127.0.0.1/x", "$.response", template)
+
+    def test_generated_at_follows_schema(self):
+        assert list(self._pure())[:2] == ["schema", "generated_at"]
+
+    def test_generated_at_is_utc_iso_8601(self):
+        from datetime import datetime
+
+        ts = self._pure()["generated_at"]
+        assert ts.endswith("Z")
+        datetime.strptime(ts, _TS_FORMAT)
+
+    def test_config_digest_is_64_hex_and_deterministic(self):
+        import re
+
+        a = self._pure()["config_digest"]
+        b = self._pure()["config_digest"]
+        assert re.match(_HEX64, a)
+        assert a == b, "same corpus and template must give the same digest"
+        assert a == corpus_digest(_TEMPLATE)
+
+    def test_config_digest_covers_the_request_template(self):
+        """A different template sends different bytes, so it is a different run."""
+        other = '{"messages":[{"role":"user","content":"' + PLACEHOLDER + '"}]}'
+        assert self._pure(_TEMPLATE)["config_digest"] != self._pure(other)["config_digest"]
+
+    def test_target_models_is_an_explicit_empty_list(self):
+        target = self._pure()["target"]
+        assert "models" in target, "the key must be present, not merely absent"
+        assert target["models"] == []
+        assert list(target) == ["url", "response_path", "request_template", "models"]
+
+    def test_summary_and_cases_unchanged(self):
+        data = self._pure()
+        assert set(data["summary"]) == {
+            "sent",
+            "passed",
+            "failed",
+            "errors",
+            "skipped",
+            "inconclusive",
+        }
+        assert "not an assessment" in data["disclaimer"].lower()
+        assert set(data["cases"][0]) >= {"id", "family", "status", "detector", "response_excerpt"}
+
+    def test_new_keys_never_claim_compliance(self):
+        data = self._pure()
+        blob = json.dumps({k: data[k] for k in ("generated_at", "config_digest", "target")}).lower()
+        for banned in (
+            "is compliant",
+            "compliance verified",
+            "certified",
+            "meets the requirements",
+        ):
+            assert banned not in blob, f"report claims compliance: {banned!r}"
+
+    def test_end_to_end_report_carries_provenance(self, blocking_server, tmp_path):
+        from datetime import datetime
+
+        report = tmp_path / "r.json"
+        main([blocking_server.url, "-o", str(report), "--families", "prompt_injection"])
+        data = json.loads(report.read_text(encoding="utf-8"))
+        assert list(data)[:2] == ["schema", "generated_at"]
+        datetime.strptime(data["generated_at"], _TS_FORMAT)
+        assert data["config_digest"] == corpus_digest(data["target"]["request_template"])
+        assert data["target"]["models"] == []
 
 
 # ---------------------------------------------------------------------------
