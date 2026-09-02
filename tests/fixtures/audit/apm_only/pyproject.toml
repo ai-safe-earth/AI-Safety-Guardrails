@@ -1,0 +1,9 @@
+[project]
+name = "apm-only"
+version = "0.1.0"
+description = "A single chat completion instrumented with a generic APM SDK only."
+requires-python = ">=3.10"
+dependencies = [
+    "openai==1.51.0",
+    "sentry-sdk==2.14.0",
+]

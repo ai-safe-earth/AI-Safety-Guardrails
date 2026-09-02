@@ -1,0 +1,32 @@
+{
+  "dependencies": [
+    {
+      "name": "anthropic",
+      "version": "0.34.0",
+      "vulns": []
+    },
+    {
+      "name": "fastapi",
+      "version": "0.112.0",
+      "vulns": []
+    },
+    {
+      "name": "requests",
+      "version": "2.31.0",
+      "vulns": [
+        {
+          "id": "GHSA-9wx4-h78v-vm56",
+          "fix_versions": ["2.32.0"],
+          "aliases": ["CVE-2024-35195"],
+          "description": "When making requests through a Requests Session, if the first request is made with verify=False, all subsequent requests to the same host will continue to ignore certificate verification."
+        }
+      ]
+    },
+    {
+      "name": "uvicorn",
+      "version": "0.30.0",
+      "vulns": []
+    }
+  ],
+  "fixes": []
+}

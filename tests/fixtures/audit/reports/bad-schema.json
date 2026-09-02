@@ -1,0 +1,15 @@
+{
+  "schema": "aisg/2",
+  "config": "config/default.yaml",
+  "corpus": {
+    "attacks": 48,
+    "benign": 42
+  },
+  "thresholds": {
+    "min_precision": 0.8,
+    "max_false_positive_rate": 0.05,
+    "max_p99_latency_ms": null
+  },
+  "disclaimer": "Measured against the shipped corpora, which stand in for real traffic and do not replace it. Not an assessment of compliance with any regulation, and not evidence that untested inputs are handled.",
+  "guards": []
+}

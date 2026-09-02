@@ -1,0 +1,6 @@
+model = "o4-mini"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+[history]
+persistence = "save-all"

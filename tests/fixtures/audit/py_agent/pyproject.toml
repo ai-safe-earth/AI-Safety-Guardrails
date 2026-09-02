@@ -1,0 +1,11 @@
+[project]
+name = "py-agent"
+version = "0.1.0"
+description = "Support agent that answers customer questions and runs follow-up actions."
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic",
+    "fastapi",
+    "requests",
+    "uvicorn",
+]

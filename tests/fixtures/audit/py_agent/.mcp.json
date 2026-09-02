@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "gmail": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-gmail"]
+    },
+    "ops": {
+      "type": "sse",
+      "url": "http://mcp.example.com/sse"
+    }
+  }
+}

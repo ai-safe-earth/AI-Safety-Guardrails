@@ -14,8 +14,9 @@ build/
 venv/
 env/
 
-# Audit logs (may contain PII / sensitive data)
-audit/
+# Audit logs (may contain PII / sensitive data) -- root-anchored: the bare
+# pattern also swallowed src/aisg/devtools/audit/ and tests/fixtures/audit/.
+/audit/
 
 # Pytest / coverage
 .pytest_cache/

@@ -1,0 +1,54 @@
+{
+  "results": [
+    {
+      "source": {
+        "path": "requirements.txt",
+        "type": "lockfile"
+      },
+      "packages": [
+        {
+          "package": {
+            "name": "requests",
+            "version": "2.31.0",
+            "ecosystem": "PyPI"
+          },
+          "vulnerabilities": [
+            {
+              "id": "GHSA-9wx4-h78v-vm56",
+              "summary": "Requests Session object does not verify requests after making first request with verify=False",
+              "aliases": ["CVE-2024-35195", "PYSEC-2024-53"],
+              "modified": "2024-06-10T18:32:22Z",
+              "published": "2024-05-20T21:15:07Z",
+              "database_specific": {
+                "severity": "MODERATE",
+                "cwe_ids": ["CWE-670"]
+              },
+              "affected": [
+                {
+                  "package": {
+                    "name": "requests",
+                    "ecosystem": "PyPI",
+                    "purl": "pkg:pypi/requests"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [{"introduced": "0"}, {"fixed": "2.32.0"}]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "groups": [
+            {
+              "ids": ["GHSA-9wx4-h78v-vm56"],
+              "aliases": ["CVE-2024-35195", "GHSA-9wx4-h78v-vm56", "PYSEC-2024-53"],
+              "max_severity": "5.6"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

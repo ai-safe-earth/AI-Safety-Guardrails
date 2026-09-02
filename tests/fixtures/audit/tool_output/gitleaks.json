@@ -1,0 +1,42 @@
+[
+  {
+    "Description": "Generic API Key",
+    "StartLine": 1,
+    "EndLine": 1,
+    "StartColumn": 1,
+    "EndColumn": 72,
+    "Match": "ANTHROPIC_API_KEY = \"REDACTED-BY-FIXTURE\"",
+    "Secret": "REDACTED-BY-FIXTURE",
+    "File": "secrets.py",
+    "SymlinkFile": "",
+    "Commit": "",
+    "Entropy": 3.62,
+    "Author": "",
+    "Email": "",
+    "Date": "",
+    "Message": "",
+    "Tags": [],
+    "RuleID": "generic-api-key",
+    "Fingerprint": "secrets.py:generic-api-key:1"
+  },
+  {
+    "Description": "AWS",
+    "StartLine": 2,
+    "EndLine": 2,
+    "StartColumn": 21,
+    "EndColumn": 40,
+    "Match": "REDACTED-BY-FIXTURE",
+    "Secret": "REDACTED-BY-FIXTURE",
+    "File": "secrets.py",
+    "SymlinkFile": "",
+    "Commit": "",
+    "Entropy": 2.11,
+    "Author": "",
+    "Email": "",
+    "Date": "",
+    "Message": "",
+    "Tags": [],
+    "RuleID": "aws-access-token",
+    "Fingerprint": "secrets.py:aws-access-token:2"
+  }
+]

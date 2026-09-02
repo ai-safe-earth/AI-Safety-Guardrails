@@ -156,6 +156,19 @@ include = ["aisg*"]
 "aisg.config" = ["*.yaml", "nemo_rails/*"]
 # Attack corpus for `aisg probe`, loaded via importlib.resources.
 "aisg.probes" = ["*.yaml"]
+# Agent skill copied by `aisg skill install`, read via aisg.skills.skill_root().
+# The recursive glob is the intent; the per-type globs cover setuptools
+# versions that do not recurse `**`.
+"aisg.skills" = [
+    "ai-safety-audit/**/*",
+    "ai-safety-audit/SKILL.md",
+    "ai-safety-audit/**/*.md",
+    "ai-safety-audit/**/*.yaml",
+    "ai-safety-audit/**/*.sh",
+    "ai-safety-audit/**/*.ps1",
+]
+# Semgrep taint rules for the `aisg audit` semgrep adapter.
+"aisg.devtools.audit" = ["semgrep/*.yaml"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

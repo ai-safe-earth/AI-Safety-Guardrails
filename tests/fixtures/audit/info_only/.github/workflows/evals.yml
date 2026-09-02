@@ -1,0 +1,19 @@
+name: evals
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  promptfoo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run promptfoo evals
+        run: npx promptfoo@0.117.0 eval -c promptfooconfig.yaml --no-cache
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

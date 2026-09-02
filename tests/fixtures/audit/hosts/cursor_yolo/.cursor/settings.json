@@ -1,0 +1,6 @@
+{
+  "agent": {
+    "autoRun": true,
+    "autoFixLints": true
+  }
+}

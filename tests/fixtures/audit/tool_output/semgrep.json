@@ -1,0 +1,50 @@
+{
+  "version": "1.90.0",
+  "results": [
+    {
+      "check_id": "aisg.audit.aud-401-model-output-to-shell",
+      "path": "src/agent.ts",
+      "start": {"line": 16, "col": 3, "offset": 0},
+      "end": {"line": 16, "col": 14, "offset": 0},
+      "extra": {
+        "message": "Model output flows into child_process.exec without validation.",
+        "metadata": {
+          "aisg_rule_id": "AUD-401",
+          "category": "security",
+          "confidence": "MEDIUM"
+        },
+        "severity": "ERROR",
+        "fingerprint": "8d3c1b2a9f0e4d5c6b7a8f9e0d1c2b3a4f5e6d7c8b9a0f1e2d3c4b5a6f7e8d9c",
+        "lines": "  exec(reply, (error, stdout, stderr) => {",
+        "is_ignored": false,
+        "validation_state": "NO_VALIDATOR",
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "aisg.audit.aud-404-model-output-to-html",
+      "path": "src/agent.ts",
+      "start": {"line": 24, "col": 3, "offset": 0},
+      "end": {"line": 24, "col": 28, "offset": 0},
+      "extra": {
+        "message": "Model output assigned to innerHTML without sanitisation.",
+        "metadata": {
+          "aisg_rule_id": "AUD-404",
+          "category": "security",
+          "confidence": "MEDIUM"
+        },
+        "severity": "WARNING",
+        "fingerprint": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+        "lines": "  element.innerHTML = reply;",
+        "is_ignored": false,
+        "validation_state": "NO_VALIDATOR",
+        "engine_kind": "OSS"
+      }
+    }
+  ],
+  "errors": [],
+  "paths": {
+    "scanned": ["package.json", "src/agent.ts"]
+  },
+  "skipped_rules": []
+}

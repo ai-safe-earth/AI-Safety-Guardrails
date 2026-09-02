@@ -1,0 +1,66 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@ai-sdk/openai": {
+      "name": "@ai-sdk/openai",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": ["undici"],
+      "effects": [],
+      "range": "<=1.3.2",
+      "nodes": ["node_modules/@ai-sdk/openai"],
+      "fixAvailable": {
+        "name": "@ai-sdk/openai",
+        "version": "1.3.3",
+        "isSemVerMajor": false
+      }
+    },
+    "undici": {
+      "name": "undici",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1098735,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "Undici's fetch with integrity option is too lax when algorithm is specified but hash value is in incorrect",
+          "url": "https://github.com/advisories/GHSA-9qxr-qj4v-4x2g",
+          "severity": "moderate",
+          "cwe": ["CWE-284"],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N"
+          },
+          "range": "<5.28.4"
+        }
+      ],
+      "effects": ["@ai-sdk/openai"],
+      "range": "<5.28.4",
+      "nodes": ["node_modules/undici"],
+      "fixAvailable": {
+        "name": "@ai-sdk/openai",
+        "version": "1.3.3",
+        "isSemVerMajor": false
+      }
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 2,
+      "high": 0,
+      "critical": 0,
+      "total": 2
+    },
+    "dependencies": {
+      "prod": 41,
+      "dev": 12,
+      "optional": 3,
+      "peer": 0,
+      "peerOptional": 0,
+      "total": 56
+    }
+  }
+}

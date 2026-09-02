@@ -1,0 +1,8 @@
+[project]
+name = "killswitch-declared-only"
+version = "0.1.0"
+description = "A single chat completion whose kill switch is declared but never read."
+requires-python = ">=3.10"
+dependencies = [
+    "openai==1.51.0",
+]

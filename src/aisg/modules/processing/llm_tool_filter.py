@@ -116,6 +116,18 @@ class LLMToolFilter(GuardrailBase):
         "read_email",
     }
 
+    # Tools that BLOCK (not FLAG) when the judge is unavailable -- override fail_open.
+    # `aisg audit` reads this by name; keep it a class attribute.
+    DEFAULT_HIGH_RISK_FAIL_CLOSED = frozenset(
+        {
+            "send_email",
+            "database_write",
+            "payment_process",
+            "shell_command",
+            "deploy",
+        }
+    )
+
     def setup(
         self,
         judge=None,
@@ -152,16 +164,8 @@ class LLMToolFilter(GuardrailBase):
         self.check_arguments = check_arguments
         self.check_results = check_results
         self.high_risk_tools = self.DEFAULT_HIGH_RISK_TOOLS | set(high_risk_tools or [])
-        # Tools that BLOCK (not FLAG) when the judge is unavailable — override fail_open
         self.high_risk_fail_closed: set[str] = set(
-            high_risk_fail_closed
-            or [
-                "send_email",
-                "database_write",
-                "payment_process",
-                "shell_command",
-                "deploy",
-            ]
+            high_risk_fail_closed or self.DEFAULT_HIGH_RISK_FAIL_CLOSED
         )
         self.block_on_unsafe = block_on_unsafe
         self.block_categories = [c.lower() for c in (block_categories or [])]

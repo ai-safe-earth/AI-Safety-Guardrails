@@ -1,0 +1,10 @@
+[project]
+name = "docs-assistant"
+version = "0.1.0"
+description = "Documentation assistant with a capped loop, a tool budget, a kill switch and tracing."
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic==0.40.0",
+    "langfuse==2.53.0",
+    "requests==2.32.3",
+]
