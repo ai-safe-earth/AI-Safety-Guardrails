@@ -53,7 +53,7 @@ jobs:
         # would look like a pass, so assert the extras are present before running.
         run: |
           python -c "
-          import importlib, sys
+          import importlib.util, sys
           missing = [m for m in ('pydantic_settings', 'opentelemetry')
                      if importlib.util.find_spec(m) is None]
           sys.exit(f'optional deps missing, tests would silently skip: {missing}') if missing else None
