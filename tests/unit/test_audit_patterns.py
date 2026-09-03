@@ -1418,8 +1418,12 @@ def test_discussion_cues_and_quoted_span_shape() -> None:
 
 
 def test_no_compliance_language_in_patterns_module() -> None:
+    # The bare word is stricter than any phrase on the ban list (it also catches
+    # "non-compliant"); the list itself is imported so this file never spells it out.
+    from aisg.devtools.audit.report import BANNED_PHRASES
+
     text = PATTERNS_PY.read_text(encoding="utf-8").lower()
-    for phrase in ("compliant", "certified", "meets the requirements"):
+    for phrase in ("compliant", *BANNED_PHRASES):
         assert phrase not in text, phrase
 
 

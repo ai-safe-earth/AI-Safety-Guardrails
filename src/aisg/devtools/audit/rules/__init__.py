@@ -36,10 +36,13 @@ __all__ = [
     "Recommendation",
     "default_rules",
     "experimental_rules",
+    "file_text",
+    "hits_in",
     "is_demoted",
     "rule_by_id",
     "run_rules",
     "select_rules",
+    "unit_of",
 ]
 
 
@@ -68,6 +71,11 @@ class AuditRule:
     related_lint_rules: tuple[str, ...] = ()
     languages: tuple[str, ...] = ("*",)
 
+    def __init__(self) -> None:
+        # UNKNOWN items a rule raises while evaluating ("report age unknown", ...).
+        # `run_rules` folds them into the run's unknown list after `evaluate`.
+        self.unknown: list[UnknownItem] = []
+
     @classmethod
     def experimental(cls) -> bool:
         """True when this rule only runs under `--experimental` (measured below threshold)."""
@@ -90,6 +98,8 @@ class AuditRule:
         report: dict | None = None,
         notes: str | None = None,
         title: str | None = None,
+        match_kind: MatchKind | None = None,
+        evidence_kind: EvidenceKind | None = None,
     ) -> Finding:
         """
         Build a Finding with id/title/priority/controls/confidence filled from the class.
@@ -97,6 +107,10 @@ class AuditRule:
         The fingerprint is anchored on `file` + `snippet` and the display id
         (`AUD-101/interpreter` for a sub-finding), so extra evidence legs can be
         reordered without producing a "new" finding.
+
+        `match_kind` / `evidence_kind` override the class defaults for one finding:
+        a rule that resolves a path through the AST when `--deep python` ran and
+        falls back to co-located grep otherwise reports the confidence it actually has.
         """
         relpath = file.replace("\\", "/")
         snip = truncate_snippet(snippet)
@@ -114,7 +128,11 @@ class AuditRule:
             priority=self.priority,
             bucket=bucket,
             basis=self.basis,
-            confidence=Confidence(self.evidence_kind, self.match_kind, self.measured_precision),
+            confidence=Confidence(
+                evidence_kind or self.evidence_kind,
+                match_kind or self.match_kind,
+                self.measured_precision,
+            ),
             scope=scope,
             evidence=list(evidence),
             controls=self.controls,
@@ -139,6 +157,63 @@ class AuditRule:
             evidence=[Evidence(role="absence", file=root, line=0, snippet=why)],
             scope=scope,
         )
+
+
+# ---------------------------------------------------------------------------
+# Context helpers shared by rule modules
+# ---------------------------------------------------------------------------
+
+
+def file_text(ctx: AuditContext, relpath: str) -> str | None:
+    """
+    Decoded text of an enumerated file, cached on the context.
+
+    Only files the walk enumerated (`ctx.files`) are readable through here: a rule
+    never opens a path of its own choosing, so the walk's exclude/ignore/size rules
+    hold for every byte a rule looks at. Unknown paths and unreadable files are None.
+    """
+    key = relpath.replace("\\", "/")
+    if key in ctx.texts:
+        return ctx.texts[key]
+    text: str | None = None
+    for record in ctx.files:
+        if getattr(record, "relpath", None) == key:
+            from aisg.devtools.audit.walk import read_text  # local: walk imports model too
+
+            text = read_text(record.path)
+            break
+    ctx.texts[key] = text
+    return text
+
+
+def unit_of(ctx: AuditContext, relpath: str) -> Unit | None:
+    """The Unit owning `relpath`, resolved through the walk's file records."""
+    key = relpath.replace("\\", "/")
+    unit_id = None
+    for record in ctx.files:
+        if getattr(record, "relpath", None) == key:
+            unit_id = record.unit
+            break
+    if unit_id is None:
+        return None
+    for unit in ctx.inventory.units:
+        if unit.id == unit_id:
+            return unit
+    return None
+
+
+def hits_in(ctx: AuditContext, table: str, *, unit: str | None = None, file: str | None = None):
+    """Hits from one grep table, optionally narrowed to a unit id or a relpath."""
+    out = []
+    for hit in ctx.hits:
+        if hit.table != table:
+            continue
+        if unit is not None and hit.unit != unit:
+            continue
+        if file is not None and hit.file != file:
+            continue
+        out.append(hit)
+    return out
 
 
 # Precision gating -- evaluated on every call, never snapshotted at import, so a
@@ -211,7 +286,9 @@ def run_rules(
             continue
         rule_id = getattr(rule, "id", rule.__name__)
         try:
-            findings.extend(rule().evaluate(ctx))
+            instance = rule()
+            findings.extend(instance.evaluate(ctx))
+            unknown.extend(instance.unknown)
         except Exception as exc:  # broad on purpose: one bad rule must not sink the run
             unknown.append(
                 UnknownItem(

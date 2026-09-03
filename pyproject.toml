@@ -219,3 +219,12 @@ exclude = ["tests/fixtures", "__pycache__", ".venv", "dist"]
 format = "terminal"
 errors_only = false         # set true to hard-block on ALIGN-001/005/006/008 only
 fail_on_warnings = false    # set true for strict PR enforcement
+
+# -------------------------------------------------------
+# aisg-audit configuration
+# -------------------------------------------------------
+# Read by aisg/devtools/audit/main.py via aisg/devtools/_config.py.
+# An explicit CLI flag always wins over a value here.
+[tool.aisg-audit]
+exclude = ["tests", "src/aisg/probes"]
+fail-on = "high"

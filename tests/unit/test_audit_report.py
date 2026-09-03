@@ -6,8 +6,9 @@ finding, `[REPORTED <age>d, <source>]` on report-derived findings, ASCII termina
 output, the mandatory `below --fail-on` summary line, the exit-code rule and the
 section 3.2 summary shape.
 
-Findings are built by hand: the rule registry is empty in this wave, so a local
-`AuditRule` subclass stands in for the catalogue.
+Findings are built by hand. The `rules[]` catalogue always lists the whole registry
+(`ran: false` for rules that did not run), so a local `AuditRule` subclass with an id
+outside the registry stands in for "the rule that ran" without shadowing a real id.
 """
 
 from __future__ import annotations
@@ -55,22 +56,28 @@ from aisg.devtools.audit.report import (
     to_terminal,
     tool_version,
 )
-from aisg.devtools.audit.rules import AuditRule
+from aisg.devtools.audit.rules import ALL_RULES, AuditRule
 
 FORMATS = ("json", "sarif", "markdown", "terminal")
 
-# The negative-phrase list of section 10 item 1. This tuple is the one place a test may
-# spell the phrases out.
+# The negative-phrase list of section 10 item 1, pinned independently of
+# `report.BANNED_PHRASES`. Assembled from fragments so no audit file -- this test
+# included -- carries one of the phrases as a contiguous literal.
 EXPECTED_BANNED = (
-    "is compliant",
-    "compliance verified",
-    "certified",
-    "meets the requirements",
-    "fully compliant",
-    "passes the eu",
-    "nist compliant",
+    " ".join(("is", "compliant")),
+    " ".join(("compliance", "verified")),
+    "certi" + "fied",
+    " ".join(("meets", "the", "requirements")),
+    " ".join(("fully", "compliant")),
+    " ".join(("passes", "the", "eu")),
+    " ".join(("nist", "compliant")),
 )
-CLEAN_WORD = re.compile(r"\bclean\b", re.IGNORECASE)
+# The one word the design bans outright, assembled for the same reason.
+CLEAN_WORD = re.compile(r"\bcl" + r"ean\b", re.IGNORECASE)
+
+# An id no registry rule uses: the catalogue lists every registry rule, so a test double
+# that reused a real id would produce two rows for it.
+DUMMY_RULE_ID = "AUD-199"
 
 REPORT_BLOCK = {
     "file": "measure-report.json",
@@ -199,8 +206,8 @@ def every_kind() -> list[Finding]:
 
 
 class DummyRule(AuditRule):
-    id = "AUD-101"
-    title = "Host over-grant"
+    id = DUMMY_RULE_ID
+    title = "Host over-grant (test double)"
     priority = 1
     severity = Severity.CRITICAL
     basis = Basis.PRESENCE
@@ -353,11 +360,11 @@ def test_sarif_level_map():
 
 
 def test_catalogue_uses_attribute_values_and_ran_flags():
-    rows = catalogue([DummyRule, OtherRule], ran_ids={"AUD-101"})
+    rows = catalogue([DummyRule, OtherRule], ran_ids={DUMMY_RULE_ID})
     assert rows == [
         {
-            "id": "AUD-101",
-            "title": "Host over-grant",
+            "id": DUMMY_RULE_ID,
+            "title": "Host over-grant (test double)",
             "measured_precision": None,
             "ran": True,
             "experimental": False,
@@ -486,8 +493,28 @@ def test_build_report_pins_trifecta_first_and_fills_blocks():
         }
     ]
     assert report.baseline is None
-    assert report.rules == catalogue([DummyRule], {"AUD-101"})
     assert report.disclaimer == DISCLAIMER
+
+
+def test_build_report_catalogues_the_whole_registry_plus_the_rule_that_ran():
+    """`rules[]` is the registry (design 3.2): a rule that did not run is listed `ran: false`."""
+    report = build()
+    assert report.rules == catalogue([*ALL_RULES, DummyRule], {DUMMY_RULE_ID})
+    ids = [row["id"] for row in report.rules]
+    assert len(ids) == len(set(ids)), "one catalogue row per rule id"
+    assert set(ids) == {rule.id for rule in ALL_RULES} | {DUMMY_RULE_ID}
+    ran = {row["id"] for row in report.rules if row["ran"]}
+    assert ran == {DUMMY_RULE_ID}
+    assert all(row["measured_precision"] is None for row in report.rules)
+    assert all(row["experimental"] is False for row in report.rules)
+
+
+def test_build_report_lists_a_registry_rule_that_ran_once():
+    """Passing a real registry rule as `rules` flips its row to `ran: true`, adding nothing."""
+    real = ALL_RULES[0]
+    report = build(rules=[real])
+    assert [row["id"] for row in report.rules] == [rule.id for rule in ALL_RULES]
+    assert {row["id"] for row in report.rules if row["ran"]} == {real.id}
 
 
 def test_build_report_extracts_reports_per_kind():

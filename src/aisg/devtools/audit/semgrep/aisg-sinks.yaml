@@ -1,0 +1,435 @@
+# aisg/devtools/audit/semgrep/aisg-sinks.yaml
+# ---------------------------------------------
+# Taint rules for `aisg audit`: model output flowing into a dangerous sink.
+#
+# Sources are the expressions that return an LLM response (OpenAI / Anthropic / Gemini /
+# LangChain / Vercel AI SDK / Ollama) and the accessors that pull text out of one.
+# Sinks are the P4 table from the audit design: shell, eval, sql, html, url, fs.
+# Rules are split per language because every pattern in a rule must parse in every
+# language the rule lists.
+#
+# Metadata contract (read by adapters.py -> SemgrepAdapter):
+#   aisg_rule / aisg_rule_id : the AUD id the finding is folded into
+#   kind                     : sink kind, also resolvable through SINK_RULE_BY_KIND
+#
+# Run by the adapter as:
+#   semgrep scan --config <this file> --json --metrics=off --quiet --timeout 30 .
+
+rules:
+  # ---------------------------------------------------------------------------
+  # Python
+  # ---------------------------------------------------------------------------
+  - id: aisg-sink-shell-python
+    message: Model output reaches a shell command
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    metadata:
+      aisg_rule: AUD-401
+      aisg_rule_id: AUD-401
+      kind: shell
+      category: security
+    pattern-sources:
+      - pattern-either:
+          - pattern: $CLIENT.chat.completions.create(...)
+          - pattern: $CLIENT.messages.create(...)
+          - pattern: $CLIENT.responses.create(...)
+          - pattern: $MODEL.generate_content(...)
+          - pattern: $CHAIN.invoke(...)
+          - pattern: $CHAIN.invoke(...).content
+          - pattern: ollama.chat(...)
+          - pattern: $RESP.choices[0].message.content
+          - pattern: $RESP.content[0].text
+          - pattern: $RESP.output_text
+    pattern-sinks:
+      - pattern-either:
+          - pattern: subprocess.$F(...)
+          - pattern: os.system(...)
+          - pattern: os.popen(...)
+          - pattern: os.execv(...)
+          - pattern: os.execvp(...)
+          - pattern: asyncio.create_subprocess_shell(...)
+
+  - id: aisg-sink-eval-python
+    message: Model output is evaluated as code
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    metadata:
+      aisg_rule: AUD-402
+      aisg_rule_id: AUD-402
+      kind: eval
+      category: security
+    pattern-sources:
+      - pattern-either:
+          - pattern: $CLIENT.chat.completions.create(...)
+          - pattern: $CLIENT.messages.create(...)
+          - pattern: $CLIENT.responses.create(...)
+          - pattern: $MODEL.generate_content(...)
+          - pattern: $CHAIN.invoke(...)
+          - pattern: $CHAIN.invoke(...).content
+          - pattern: ollama.chat(...)
+          - pattern: $RESP.choices[0].message.content
+          - pattern: $RESP.content[0].text
+          - pattern: $RESP.output_text
+    pattern-sinks:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: exec(...)
+          - pattern: compile(...)
+          - pattern: __import__(...)
+          - pattern: importlib.import_module(...)
+
+  - id: aisg-sink-sql-python
+    message: Model output reaches a SQL statement
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    metadata:
+      aisg_rule: AUD-403
+      aisg_rule_id: AUD-403
+      kind: sql
+      category: security
+    pattern-sources:
+      - pattern-either:
+          - pattern: $CLIENT.chat.completions.create(...)
+          - pattern: $CLIENT.messages.create(...)
+          - pattern: $CLIENT.responses.create(...)
+          - pattern: $MODEL.generate_content(...)
+          - pattern: $CHAIN.invoke(...)
+          - pattern: $CHAIN.invoke(...).content
+          - pattern: ollama.chat(...)
+          - pattern: $RESP.choices[0].message.content
+          - pattern: $RESP.content[0].text
+          - pattern: $RESP.output_text
+    pattern-sinks:
+      - pattern-either:
+          - pattern: $CURSOR.execute(...)
+          - pattern: $CURSOR.executemany(...)
+          - pattern: $CURSOR.executescript(...)
+          - pattern: $DB.raw(...)
+          - pattern: text(...)
+          - pattern: sqlalchemy.text(...)
+
+  - id: aisg-sink-html-python
+    message: Model output is rendered as HTML without escaping
+    severity: WARNING
+    languages: [python]
+    mode: taint
+    metadata:
+      aisg_rule: AUD-404
+      aisg_rule_id: AUD-404
+      kind: html
+      category: security
+    pattern-sources:
+      - pattern-either:
+          - pattern: $CLIENT.chat.completions.create(...)
+          - pattern: $CLIENT.messages.create(...)
+          - pattern: $CLIENT.responses.create(...)
+          - pattern: $MODEL.generate_content(...)
+          - pattern: $CHAIN.invoke(...)
+          - pattern: $CHAIN.invoke(...).content
+          - pattern: ollama.chat(...)
+          - pattern: $RESP.choices[0].message.content
+          - pattern: $RESP.content[0].text
+          - pattern: $RESP.output_text
+    pattern-sinks:
+      - pattern-either:
+          - pattern: Markup(...)
+          - pattern: markupsafe.Markup(...)
+          - pattern: mark_safe(...)
+          - pattern: render_template_string(...)
+          - pattern: HTMLResponse(...)
+          - pattern: $ST.markdown(..., unsafe_allow_html=True)
+          - pattern: $ST.html(...)
+
+  - id: aisg-sink-url-python
+    message: Model output selects the URL of an outbound request
+    severity: WARNING
+    languages: [python]
+    mode: taint
+    metadata:
+      aisg_rule: AUD-405
+      aisg_rule_id: AUD-405
+      kind: url
+      category: security
+    pattern-sources:
+      - pattern-either:
+          - pattern: $CLIENT.chat.completions.create(...)
+          - pattern: $CLIENT.messages.create(...)
+          - pattern: $CLIENT.responses.create(...)
+          - pattern: $MODEL.generate_content(...)
+          - pattern: $CHAIN.invoke(...)
+          - pattern: $CHAIN.invoke(...).content
+          - pattern: ollama.chat(...)
+          - pattern: $RESP.choices[0].message.content
+          - pattern: $RESP.content[0].text
+          - pattern: $RESP.output_text
+    pattern-sinks:
+      - pattern-either:
+          - pattern: requests.$M(...)
+          - pattern: httpx.$M(...)
+          - pattern: $SESSION.get(...)
+          - pattern: $SESSION.post(...)
+          - pattern: urllib.request.urlopen(...)
+          - pattern: urlopen(...)
+          - pattern: aiohttp.ClientSession().$M(...)
+
+  - id: aisg-sink-fs-python
+    message: Model output selects a filesystem path
+    severity: WARNING
+    languages: [python]
+    mode: taint
+    metadata:
+      aisg_rule: AUD-406
+      aisg_rule_id: AUD-406
+      kind: fs
+      category: security
+    pattern-sources:
+      - pattern-either:
+          - pattern: $CLIENT.chat.completions.create(...)
+          - pattern: $CLIENT.messages.create(...)
+          - pattern: $CLIENT.responses.create(...)
+          - pattern: $MODEL.generate_content(...)
+          - pattern: $CHAIN.invoke(...)
+          - pattern: $CHAIN.invoke(...).content
+          - pattern: ollama.chat(...)
+          - pattern: $RESP.choices[0].message.content
+          - pattern: $RESP.content[0].text
+          - pattern: $RESP.output_text
+    pattern-sinks:
+      - pattern-either:
+          - pattern: open(...)
+          - pattern: Path(...)
+          - pattern: $P.write_text(...)
+          - pattern: $P.write_bytes(...)
+          - pattern: $P.unlink(...)
+          - pattern: shutil.$F(...)
+          - pattern: os.remove(...)
+          - pattern: os.unlink(...)
+          - pattern: os.rename(...)
+          - pattern: os.makedirs(...)
+          - pattern: os.rmdir(...)
+
+  # ---------------------------------------------------------------------------
+  # JavaScript / TypeScript
+  # ---------------------------------------------------------------------------
+  - id: aisg-sink-shell-js
+    message: Model output reaches a shell command
+    severity: ERROR
+    languages: [javascript, typescript]
+    mode: taint
+    metadata:
+      aisg_rule: AUD-401
+      aisg_rule_id: AUD-401
+      kind: shell
+      category: security
+    pattern-sources:
+      - pattern-either:
+          - pattern: $CLIENT.chat.completions.create(...)
+          - pattern: $CLIENT.messages.create(...)
+          - pattern: $CLIENT.responses.create(...)
+          - pattern: $MODEL.generateContent(...)
+          - pattern: generateText(...)
+          - pattern: streamText(...)
+          - pattern: generateObject(...)
+          - pattern: $CHAIN.invoke(...)
+          - pattern: ollama.chat(...)
+          - pattern: $RESP.choices[0].message.content
+          - pattern: $RESP.content[0].text
+          - pattern: $RESP.output_text
+          - pattern: $RESP.text
+    pattern-sinks:
+      - pattern-either:
+          - pattern: exec(...)
+          - pattern: execSync(...)
+          - pattern: spawn(...)
+          - pattern: spawnSync(...)
+          - pattern: execFile(...)
+          - pattern: execFileSync(...)
+          - pattern: $CP.exec(...)
+          - pattern: $CP.execSync(...)
+          - pattern: $CP.spawn(...)
+          - pattern: $CP.spawnSync(...)
+          - pattern: $CP.execFile(...)
+
+  - id: aisg-sink-eval-js
+    message: Model output is evaluated as code
+    severity: ERROR
+    languages: [javascript, typescript]
+    mode: taint
+    metadata:
+      aisg_rule: AUD-402
+      aisg_rule_id: AUD-402
+      kind: eval
+      category: security
+    pattern-sources:
+      - pattern-either:
+          - pattern: $CLIENT.chat.completions.create(...)
+          - pattern: $CLIENT.messages.create(...)
+          - pattern: $CLIENT.responses.create(...)
+          - pattern: $MODEL.generateContent(...)
+          - pattern: generateText(...)
+          - pattern: streamText(...)
+          - pattern: generateObject(...)
+          - pattern: $CHAIN.invoke(...)
+          - pattern: ollama.chat(...)
+          - pattern: $RESP.choices[0].message.content
+          - pattern: $RESP.content[0].text
+          - pattern: $RESP.output_text
+          - pattern: $RESP.text
+    pattern-sinks:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: new Function(...)
+          - pattern: vm.runInNewContext(...)
+          - pattern: vm.runInThisContext(...)
+          - pattern: vm.runInContext(...)
+          - pattern: new vm.Script(...)
+          - pattern: setTimeout($CODE, ...)
+
+  - id: aisg-sink-sql-js
+    message: Model output reaches a SQL statement
+    severity: ERROR
+    languages: [javascript, typescript]
+    mode: taint
+    metadata:
+      aisg_rule: AUD-403
+      aisg_rule_id: AUD-403
+      kind: sql
+      category: security
+    pattern-sources:
+      - pattern-either:
+          - pattern: $CLIENT.chat.completions.create(...)
+          - pattern: $CLIENT.messages.create(...)
+          - pattern: $CLIENT.responses.create(...)
+          - pattern: $MODEL.generateContent(...)
+          - pattern: generateText(...)
+          - pattern: streamText(...)
+          - pattern: generateObject(...)
+          - pattern: $CHAIN.invoke(...)
+          - pattern: ollama.chat(...)
+          - pattern: $RESP.choices[0].message.content
+          - pattern: $RESP.content[0].text
+          - pattern: $RESP.output_text
+          - pattern: $RESP.text
+    pattern-sinks:
+      - pattern-either:
+          - pattern: $DB.query(...)
+          - pattern: $DB.raw(...)
+          - pattern: $DB.execute(...)
+          - pattern: $DB.exec(...)
+          - pattern: sequelize.query(...)
+          - pattern: $PRISMA.$queryRawUnsafe(...)
+          - pattern: $PRISMA.$executeRawUnsafe(...)
+
+  - id: aisg-sink-html-js
+    message: Model output is rendered as HTML without escaping
+    severity: WARNING
+    languages: [javascript, typescript]
+    mode: taint
+    metadata:
+      aisg_rule: AUD-404
+      aisg_rule_id: AUD-404
+      kind: html
+      category: security
+    pattern-sources:
+      - pattern-either:
+          - pattern: $CLIENT.chat.completions.create(...)
+          - pattern: $CLIENT.messages.create(...)
+          - pattern: $CLIENT.responses.create(...)
+          - pattern: $MODEL.generateContent(...)
+          - pattern: generateText(...)
+          - pattern: streamText(...)
+          - pattern: generateObject(...)
+          - pattern: $CHAIN.invoke(...)
+          - pattern: ollama.chat(...)
+          - pattern: $RESP.choices[0].message.content
+          - pattern: $RESP.content[0].text
+          - pattern: $RESP.output_text
+          - pattern: $RESP.text
+    pattern-sinks:
+      - pattern-either:
+          - pattern: $EL.innerHTML = $X
+          - pattern: $EL.outerHTML = $X
+          - pattern: document.write(...)
+          - pattern: document.writeln(...)
+          - pattern: $EL.insertAdjacentHTML(...)
+          - pattern: "{ __html: $X }"
+          - pattern: $ROOT.html(...)
+
+  - id: aisg-sink-url-js
+    message: Model output selects the URL of an outbound request
+    severity: WARNING
+    languages: [javascript, typescript]
+    mode: taint
+    metadata:
+      aisg_rule: AUD-405
+      aisg_rule_id: AUD-405
+      kind: url
+      category: security
+    pattern-sources:
+      - pattern-either:
+          - pattern: $CLIENT.chat.completions.create(...)
+          - pattern: $CLIENT.messages.create(...)
+          - pattern: $CLIENT.responses.create(...)
+          - pattern: $MODEL.generateContent(...)
+          - pattern: generateText(...)
+          - pattern: streamText(...)
+          - pattern: generateObject(...)
+          - pattern: $CHAIN.invoke(...)
+          - pattern: ollama.chat(...)
+          - pattern: $RESP.choices[0].message.content
+          - pattern: $RESP.content[0].text
+          - pattern: $RESP.output_text
+          - pattern: $RESP.text
+    pattern-sinks:
+      - pattern-either:
+          - pattern: fetch(...)
+          - pattern: axios(...)
+          - pattern: axios.$M(...)
+          - pattern: got(...)
+          - pattern: http.request(...)
+          - pattern: http.get(...)
+          - pattern: https.request(...)
+          - pattern: https.get(...)
+          - pattern: new URL(...)
+
+  - id: aisg-sink-fs-js
+    message: Model output selects a filesystem path
+    severity: WARNING
+    languages: [javascript, typescript]
+    mode: taint
+    metadata:
+      aisg_rule: AUD-406
+      aisg_rule_id: AUD-406
+      kind: fs
+      category: security
+    pattern-sources:
+      - pattern-either:
+          - pattern: $CLIENT.chat.completions.create(...)
+          - pattern: $CLIENT.messages.create(...)
+          - pattern: $CLIENT.responses.create(...)
+          - pattern: $MODEL.generateContent(...)
+          - pattern: generateText(...)
+          - pattern: streamText(...)
+          - pattern: generateObject(...)
+          - pattern: $CHAIN.invoke(...)
+          - pattern: ollama.chat(...)
+          - pattern: $RESP.choices[0].message.content
+          - pattern: $RESP.content[0].text
+          - pattern: $RESP.output_text
+          - pattern: $RESP.text
+    pattern-sinks:
+      - pattern-either:
+          - pattern: fs.$F(...)
+          - pattern: fs.promises.$F(...)
+          - pattern: fsp.$F(...)
+          - pattern: $FS.writeFile(...)
+          - pattern: $FS.writeFileSync(...)
+          - pattern: $FS.readFile(...)
+          - pattern: $FS.readFileSync(...)
+          - pattern: $FS.unlink(...)
+          - pattern: $FS.unlinkSync(...)
+          - pattern: $FS.rm(...)
+          - pattern: $FS.rmSync(...)

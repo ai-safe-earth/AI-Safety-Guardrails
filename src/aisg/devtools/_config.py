@@ -33,7 +33,7 @@ except ModuleNotFoundError:  # Python 3.10
 
 # Options argparse stores as a comma-separated string, but which are more
 # naturally written as a list in TOML.
-_LIST_AS_CSV = frozenset({"exclude", "rules"})
+_LIST_AS_CSV = frozenset({"exclude", "rules", "tools", "trusted_mcp_hosts", "fail_on_unknown"})
 
 
 def find_pyproject(start: Path | None = None) -> Path | None:

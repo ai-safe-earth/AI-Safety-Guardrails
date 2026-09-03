@@ -860,3 +860,10 @@ class AuditContext:
     external: list[ExternalToolResult] = field(default_factory=list)
     files: list[Any] = field(default_factory=list)
     reports: list[ReportRecord] = field(default_factory=list)
+    # discover.ConfigFacts: the structured host/MCP/CI/env records behind the
+    # inventory's plain-dict sections. Typed loosely to keep model.py free of
+    # imports from the modules that build it.
+    config_facts: object | None = None
+    # relpath -> decoded text, filled lazily by `rules.file_text()` so rules that
+    # need a window of source share one read per file.
+    texts: dict[str, str | None] = field(default_factory=dict, repr=False, compare=False)

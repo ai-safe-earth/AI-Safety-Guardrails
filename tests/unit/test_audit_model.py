@@ -598,8 +598,13 @@ def test_now_iso_format():
 
 
 def test_model_text_has_no_compliance_claims():
+    # The ban list lives in report.py, assembled from fragments; importing it keeps this
+    # file free of the phrases too.
+    from aisg.devtools.audit.report import BANNED_PHRASES
+
     src = Path(__file__).resolve().parents[2] / "src" / "aisg" / "devtools" / "audit" / "model.py"
     text = src.read_text(encoding="utf-8").lower()
-    for phrase in ("is compliant", "compliance verified", "certified", "meets the requirements"):
-        assert phrase not in text
+    assert len(BANNED_PHRASES) == 7
+    for phrase in BANNED_PHRASES:
+        assert phrase not in text, phrase
     assert text.isascii()

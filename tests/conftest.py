@@ -52,3 +52,41 @@ def py_agent(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return target
+
+
+@pytest.fixture
+def audit_context() -> Callable[..., object]:
+    """
+    Build an `AuditContext` for a fixture tree the way `aisg audit` does:
+    walk -> discover -> pydeep, with every UNKNOWN item folded in.
+
+    `build(root, deep=True, options=None, exclude=())`. Rule tests use this so
+    each of them exercises the real discovery output rather than a hand-built
+    inventory. `options` is duck-typed (any object with `include_home`,
+    `trusted_mcp_hosts`, ... attributes); None means defaults.
+    """
+    from aisg.devtools.audit import discover, pydeep, walk
+    from aisg.devtools.audit.model import AuditContext
+
+    def build(root: Path, *, deep: bool = True, options: object = None, exclude=()) -> AuditContext:
+        root = Path(root)
+        files, units, unknown = walk.walk(root, walk.WalkOptions(exclude=tuple(exclude)))
+        inventory, hits, facts = discover.discover(root, files, units, options)
+        unknown = list(unknown) + list(inventory.unknown)
+        pyfacts = None
+        if deep:
+            pyfacts = pydeep.analyse_unit([f for f in files if f.lang == "python"], inventory)
+            unknown.extend(pyfacts.unknown)
+        return AuditContext(
+            root=root,
+            inventory=inventory,
+            pyfacts=pyfacts,
+            hits=hits,
+            options=options,
+            unknown=unknown,
+            files=files,
+            reports=list(inventory.reports),
+            config_facts=facts,
+        )
+
+    return build
