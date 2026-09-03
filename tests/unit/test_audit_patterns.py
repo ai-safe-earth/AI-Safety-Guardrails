@@ -212,7 +212,38 @@ def test_llm_call_negative(line: str) -> None:
 
 
 def test_llm_provider_by_key_covers_every_call_key() -> None:
-    assert _keys(p.table_for("*", p.LLM_CALL_PATTERNS)) == set(p.LLM_PROVIDER_BY_KEY)
+    every_key = {key for entries in p.LLM_CALL_PATTERNS.values() for key, _ in entries}
+    assert every_key == set(p.LLM_PROVIDER_BY_KEY)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'import { generateText } from "ai";',
+        "const result = await generateText({ model: openai('gpt-4o'), prompt })",
+        "const stream = streamText({ model, messages });",
+        "const obj = await generateObject({ model, schema, prompt });",
+        "for await (const part of streamObject({ model, schema })) {}",
+    ],
+)
+def test_vercel_ai_call_is_typescript_only(line: str) -> None:
+    assert "vercel_ai" in _hits(p.table_for("typescript", p.LLM_CALL_PATTERNS), line)
+    assert "vercel_ai" in _hits(p.table_for("javascript", p.LLM_CALL_PATTERNS), line)
+    assert "vercel_ai" not in _hits(p.table_for("python", p.LLM_CALL_PATTERNS), line)
+    assert p.LLM_PROVIDER_BY_KEY["vercel_ai"] == "multi"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'import ai from "./ai";',
+        "from ai import helper",
+        "const text = generateTextReport(data)",
+        "streamTextures(scene)",
+    ],
+)
+def test_vercel_ai_negative(line: str) -> None:
+    assert "vercel_ai" not in _hits(p.table_for("typescript", p.LLM_CALL_PATTERNS), line)
 
 
 @pytest.mark.parametrize(
@@ -607,6 +638,7 @@ def test_sink_eval_tier_documented_exclusions() -> None:
     "line,key",
     [
         ("text = resp.choices[0].message.content", "choices_message_content"),
+        ("resp := parsed.Choices[0].Message.Content", "choices_message_content_go"),
         ("text = message.content[0].text", "content_text"),
         ("text = response.output_text", "output_text"),
         ("text = response.text", "text"),
@@ -620,7 +652,17 @@ def test_llm_response_accessor_positive(line: str, key: str) -> None:
     assert key in _hits(p.LLM_RESPONSE_ACCESSORS, line)
 
 
-@pytest.mark.parametrize("line", [BENIGN, "self.text = 'hello'", "label.text = title", "os.run()"])
+@pytest.mark.parametrize(
+    "line",
+    [
+        BENIGN,
+        "self.text = 'hello'",
+        "label.text = title",
+        "os.run()",
+        "n := len(parsed.Choices)",
+        "c := parsed.Choices[1].Message.Content",
+    ],
+)
 def test_llm_response_accessor_negative(line: str) -> None:
     assert not _hits(p.LLM_RESPONSE_ACCESSORS, line)
 
@@ -1410,6 +1452,104 @@ def test_discussion_cues_and_quoted_span_shape() -> None:
     assert p.QUOTED_SPAN_RE.search("use `aisg audit .` here")
     assert not p.QUOTED_SPAN_RE.search("it's fine")
     assert not p.QUOTED_SPAN_RE.search("a 'x' b")
+
+
+# ---------------------------------------------------------------------------
+# Comment spans: a mention in a comment or docstring is not a deployment
+# ---------------------------------------------------------------------------
+
+
+def _commented(text: str, lang: str) -> list[str]:
+    """The text covered by every span, in order, so a test reads as what was masked."""
+    lines = text.split("\n")
+    spans = p.comment_spans(text, lang)
+    return [lines[n - 1][s:e] for n in sorted(spans) for s, e in spans[n]]
+
+
+def test_python_hash_comments_and_triple_quotes() -> None:
+    text = (
+        'x = 1  # from aisg import y\n"""doc\nLlamaGuard"""\nz = "# not"  # tail\n'
+        "s = '''a\nb''' + 1\nt = \"it's\"  # apostrophe\n"
+    )
+    assert _commented(text, "python") == [
+        "# from aisg import y",
+        '"""doc',
+        'LlamaGuard"""',
+        "# tail",
+        "'''a",
+        "b'''",
+        "# apostrophe",
+    ]
+
+
+def test_python_escaped_quote_does_not_end_the_string() -> None:
+    text = 'a = "say \\"hi\\" # no"  # yes\n'
+    assert _commented(text, "python") == ["# yes"]
+
+
+def test_slash_comments_block_comments_and_jsdoc_stars() -> None:
+    text = (
+        "a = 1 // import { Langfuse }\n/* multi\n * LlamaGuard\n */ const y = 1;\n"
+        " * stray\n/** doc */ x = 2;\n"
+    )
+    assert _commented(text, "typescript") == [
+        "// import { Langfuse }",
+        "/* multi",
+        " * LlamaGuard",
+        " */",
+        "* stray",
+        "/** doc */",
+    ]
+
+
+def test_slash_inside_strings_and_template_literals_is_not_a_comment() -> None:
+    text = "s = \"//x\"; t = '//y'; // real\nq = `# a\n// inside template\n` + 1; // after\n"
+    assert _commented(text, "typescript") == ["// real", "// after"]
+    go = "x := `raw\n// inside raw\n`\n// real\n"
+    assert _commented(go, "go") == ["// real"]
+
+
+def test_hash_style_for_yaml_toml_env_and_ruby() -> None:
+    text = "model: gpt-4o  # model: claude\n# model: gpt-4o-mini\nkey: 'a # b'\n"
+    assert _commented(text, "config") == ["# model: claude", "# model: gpt-4o-mini"]
+    assert _commented("x = 1 # c\n", "ruby") == ["# c"]
+
+
+def test_json_uses_slash_style() -> None:
+    assert _commented('{"a": "//x"} // trailing\n', "json") == ["// trailing"]
+
+
+def test_unknown_language_has_no_spans() -> None:
+    assert p.comment_spans("x // y\n# z\n", "other") == {}
+    assert p.comment_spans("x // y\n", "") == {}
+
+
+def test_in_comment_is_half_open_on_columns() -> None:
+    spans = p.comment_spans("a = 1  # c\n", "python")
+    assert spans == {1: [(7, 10)]}
+    assert p.in_comment(spans, 1, 7)
+    assert p.in_comment(spans, 1, 9)
+    assert not p.in_comment(spans, 1, 6)
+    assert not p.in_comment(spans, 1, 10)
+    assert not p.in_comment(spans, 2, 0)
+
+
+@pytest.mark.parametrize(
+    "path, expected",
+    [
+        ("promptfooconfig.yaml", True),
+        ("evals/promptfooconfig.yml", True),
+        ("promptfooconfig.attacks.json", True),
+        ("PromptfooConfig.yaml", True),
+        ("promptfoo.yaml", False),
+        ("docs/promptfooconfig.md", False),
+        ("mypromptfooconfig.yaml", False),
+    ],
+)
+def test_eval_file_globs(path: str, expected: bool) -> None:
+    keys = {key for key, rx in p.EVAL_FILE_GLOBS if rx.search(path)}
+    assert bool(keys) is expected, path
+    assert keys <= {key for key, _rx in p.EVAL_TOOLS}
 
 
 # ---------------------------------------------------------------------------

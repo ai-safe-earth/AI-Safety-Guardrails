@@ -281,6 +281,48 @@ class TestWalkGitIgnore:
 
         assert _rels(records) == ["local_only.py", "sub/.gitignore", "sub/keep.py"]
 
+    def test_pruned_gitignored_directories_are_reported_as_unknown(self, tmp_path: Path) -> None:
+        """A gitignored logs/ or evals/ directory is where PII and eval corpora
+        accumulate; pruning it silently would read as coverage."""
+        _touch(tmp_path, ".gitignore", "logs/\nevals/\nout/\n")
+        _touch(tmp_path, "app.py", "print(1)\n")
+        _touch(tmp_path, "logs/agent.log", "user said hi\n")
+        _touch(tmp_path, "evals/cases.jsonl", "{}\n")
+        _touch(tmp_path, "svc/out/report.txt", "x\n")
+        _touch(tmp_path, "svc/keep.py", "y = 1\n")
+
+        records, _, unknown = walk(tmp_path)
+
+        assert _rels(records) == [".gitignore", "app.py", "svc/keep.py"]
+        items = [u for u in unknown if u.what == "gitignored directories skipped"]
+        assert len(items) == 1
+        item = items[0]
+        assert item.category is UnknownCategory.RUNTIME
+        assert item.why == "3 gitignored director(ies) not walked: evals, logs, svc/out"
+        assert item.how_to_resolve is not None
+        assert "--include-ignored" in item.how_to_resolve
+
+    def test_include_ignored_reports_no_pruned_directories(self, tmp_path: Path) -> None:
+        _touch(tmp_path, ".gitignore", "logs/\n")
+        _touch(tmp_path, "logs/agent.log", "user said hi\n")
+        _touch(tmp_path, "app.py", "print(1)\n")
+
+        records, _, unknown = walk(tmp_path, WalkOptions(include_ignored=True))
+
+        assert "logs/agent.log" in _rels(records)
+        assert not [u for u in unknown if u.what == "gitignored directories skipped"]
+
+    def test_long_pruned_directory_list_is_truncated(self, tmp_path: Path) -> None:
+        names = [f"d{i}" for i in range(8)]
+        _touch(tmp_path, ".gitignore", "".join(f"{n}/\n" for n in names))
+        for n in names:
+            _touch(tmp_path, f"{n}/f.txt")
+
+        _, _, unknown = walk(tmp_path)
+
+        item = next(u for u in unknown if u.what == "gitignored directories skipped")
+        assert item.why == "8 gitignored director(ies) not walked: d0, d1, d2, d3, d4, d5, +2 more"
+
 
 # ---------------------------------------------------------------------------
 # file guards: binary, size, marker, unreadable

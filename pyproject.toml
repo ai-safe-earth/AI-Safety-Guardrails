@@ -37,6 +37,12 @@ dependencies = [
     "aiohttp>=3.9",
 ]
 
+[project.urls]
+# SECURITY.md cites the Security URL: GitHub private vulnerability reporting
+# for this repository, so a report never lands in a public issue.
+Repository = "https://github.com/ai-safe-earth/AI-Safety-Guardrails"
+Security = "https://github.com/ai-safe-earth/AI-Safety-Guardrails/security/advisories/new"
+
 [project.optional-dependencies]
 # PII detection (Presidio)
 presidio = [
@@ -225,6 +231,14 @@ fail_on_warnings = false    # set true for strict PR enforcement
 # -------------------------------------------------------
 # Read by aisg/devtools/audit/main.py via aisg/devtools/_config.py.
 # An explicit CLI flag always wins over a value here.
+#
+# exclude: tests/ and the probe corpus hold fake keys and injection text the
+# rules must catch elsewhere but not here. audit-baseline.json is NOT
+# excluded: it is scanned like any other file, so a reason there must
+# describe the accepted evidence without quoting the literal that produced
+# it (an over-grant flag, a kill-switch name, a floating model id) or the
+# self-audit reports the finding a second time, from the baseline itself.
+# tests/unit/test_audit_baseline.py pins that the committed file stays quiet.
 [tool.aisg-audit]
 exclude = ["tests", "src/aisg/probes"]
 fail-on = "high"

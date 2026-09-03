@@ -1,3 +1,4 @@
+# aisg-audit: ignore-file
 """aisg/devtools/audit/rules/__init__.py
 ----------------------------------------
 Rule base class and registry for `aisg audit`. Selection is evaluated on every call.

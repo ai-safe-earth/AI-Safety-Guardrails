@@ -440,6 +440,7 @@ def walk(
     manifests: dict[str, str | None] = {"": None}
     symlinks = 0
     unreadable = 0
+    ignored_dirs: list[str] = []
 
     def _onerror(_err: OSError) -> None:
         nonlocal unreadable
@@ -466,6 +467,7 @@ def walk(
             if _skip_dir(name, rel) or _excluded(rel, exclude):
                 continue
             if not opts.include_ignored and ignore.match(rel, is_dir=True):
+                ignored_dirs.append(rel)
                 continue
             keep.append(name)
         dirnames[:] = keep
@@ -538,7 +540,31 @@ def walk(
                 how_to_resolve="Check permissions on the target tree; unreadable paths were not audited.",
             )
         )
+    if ignored_dirs:
+        unknown.append(_ignored_dirs_item(ignored_dirs))
     return records, units, unknown
+
+
+_IGNORED_DIRS_NAMED = 6
+
+
+def _ignored_dirs_item(ignored_dirs: list[str]) -> UnknownItem:
+    """A `.gitignore`d directory is not walked, so nothing in it was audited. That is
+    where logs, eval outputs and scratch data accumulate -- the files most likely to
+    hold PII or the eval corpus -- so the pruning is reported, never silent."""
+    names = sorted(ignored_dirs)
+    shown = ", ".join(names[:_IGNORED_DIRS_NAMED])
+    if len(names) > _IGNORED_DIRS_NAMED:
+        shown += f", +{len(names) - _IGNORED_DIRS_NAMED} more"
+    return UnknownItem(
+        category=UnknownCategory.RUNTIME,
+        what="gitignored directories skipped",
+        why=f"{len(names)} gitignored director(ies) not walked: {shown}",
+        how_to_resolve=(
+            "Re-run with --include-ignored to audit them; logs/, evals/ and data "
+            "directories are where PII and eval corpora accumulate."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

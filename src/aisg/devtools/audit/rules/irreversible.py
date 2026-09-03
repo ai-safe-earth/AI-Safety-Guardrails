@@ -1,3 +1,4 @@
+# aisg-audit: ignore-file
 """aisg/devtools/audit/rules/irreversible.py
 -----------------------------------------
 P2 rules AUD-201..AUD-203: tools that cannot be undone. An irreversible tool with no
@@ -5,8 +6,11 @@ human gate on its call path, a gate that exists but is inert or bypassed, and an
 irreversible tool with no dry-run or idempotency affordance.
 
 Tools come through `blast_radius.iter_tools` (AST tier first, grep tier for the rest).
-Gates come from `pyfacts.gates` / `pyfacts.fail_open` on the AST tier and from the
-`gate_bypass` grep table otherwise; deep evidence wins at the same (file, line).
+Gates come from `pyfacts.gates` on the AST tier and from the `gate_bypass` grep table
+otherwise (code and structured config alike); deep evidence wins at the same
+(file, line). A guard call whose exception is swallowed is a fail-open guard, not an
+inert gate: `pyfacts.fail_open` belongs to AUD-802 in `guards.py` and is never read
+here, so one site is reported under one rule id.
 MCP-served tools are never inspected here: their gates live in the server process.
 """
 
@@ -183,24 +187,25 @@ class InertGate(AuditRule):
         "`aisg measure` and a runtime drill are for.",
         "AST tier: only the shapes pydeep knows (`require_approval=True` without "
         "`approval_callback`, `interrupt_before` without a checkpointer, a GATE_BYPASS "
-        "literal, an approval call inside a swallowing `except`) are recognised.",
-        "Grep tier: a GATE_BYPASS literal in a test or a fixture reads the same as one in "
-        "production code.",
+        "literal) are recognised. A guard call inside a swallowing `except` is AUD-802's "
+        "fail-open finding, not an inert gate here.",
+        "Grep tier: a GATE_BYPASS literal in a test, a fixture or a sample config reads the "
+        "same as one in production code.",
         "MCP-served tools are not inspected; a gate switched off in the server's own config "
         "is not seen.",
     )
     recommendation = Recommendation(
         tier=Tier.T2,
-        summary="Make the gate fail closed: no callback, no checkpointer or a swallowed error means deny.",
+        summary="Make the gate real: a missing callback or checkpointer, or a bypass flag, means deny.",
         alternatives=(
             "Pass a real `approval_callback` (or `approver`) and treat a missing one as a "
             "configuration error at startup, not at call time.",
             "LangGraph: compile the graph with a checkpointer whenever `interrupt_before` is "
             "set; without one the interrupt never pauses.",
             "Remove `auto_approve=True` / `human_in_the_loop=False` / `--yes` from production "
-            "paths and keep them behind an explicit test-only flag.",
-            "aisg: ToolPolicyGuard with `fail_open=False` so an exception in the approval "
-            "path returns Action.HUMAN instead of passing.",
+            "paths and config files and keep them behind an explicit test-only flag.",
+            "aisg: ToolPolicyGuard with an `approval_callback` that returns Action.HUMAN on "
+            "denial or timeout; see AUD-802 for the fail-open side of the same gate.",
         ),
     )
 
@@ -214,9 +219,6 @@ class InertGate(AuditRule):
                 if not reason:
                     continue
                 self._deep(ctx, findings, deep_lines, gate, str(reason))
-            for gate in getattr(pyfacts, "fail_open", None) or []:
-                reason = str(getattr(gate, "inert_reason", None) or "exception swallowed")
-                self._deep(ctx, findings, deep_lines, gate, f"fails open: {reason}")
         grep_seen: set[tuple[str, int]] = set()
         for hit in hits_in(ctx, "gate_bypass"):
             key = (hit.file, hit.line)

@@ -27,6 +27,7 @@ from aisg.devtools.audit.model import (
     Severity,
 )
 from aisg.devtools.audit.rules import run_rules
+from aisg.devtools.audit.rules.guards import GuardFailOpen
 from aisg.devtools.audit.rules.irreversible import (
     DRY_RUN_SYMBOLS,
     RULES,
@@ -286,8 +287,9 @@ def test_aud202_grep_tier_covers_non_python_even_when_deep(tmp_path: Path, audit
     assert "autoApprove: true" in finding.evidence[0].snippet
 
 
-def test_aud202_fail_open_approval_is_reported(tmp_path: Path, audit_context):
-    root = _write_tree(
+def _swallow_tree(tmp_path: Path) -> Path:
+    """A guard whose exception is swallowed: fail-open, which is AUD-802's finding."""
+    return _write_tree(
         tmp_path / "swallow",
         {
             "pyproject.toml": "[project]\nname = 'swallow'\n",
@@ -300,13 +302,58 @@ def test_aud202_fail_open_approval_is_reported(tmp_path: Path, audit_context):
             ),
         },
     )
-    ctx = audit_context(root)
+
+
+def test_aud202_fail_open_guard_belongs_to_aud802(tmp_path: Path, audit_context):
+    """pydeep records the swallowed guard call; AUD-802 reports it and AUD-202 stays silent."""
+    ctx = audit_context(_swallow_tree(tmp_path))
     assert ctx.pyfacts is not None and ctx.pyfacts.fail_open
-    finding = _only(_eval(InertGate, ctx), "AUD-202")
+    assert _eval(InertGate, ctx) == []
+    finding = _only(_eval(GuardFailOpen, ctx), "AUD-802")
     assert finding.location == ("agent.py", 9)
     assert finding.confidence.match_kind is MatchKind.AST
-    assert finding.notes == "fail_open: fails open: exception swallowed"
-    assert finding.scope.name == "agent.py::guarded"
+
+
+def test_aud202_gate_bypass_in_a_config_file_is_a_grep_finding(tmp_path: Path, audit_context):
+    """`auto_approve: true` in YAML reaches AUD-202 now that discovery scans config files."""
+    root = _write_tree(
+        tmp_path / "cfg",
+        {
+            "pyproject.toml": "[project]\nname = 'cfg'\n",
+            "agent.py": (
+                "from anthropic import Anthropic\n\nclient = Anthropic()\n\n\n"
+                "def run(prompt):\n"
+                "    return client.messages.create(model='m', max_tokens=10, messages=[])\n"
+            ),
+            "config/agent.yaml": "tools:\n  send_email:\n    auto_approve: true\n",
+        },
+    )
+    for deep in (True, False):
+        ctx = audit_context(root, deep=deep)
+        finding = _only(_eval(InertGate, ctx), "AUD-202")
+        assert finding.location == ("config/agent.yaml", 3)
+        assert finding.confidence.match_kind is MatchKind.GREP
+        assert finding.scope.kind == "file"
+        assert "auto_approve: true" in finding.evidence[0].snippet
+        assert finding.notes and "GATE_BYPASS" in finding.notes
+
+
+def _locations(findings) -> set[tuple[str, int]]:
+    return {f.location for f in findings}
+
+
+def test_aud202_and_aud802_never_share_a_site(tmp_path: Path, py_agent, audit_context):
+    """One site, one rule id: a fail-open guard is AUD-802 only, an inert gate AUD-202 only."""
+    for root in (py_agent, _swallow_tree(tmp_path), _gate_tree(tmp_path)):
+        for deep in (True, False):
+            ctx = audit_context(root, deep=deep)
+            inert = _locations(_eval(InertGate, ctx))
+            fail_open = _locations(_eval(GuardFailOpen, ctx))
+            assert inert & fail_open == set(), (root.name, deep)
+    # The swallow tree reaches AUD-802 and the gate tree reaches AUD-202, so the
+    # disjointness above is a real check rather than two empty sets.
+    assert _locations(_eval(GuardFailOpen, audit_context(_swallow_tree(tmp_path))))
+    assert _locations(_eval(InertGate, audit_context(_gate_tree(tmp_path))))
 
 
 def test_aud202_a_live_gate_is_not_reported(py_agent, audit_context):

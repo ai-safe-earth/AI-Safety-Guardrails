@@ -288,7 +288,7 @@ def test_baseline_fixture_has_no_surface(audit_fixture) -> None:
 
 
 def test_ts_agent(audit_fixture) -> None:
-    inv, _hits, _facts = run(audit_fixture("ts_agent"))
+    inv, hits, _facts = run(audit_fixture("ts_agent"))
     assert inv.units[0].ai_surface is True
     deep = unknown_of(inv, UnknownCategory.DEEP)
     assert deep and "typescript" in deep[0].what
@@ -297,6 +297,11 @@ def test_ts_agent(audit_fixture) -> None:
     assert any(kind == "shell" and "exec" in symbol for kind, symbol in kinds)
     assert any(kind == "html" and "innerHTML" in symbol for kind, symbol in kinds)
     assert any(f["name"] == "vercel_ai" for f in inv.frameworks)
+    # The Vercel AI SDK is an LLM call in its own right: the import and the call site.
+    vercel = [(h.line, h.snippet) for h in by_table(hits, "llm_call") if h.key == "vercel_ai"]
+    assert [line for line, _ in vercel] == [4, 9]
+    assert any(c["file"] == "src/agent.ts" and c["line"] == 9 for c in inv.llm_calls)
+    assert {c["provider"] for c in inv.llm_calls if c["line"] == 9} == {"multi"}
 
 
 def test_go_service(audit_fixture) -> None:
@@ -307,6 +312,9 @@ def test_go_service(audit_fixture) -> None:
     assert any(s["kind"] == "shell" and "exec.Command" in s["symbol"] for s in inv.sinks)
     assert any(h.key == "generic_http" for h in by_table(hits, "llm_call"))
     assert inv.llm_calls and inv.llm_calls[0]["file"] == "main.go"
+    # CamelCase accessor: the response line is the source the shell sink is co-located with.
+    accessors = [(h.line, h.key) for h in by_table(hits, "response_accessor")]
+    assert accessors == [(57, "choices_message_content_go")]
 
 
 def test_mcp_poison(audit_fixture) -> None:
@@ -433,6 +441,21 @@ def test_reports_are_read_with_age(reports_root: Path) -> None:
     assert probe.body["summary"]["sent"] == 10
 
 
+def test_reports_are_not_eval_entries(reports_root: Path) -> None:
+    # A report names the tool that wrote it ("aisg probe"); that is evidence of a past
+    # run, not an eval harness. The grep hit stays; the evals[] entry does not.
+    (reports_root / "promptfooconfig.yaml").write_text(
+        "description: promptfoo suite\nprompts: [p.txt]\ntests:\n  - vars: {q: benign question}\n",
+        encoding="utf-8",
+    )
+    inv, hits, _facts = run(reports_root)
+    report_files = {r.file for r in inv.reports}
+    assert report_files == {"measure-report.json", "measure-report-new.json", "probe-report.json"}
+    assert any(h.file in report_files for h in by_table(hits, "eval_tool"))
+    assert not [e for e in inv.evals if e["file"] in report_files]
+    assert [e["file"] for e in inv.evals] == ["promptfooconfig.yaml"]
+
+
 def test_bad_schema_is_unknown_not_a_report(reports_root: Path) -> None:
     inv, _hits, _facts = run(reports_root)
     assert "bad-schema.json" not in {r.file for r in inv.reports}
@@ -488,6 +511,27 @@ def test_invalid_json_report(tmp_path: Path) -> None:
     report, item = read_report(path, tmp_path)
     assert report is None
     assert item is not None and item.category is UnknownCategory.REPORTS
+
+
+@pytest.mark.parametrize("kind", ["audit", "audit-baseline"])
+def test_own_output_is_neither_a_report_nor_an_unknown(tmp_path: Path, kind: str) -> None:
+    # A committed audit-baseline.json (or a saved audit report) carries `schema: aisg/1`
+    # and matches the report file glob. It is the audit's own output, not measurement
+    # evidence about the system: no ReportRecord, and no "unknown report" noise either.
+    path = tmp_path / "audit-report.json"
+    body = {"schema": "aisg/1", "kind": kind, "generated_at": "2026-08-20T10:15:00Z"}
+    if kind == "audit-baseline":
+        body["fingerprints"] = ["0123456789abcdef"]
+    path.write_text(json.dumps(body), encoding="utf-8")
+    assert read_report(path, tmp_path) == (None, None)
+    assert read_measure_report(path, tmp_path) is None
+    assert read_probe_report(path, tmp_path) is None
+
+    inv, _hits, _facts = run(tmp_path)
+    assert inv.reports == []
+    assert not [
+        u for u in unknown_of(inv, UnknownCategory.REPORTS) if u.what == "audit-report.json"
+    ]
 
 
 def test_read_system_card(tmp_path: Path, audit_fixture) -> None:
@@ -656,6 +700,400 @@ def test_config_files_get_the_config_subset(tmp_path: Path) -> None:
     assert "model_id" in tables
     assert not tables & {"sink", "loop", "external_action", "llm_call"}
     assert inv.loops == []
+
+
+def test_guardrail_entries_carry_unit_and_llm_judge(tmp_path: Path) -> None:
+    root = project(
+        tmp_path,
+        {
+            "judge.py": """
+                from aisg import ClaudeJudge, GuardrailPipeline
+                judge = ClaudeJudge(model="claude-sonnet-4-5")
+                """,
+            "rails.py": "import nemoguardrails\nrails = nemoguardrails.RailsConfig()\n",
+            "preset.yaml": """
+                input:
+                  prompt_injection:
+                    enabled: true
+                    llm_judge: true
+                    fail_open: true
+                """,
+            "svc/pyproject.toml": '[project]\nname = "svc"\n',
+            "svc/guard.py": "from aisg import PIIDetector\nd = PIIDetector()\n",
+        },
+    )
+    inv, _hits, _facts = run(root)
+    entries = {(e["file"], e["lib"]): e for e in inv.guardrails}
+    assert set(entries) == {
+        ("judge.py", "aisg"),
+        ("rails.py", "nemoguardrails"),
+        ("preset.yaml", "aisg_preset"),
+        ("svc/guard.py", "aisg"),
+    }
+    for entry in entries.values():
+        assert set(entry) == {"lib", "file", "line", "unit", "fail_open", "llm_judge"}, entry
+    assert entries[("judge.py", "aisg")]["llm_judge"] is True
+    assert entries[("preset.yaml", "aisg_preset")]["llm_judge"] is True
+    assert entries[("preset.yaml", "aisg_preset")]["fail_open"] is True
+    # Absence of the literal is not evidence of absence: None, never False.
+    assert entries[("rails.py", "nemoguardrails")]["llm_judge"] is None
+    assert entries[("svc/guard.py", "aisg")]["llm_judge"] is None
+    assert entries[("judge.py", "aisg")]["fail_open"] is None
+    units = {e["unit"] for e in entries.values()}
+    assert units == {inv.units[0].id, next(u.id for u in inv.units if u.root == "svc")}
+    assert entries[("svc/guard.py", "aisg")]["unit"] != entries[("judge.py", "aisg")]["unit"]
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_preset_guard_anchors_on_the_key_line_after_a_blank_line(
+    tmp_path: Path, newline: str
+) -> None:
+    # `^\s+` would match the blank line *before* the key and anchor the evidence one
+    # line too early; the fingerprint survives but the reported line is wrong. Both
+    # line endings, because the text is scanned with its `\r` still attached.
+    root = project(tmp_path, {})
+    body = newline.join(
+        [
+            "input:",
+            "  # A comment, then an empty line, then the first guard.",
+            "",
+            "  llm_tool_filter:",
+            "    enabled: true",
+            "",
+        ]
+    )
+    (root / "preset.yaml").write_bytes(body.encode("utf-8"))
+    inv, hits, _facts = run(root)
+    entry = next(e for e in inv.guardrails if e["lib"] == "aisg_preset")
+    assert entry["line"] == 4
+    hit = next(h for h in by_table(hits, "guardrail") if h.file == "preset.yaml")
+    assert hit.line == 4
+    assert hit.snippet.strip() == "llm_tool_filter:"
+
+
+def test_prompt_docs_are_scanned_for_pii(tmp_path: Path) -> None:
+    # Neither value is on the SECRET_PLACEHOLDERS list (example.com and 123-45-6789 are).
+    ssn = "219-09-" + "9999"
+    email = "jane.doe@" + "northwind-mail.net"
+    root = project(
+        tmp_path,
+        {
+            "prompts/system.md": f"You are helpful.\nCustomer on file: {email}\n",
+            "prompts/persona.txt": f"Reference SSN {ssn} when asked.\n",
+            "docs/support.md": f"Escalations go to {email}.\n",
+            "README.txt": f"Reference SSN {ssn}\n",
+        },
+    )
+    _inv, hits, _facts = run(root)
+    pii = by_table(hits, "pii")
+    assert {(h.file, h.line, h.key) for h in pii} == {
+        ("prompts/system.md", 2, "EMAIL"),
+        ("prompts/persona.txt", 1, "SSN"),
+    }
+    # Redacted at the Hit: the value never leaves discovery.
+    for hit in pii:
+        assert "<pii:" in hit.snippet
+        assert email not in hit.snippet and ssn not in hit.snippet
+    # Docs outside PII_FILE_GLOBS keep the doc subset: no PII, no code tables.
+    assert not [h for h in hits if h.file in ("docs/support.md", "README.txt")]
+
+
+def test_keyword_filter_list_spanning_lines(tmp_path: Path) -> None:
+    root = project(
+        tmp_path,
+        {
+            "filters.py": """
+                BANNED_WORDS = [
+                    "alpha",
+                    "beta",
+                ]
+                blocklist = {"one", "two"}
+                STOPWORDS = [
+                    "the",
+                ]
+                """,
+            "filters.ts": 'const badWords = [\n  "alpha",\n];\n',
+        },
+    )
+    _inv, hits, _facts = run(root)
+    found = {(h.file, h.line, h.col, h.key) for h in by_table(hits, "keyword_filter")}
+    # The hit anchors on the name, so the line is the assignment's, not the first word's.
+    assert found == {
+        ("filters.py", 2, 1, "list_literal:BANNED_WORDS"),
+        ("filters.py", 6, 1, "list_literal:blocklist"),
+        ("filters.ts", 1, 7, "list_literal:badWords"),
+    }
+
+
+def test_gate_bypass_in_structured_config(tmp_path: Path) -> None:
+    root = project(
+        tmp_path,
+        {
+            "agent.yaml": """
+                agent:
+                  auto_approve: true
+                  require_approval: false
+                """,
+            "agent.json": '{"tools": {"autoApprove": true, "approval_callback": null}}\n',
+            "agent.toml": "[agent]\nskip_confirmation = true\nconfirm = false\n",
+            # A workflow step is a shell command, not a gate the config switches off.
+            ".github/workflows/ci.yml": """
+                jobs:
+                  build:
+                    steps:
+                      - run: sudo apt-get install -y jq && gh pr merge --yes
+                """,
+            # Docs are never scanned for the table, even when they quote the key.
+            "docs/config.md": "Set `auto_approve: true` to skip the prompt.\n",
+            ".env": "AUTO_APPROVE=true\n",
+        },
+    )
+    _inv, hits, _facts = run(root)
+    bypass = by_table(hits, "gate_bypass")
+    assert {(h.file, h.line) for h in bypass} == {
+        ("agent.yaml", 3),
+        ("agent.yaml", 4),
+        ("agent.json", 1),
+        ("agent.toml", 2),
+        ("agent.toml", 3),
+    }
+    assert all(h.lang == "config" for h in bypass)
+    assert {h.file for h in bypass}.isdisjoint({".github/workflows/ci.yml", "docs/config.md"})
+
+
+# ---------------------------------------------------------------------------
+# Mentions are not deployments: comments and docstrings
+# ---------------------------------------------------------------------------
+
+MENTION_TABLES = ("guardrail", "llm_observability", "eval_tool", "model_id")
+
+
+def mention_hits(hits: list[Hit]) -> set[tuple[str, int, str, str]]:
+    return {(h.file, h.line, h.table, h.key) for h in hits if h.table in MENTION_TABLES}
+
+
+def test_python_comments_and_docstrings_are_not_deployments(tmp_path: Path) -> None:
+    root = project(
+        tmp_path,
+        {
+            "agent.py": '''
+                """Agent entry point.
+
+                Wraps the model with LlamaGuard and reports traces to langfuse; run
+                the promptfoo suite before deploying gpt-4o-mini.
+                """
+                # from aisg import GuardrailPipeline  -- disabled until the preset lands
+                import os  # model: gpt-4o-mini
+                from aisg import GuardrailPipeline
+                from anthropic import Anthropic
+
+                PROMPT = """You are a helper. Never mention claude-3-5-haiku-20241022."""
+                client = Anthropic()
+                judge = ClaudeJudge(model="claude-sonnet-4-5")  # was LlamaGuard
+                trace = langfuse.trace(name="x")
+                pipeline = GuardrailPipeline()
+                ''',
+        },
+    )
+    _inv, hits, _facts = run(root)
+    got = mention_hits(hits)
+    # The module docstring (2-6), both comment shapes (7, 8, the tail of 14) and the
+    # triple-quoted prompt (12) record nothing; the live import, call and literal do.
+    assert got == {
+        ("agent.py", 9, "guardrail", "aisg"),
+        ("agent.py", 14, "model_id", "anthropic:claude-sonnet-4-5"),
+        ("agent.py", 15, "llm_observability", "langfuse"),
+    }
+
+
+def test_js_ts_go_comment_shapes_are_not_deployments(tmp_path: Path) -> None:
+    root = project(
+        tmp_path,
+        {
+            "src/agent.ts": """
+                // import { Langfuse } from "langfuse";
+                /* The old stack used nemoguardrails and gpt-4o-mini
+                 * through promptfoo; see docs.
+                 */
+                /**
+                 * Wraps the model. LlamaGuard is not wired yet.
+                 */
+                import { Langfuse } from "langfuse";
+                const model = "gpt-4o"; // was gpt-4o-mini
+                const guard = "nemoguardrails";
+                """,
+            "cmd/main.go": """
+                package main
+
+                // import "github.com/langfuse/langfuse-go" -- not used
+                /* model: gpt-4o-mini */
+                import "fmt"
+
+                const model = "gpt-4o"
+                """,
+        },
+    )
+    _inv, hits, _facts = run(root)
+    got = mention_hits(hits)
+    assert got == {
+        ("src/agent.ts", 9, "llm_observability", "langfuse"),
+        ("src/agent.ts", 10, "model_id", "openai:gpt-4o"),
+        ("src/agent.ts", 11, "guardrail", "nemoguardrails"),
+        ("cmd/main.go", 8, "model_id", "openai:gpt-4o"),
+    }
+    # Line 10 of agent.ts: the live literal records, the trailing-comment mention does not.
+    ts_line_10 = [h.key for h in hits if h.file == "src/agent.ts" and h.line == 10]
+    assert "openai:gpt-4o-mini" not in ts_line_10
+
+
+def test_yaml_and_json_comments_are_not_deployments(tmp_path: Path) -> None:
+    root = project(
+        tmp_path,
+        {
+            "config/app.yaml": """
+                # model: gpt-4o-mini
+                model: gpt-4o  # fallback: claude-3-5-haiku-20241022
+                # evals: run promptfoo before release
+                """,
+            "config/app.json": '{"model": "gpt-4o"} // was gpt-4o-mini\n',
+        },
+    )
+    _inv, hits, _facts = run(root)
+    got = mention_hits(hits)
+    assert got == {
+        ("config/app.yaml", 3, "model_id", "openai:gpt-4o"),
+        ("config/app.json", 1, "model_id", "openai:gpt-4o"),
+    }
+
+
+def test_mention_filter_never_touches_secrets_hooks_or_gates(tmp_path: Path) -> None:
+    root = project(
+        tmp_path,
+        {
+            "agent.py": f"""
+                # ANTHROPIC_API_KEY = "{ANTHROPIC_KEY}"
+                # guard = ToolPolicyGuard(require_approval=False)
+                # os.system(cmd)
+                import os
+                ''' fail_open: true '''
+                """,
+            "config/agent.yaml": """
+                # auto_approve: true
+                agent: {}
+                """,
+        },
+    )
+    _inv, hits, _facts = run(root)
+    kept = {(h.file, h.line, h.table) for h in hits}
+    assert ("agent.py", 2, "secret") in kept
+    assert ("agent.py", 3, "gate_bypass") in kept
+    assert ("agent.py", 4, "sink") in kept
+    assert ("agent.py", 6, "fail_open") in kept
+    assert ("config/agent.yaml", 2, "gate_bypass") in kept
+    # Redaction still applies to the commented-out key.
+    secret = next(h for h in hits if h.table == "secret" and h.line == 2)
+    assert ANTHROPIC_KEY not in secret.snippet
+
+
+def test_promptfoo_config_is_an_eval_by_file_name(tmp_path: Path) -> None:
+    """promptfoo's own init writes the tool name only in a schema comment; the file
+    name is the evidence, so the mention filter cannot make the harness vanish."""
+    root = project(
+        tmp_path,
+        {
+            "promptfooconfig.yaml": """
+                # yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+                description: regression suite
+                prompts:
+                  - "{{q}}"
+                """,
+            "evals/promptfooconfig.attacks.json": '{"prompts": []}\n',
+            # A body mention in an unrelated file name is still the body hit it was.
+            "Makefile": "evals:\n\tnpx promptfoo eval\n",
+        },
+    )
+    inv, hits, _facts = run(root)
+    evals = [h for h in hits if h.table == "eval_tool"]
+    assert {(h.file, h.line, h.snippet) for h in evals} == {
+        ("promptfooconfig.yaml", 1, "promptfooconfig.yaml"),
+        ("evals/promptfooconfig.attacks.json", 1, "promptfooconfig.attacks.json"),
+        ("Makefile", 2, "npx promptfoo eval"),
+    }
+    assert [e["file"] for e in inv.evals] == [
+        "Makefile",
+        "evals/promptfooconfig.attacks.json",
+        "promptfooconfig.yaml",
+    ]
+    assert all(e["tool"] == "promptfoo" for e in inv.evals)
+
+
+def test_llm_judge_flag_ignores_comments_and_docstrings(tmp_path: Path) -> None:
+    """`guardrails[].llm_judge` is what AUD-804 keys on, so it must mean the file wires
+    a judge: a judge literal that only appears in a comment or docstring leaves the
+    flag at None (not shown), and a live one sets it to True."""
+    root = project(
+        tmp_path,
+        {
+            "docjudge.py": '''
+                """Wraps the model call.
+
+                Example:
+                    guard = LLMInputFilter(judge=ClaudeJudge())
+                """
+                from aisg import PromptInjectionGuard
+
+                guard = PromptInjectionGuard()
+                ''',
+            "commented.py": """
+                from aisg import PromptInjectionGuard
+                # judge = ClaudeJudge(model="claude-sonnet-4-5")
+                use_llm_judge = False  # llm_judge: true once credentials land
+                guard = PromptInjectionGuard()
+                """,
+            "wired.py": """
+                from aisg import ClaudeJudge, LLMInputFilter
+                guard = LLMInputFilter(judge=ClaudeJudge())
+                """,
+            "trailing.py": """
+                from aisg import ClaudeJudge  # ClaudeJudge() is wired below
+                judge = ClaudeJudge()
+                """,
+            "presets/commented.yaml": """
+                input:
+                  prompt_injection:
+                    enabled: true
+                    # llm_judge: true
+                """,
+            "presets/live.yaml": """
+                input:
+                  prompt_injection:
+                    enabled: true
+                    llm_judge: true  # the judge
+                """,
+        },
+    )
+    inv, _hits, _facts = run(root)
+    flags = {e["file"]: e["llm_judge"] for e in inv.guardrails}
+    assert flags == {
+        "docjudge.py": None,
+        "commented.py": None,
+        "wired.py": True,
+        "trailing.py": True,
+        "presets/commented.yaml": None,
+        "presets/live.yaml": True,
+    }
+
+
+def test_llm_judge_in_is_column_aware() -> None:
+    text = 'x = 1  # ClaudeJudge()\njudge = ClaudeJudge()  # llm_judge: true\n"""\nLLMJudge(\n"""\n'
+    spans = patterns.comment_spans(text, "python")
+    assert discover._llm_judge_in(text, spans) is True
+    only_mentions = 'x = 1  # ClaudeJudge()\n"""\nLLMJudge(\n"""\n'
+    spans = patterns.comment_spans(only_mentions, "python")
+    assert discover._llm_judge_in(only_mentions, spans) is False
+    # No spans (an unknown language) filters nothing: a mention still counts.
+    assert discover._llm_judge_in(only_mentions, {}) is True
+    assert discover._llm_judge_in("", {}) is False
 
 
 # ---------------------------------------------------------------------------
@@ -900,3 +1338,28 @@ def test_literal_filter_extracts_required_text() -> None:
     assert discover._literal_filter(re.compile(r"[a-z]+(?:foo)?")) is None
     lits = discover._literal_filter(re.compile(r"\bfrom\s+anthropic\s+import\b|^\s*import\s+x\b"))
     assert lits is not None and all(len(lit) >= 1 for lit in lits)
+
+
+# ---------------------------------------------------------------------------
+# Self-vocabulary: the modules that spell out what discovery looks for
+# ---------------------------------------------------------------------------
+
+AUDIT_PACKAGE = Path(discover.__file__).resolve().parent
+# discover.py embeds `_AISG_GUARD_RE`, a literal naming every guard registry name;
+# patterns.py and vocab.py are the detection tables themselves. None of the three
+# may be scanned by a self-audit, or the vocabulary reads as a deployment.
+SELF_VOCABULARY_SOURCES = ("discover.py", "patterns.py", "vocab.py")
+
+
+@pytest.mark.parametrize("name", SELF_VOCABULARY_SOURCES)
+def test_self_vocabulary_source_starts_with_ignore_marker(name: str) -> None:
+    first = (AUDIT_PACKAGE / name).read_text(encoding="utf-8").splitlines()[0]
+    assert first == patterns.IGNORE_MARKER
+
+
+def test_walk_never_yields_the_self_vocabulary_sources() -> None:
+    files, _units, _unknown = walk.walk(AUDIT_PACKAGE)
+    seen = {record.relpath for record in files}
+    assert seen.isdisjoint(SELF_VOCABULARY_SOURCES), seen & set(SELF_VOCABULARY_SOURCES)
+    # The marker is an opt-out for the vocabulary files, not a blanket skip of the package.
+    assert "walk.py" in seen and "model.py" in seen

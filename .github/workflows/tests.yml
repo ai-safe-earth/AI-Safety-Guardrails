@@ -39,7 +39,10 @@ jobs:
 
       - name: Install
         run: |
-          python -m pip install --upgrade pip
+          # Tool installs in this file are pinned to exact versions: the
+          # self-audit below (AUD-602) flags an unpinned bootstrap, and this
+          # workflow should not need a baseline entry for itself.
+          python -m pip install pip==26.1.2
           # Editable install proves the packaging works, not just the source tree.
           # settings/otel/metrics are included because the suite covers them --
           # without them those tests skip, and a silent skip is not a pass.
@@ -70,6 +73,90 @@ jobs:
           TOGETHER_API_KEY: ""
         run: pytest -q
 
+  audit:
+    name: aisg audit gate
+    # Runs after the matrix test job. Everything here exercises the built
+    # wheel, not the source tree: the console script, the packaged skill and
+    # the audit's own package data have to work from the artifact alone.
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Build the wheel
+        run: |
+          pip install build==1.2.2.post1
+          python -m build --wheel
+
+      - name: Install the wheel into a fresh venv
+        # Not an editable install. The venv's bin/ goes first on PATH so that
+        # `aisg` and `python` in the later steps are the installed wheel's.
+        run: |
+          python -m venv "$RUNNER_TEMP/aisg-venv"
+          "$RUNNER_TEMP/aisg-venv/bin/pip" install dist/*.whl
+          echo "$RUNNER_TEMP/aisg-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Skill ships in the wheel
+        # From a neutral directory so the import cannot fall back to src/.
+        run: |
+          cd "$RUNNER_TEMP"
+          python -c "from aisg.skills import skill_root; assert (skill_root()/'SKILL.md').exists()"
+
+      - name: Fixture exit codes
+        # [tool.aisg-audit] in pyproject.toml is resolved from the CURRENT
+        # DIRECTORY, not from the audited path, and ours sets fail-on = "high"
+        # plus an exclude list for the self-audit. These runs therefore cd
+        # into a temporary directory (chosen over passing --fail-on low so
+        # that the exclude list is not inherited either) and see the plain
+        # defaults: fail-on = low, nothing excluded. Exit codes are captured
+        # through `|| rc=$?` and compared exactly: a fatal 2 must not pass as
+        # "non-zero, as expected".
+        run: |
+          set -eu
+          fixtures="$GITHUB_WORKSPACE/tests/fixtures/audit"
+          cd "$(mktemp -d)"
+
+          # py_agent: trifecta, uncapped loop, ungated tools -> findings -> 1.
+          rc=0; aisg audit "$fixtures/py_agent" --no-external --format json -o /dev/null || rc=$?
+          test "$rc" -eq 1
+
+          # clean_py: no finding, but --no-external leaves UNKNOWN items for
+          # the skipped scanners; --fail-on-unknown turns those into exit 1 ...
+          rc=0; aisg audit "$fixtures/clean_py" --fail-on-unknown --no-external || rc=$?
+          test "$rc" -eq 1
+
+          # ... and without it the same tree exits 0.
+          rc=0; aisg audit "$fixtures/clean_py" --no-external || rc=$?
+          test "$rc" -eq 0
+
+      - name: Self-audit against the baseline
+        # From the repo root on purpose: here [tool.aisg-audit] supplies the
+        # exclude list (tests/ and the probe corpus hold fake keys and
+        # injection text the rules must catch elsewhere) and fail-on = high.
+        # Exit 0 means no NEW finding at high or above. Every accepted finding
+        # sits in audit-baseline.json with a reason; the terminal summary line
+        # `baseline: N new, ...` says how many are not in it.
+        #
+        # The baseline file is scanned too (it is not excluded), so a reason
+        # there must describe the evidence without quoting the literal that
+        # produced it; tests/unit/test_audit_baseline.py pins that. To accept
+        # a finding: re-run with --format json, add its fingerprint to both
+        # lists with a reason, never a bare fingerprint.
+        run: |
+          rc=0; aisg audit . --no-external --fail-on high --baseline audit-baseline.json || rc=$?
+          test "$rc" -eq 0
+
+      - name: Skill mirrors match the packaged skill
+        # .claude/skills and .agents/skills are byte-identical copies of the
+        # packaged skill; exit 1 lists the drifted files.
+        run: |
+          rc=0; aisg skill diff --host all || rc=$?
+          test "$rc" -eq 0
+
   lint:
     name: ruff
     runs-on: ubuntu-latest
@@ -79,7 +166,7 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-      - run: pip install ruff
+      - run: pip install ruff==0.11.2
       - name: ruff check
         run: ruff check .
       - name: ruff format --check
@@ -120,7 +207,7 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-      - run: pip install build
+      - run: pip install build==1.2.2.post1
       - run: python -m build --wheel
       - name: No top-level name collisions
         # The whole point of the src/aisg layout: a published wheel must not

@@ -1,3 +1,4 @@
+# aisg-audit: ignore-file
 """aisg/devtools/audit/rules/blast_radius.py
 ------------------------------------------
 P1 rules AUD-101..AUD-108: what the agent can do at all. Host permission grants,

@@ -41,3 +41,9 @@ comment, and the JSON is retained 90 days under Art. 12; none of that happens lo
 
 `aisg misalign` takes the same flags and formats and is **not** part of the CI
 gate. Run it too if asked for a full audit.
+
+`aisg audit .` findings may be cited in this report only as observations, each marked
+`[UNMEASURED]` (no rule has a precision figure yet), and never as a verdict on any
+article, control or framework. Quote the finding's evidence lines and its UNKNOWN
+context; do not translate them into a pass or a fail against a regulation. The audit
+report carries its own disclaimer; keep it when you paste from it.

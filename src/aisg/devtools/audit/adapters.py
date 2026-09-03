@@ -1,3 +1,4 @@
+# aisg-audit: ignore-file
 """aisg/devtools/audit/adapters.py
 --------------------------------
 External tool adapters for `aisg audit`: gitleaks, detect-secrets, pip-audit, npm audit,

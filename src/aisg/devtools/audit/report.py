@@ -12,8 +12,18 @@ Honesty rules carried here:
   ASSERTED; only an external tool that ran now is MEASURED.
 - Findings below `--fail-on` are still findings: the summary line always says how many
   were not counted toward the exit code, and zero findings still print the UNKNOWN block.
+- `--quiet` drops per-finding detail but keeps the severity and bucket lines, so a CI
+  log still says what kind of evidence the count rests on.
 - The debug self-check (`check_templates`) runs over this module's own fixed strings
   only, never over target text, so a comment in the audited repo cannot trip it.
+
+Rendering economy: the alternatives, controls and known-failure-mode blocks belong to
+the rule, not the finding, so markdown and terminal print them in full at the first
+finding of each rule id and replace them with a one-line reference on every later
+finding of that rule (the markdown reference is an intra-document link). The fix
+summary, scope, evidence and tags stay per finding. A later finding whose block
+differs from the first one's prints that block in full again; a reference never hides
+a difference.
 """
 
 from __future__ import annotations
@@ -143,6 +153,12 @@ _T_FIX = "fix ({tier}): {summary}"
 _T_ALTERNATIVES = "alternatives: {items}"
 _T_CONTROLS = "controls: {items}"
 _T_FAILURE_MODES = "known failure modes: {items}"
+_T_LABEL_ALTERNATIVES = "alternatives"
+_T_LABEL_CONTROLS = "controls"
+_T_LABEL_FAILURE_MODES = "known failure modes"
+_T_SEE_FIRST = "{items}: see the first {ref} above"
+_T_MD_ANCHOR = '<a id="{anchor}"></a>'
+_T_MD_LINK = "[{text}](#{anchor})"
 _T_NOTE = "note: {text}"
 _T_UNKNOWN_ITEM = "[{category}] {what}: {why}"
 _T_RESOLVE = "resolve: {text}"
@@ -157,7 +173,7 @@ _T_INV_LLM_CALLS = "llm_calls: {n}"
 _T_INV_TOOLS = "tools: {n}"
 _T_INV_MCP = "mcp servers: {n}"
 _T_INV_HOSTS = "hosts: {n}"
-_T_BASELINE = "baseline {file}: {new} new, {fixed} fixed, {unchanged} unchanged"
+_T_BASELINE = "baseline: {new} new, {unchanged} unchanged, {fixed} fixed ({file})"
 _T_SARIF_MESSAGE = "[{label}] {title}"
 _T_EXIT = "exit code: {code}"
 
@@ -199,6 +215,12 @@ _TEMPLATES: tuple[str, ...] = (
     _T_ALTERNATIVES,
     _T_CONTROLS,
     _T_FAILURE_MODES,
+    _T_LABEL_ALTERNATIVES,
+    _T_LABEL_CONTROLS,
+    _T_LABEL_FAILURE_MODES,
+    _T_SEE_FIRST,
+    _T_MD_ANCHOR,
+    _T_MD_LINK,
     _T_NOTE,
     _T_UNKNOWN_ITEM,
     _T_RESOLVE,
@@ -574,18 +596,63 @@ def _evidence_text(evidence: Evidence) -> str:
     )
 
 
-def _finding_detail_lines(finding: Finding) -> list[str]:
-    """Detail lines shared by markdown and terminal, in a fixed order."""
+def _first_of_rule(seen: dict[str, Finding], finding: Finding) -> Finding | None:
+    """
+    The earlier finding of the same rule id whose shared blocks were printed in full,
+    or `None` when `finding` is the first of its rule -- in which case it is recorded.
+    Keyed on the rule id, not the display id: a sub-finding shares its rule's blocks.
+    """
+    first = seen.get(finding.id)
+    if first is None:
+        seen[finding.id] = finding
+    return first
+
+
+def _repeated_rule_ids(findings: Iterable[Finding]) -> set[str]:
+    """Rule ids with more than one finding: the ones whose first occurrence needs an anchor."""
+    counts: dict[str, int] = {}
+    for finding in findings:
+        counts[finding.id] = counts.get(finding.id, 0) + 1
+    return {rule_id for rule_id, n in counts.items() if n > 1}
+
+
+def _anchor(finding: Finding) -> str:
+    return finding.display_id.lower().replace("/", "-")
+
+
+def _finding_detail_lines(
+    finding: Finding, first: Finding | None = None, ref: str | None = None
+) -> list[str]:
+    """
+    Detail lines shared by markdown and terminal, in a fixed order: scope, evidence, fix,
+    then the rule-level blocks (alternatives, controls, known failure modes), then the note.
+
+    `first` is the earlier finding of the same rule whose rule-level blocks were already
+    printed. A block identical to `first`'s is replaced by one reference line naming
+    `ref` (default: `first.display_id`); a block that differs is printed in full.
+    """
     lines = [_scope_text(finding)]
     lines.extend(_evidence_text(e) for e in finding.evidence)
     rec = finding.recommendation
     lines.append(_T_FIX.format(tier=rec.tier.value, summary=rec.summary))
+    folded: list[str] = []
     if rec.alternatives:
-        lines.append(_T_ALTERNATIVES.format(items="; ".join(rec.alternatives)))
+        if first is not None and first.recommendation.alternatives == rec.alternatives:
+            folded.append(_T_LABEL_ALTERNATIVES)
+        else:
+            lines.append(_T_ALTERNATIVES.format(items="; ".join(rec.alternatives)))
     if finding.controls:
-        lines.append(_T_CONTROLS.format(items=", ".join(finding.controls)))
+        if first is not None and first.controls == finding.controls:
+            folded.append(_T_LABEL_CONTROLS)
+        else:
+            lines.append(_T_CONTROLS.format(items=", ".join(finding.controls)))
     if finding.known_failure_modes:
-        lines.append(_T_FAILURE_MODES.format(items="; ".join(finding.known_failure_modes)))
+        if first is not None and first.known_failure_modes == finding.known_failure_modes:
+            folded.append(_T_LABEL_FAILURE_MODES)
+        else:
+            lines.append(_T_FAILURE_MODES.format(items="; ".join(finding.known_failure_modes)))
+    if folded and first is not None:
+        lines.append(_T_SEE_FIRST.format(items=" / ".join(folded), ref=ref or first.display_id))
     if finding.notes:
         lines.append(_T_NOTE.format(text=finding.notes))
     return lines
@@ -807,12 +874,20 @@ def _md_cell(text: Any) -> str:
     return str(text).replace("|", "\\|")
 
 
-def _md_finding(finding: Finding) -> list[str]:
+def _md_finding(finding: Finding, first: Finding | None, anchored: bool) -> list[str]:
+    """
+    One list item. The first finding of a rule that recurs carries an HTML anchor so the
+    later ones can link back to its rule-level blocks instead of repeating them.
+    """
+    anchor = _T_MD_ANCHOR.format(anchor=_anchor(finding)) if anchored else ""
     head = (
-        f"- **{finding.display_id}** {finding.title} -- "
+        f"- {anchor}**{finding.display_id}** {finding.title} -- "
         f"{Severity(finding.severity).value} {_tags(finding)}"
     )
-    return [head] + [f"  - {line}" for line in _finding_detail_lines(finding)]
+    ref = None
+    if first is not None:
+        ref = _T_MD_LINK.format(text=first.display_id, anchor=_anchor(first))
+    return [head] + [f"  - {line}" for line in _finding_detail_lines(finding, first, ref)]
 
 
 def to_markdown(report: Report) -> str:
@@ -824,6 +899,11 @@ def to_markdown(report: Report) -> str:
         f"> {report.disclaimer}",
         "",
         _summary_line(summary),
+    ]
+    baseline_line = _baseline_line(report)
+    if baseline_line:
+        lines += ["", baseline_line]
+    lines += [
         "",
         _T_SEVERITY_LINE.format(items=_severity_items(summary)),
         "",
@@ -839,11 +919,15 @@ def to_markdown(report: Report) -> str:
     findings = list(report.findings)
     if not findings:
         lines.append(_T_NONE)
+    repeated = _repeated_rule_ids(findings)
+    seen: dict[str, Finding] = {}
     for label, group in _grouped(findings):
         lines.append(f"### {label}")
         lines.append("")
         for finding in group:
-            lines.extend(_md_finding(finding))
+            first = _first_of_rule(seen, finding)
+            anchored = first is None and finding.id in repeated
+            lines.extend(_md_finding(finding, first, anchored))
         lines.append("")
     lines += ["", f"## {_T_UNKNOWN}", ""]
     if not report.unknown:
@@ -862,9 +946,6 @@ def to_markdown(report: Report) -> str:
             lines.append(f"| {cells} |")
     lines += ["", f"## {_T_INVENTORY}", ""]
     lines.extend(f"- {line}" for line in _inventory_lines(report.inventory))
-    baseline_line = _baseline_line(report)
-    if baseline_line:
-        lines += ["", baseline_line]
     lines += ["", _T_EXIT.format(code=summary.get("exit_code"))]
     return "\n".join(lines) + "\n"
 
@@ -911,14 +992,14 @@ def _severity_bar(severity: Severity) -> str:
     return "[" + "#" * (rank + 1) + "." * (width - rank - 1) + "]"
 
 
-def _terminal_finding(out: list[str], finding: Finding) -> None:
+def _terminal_finding(out: list[str], finding: Finding, first: Finding | None) -> None:
     severity = Severity(finding.severity)
     head = (
         f"{_severity_bar(severity)} {finding.display_id} {severity.value} "
         f"{_tags(finding)} {finding.title}"
     )
     _emit(out, head, indent=_INDENT, first="")
-    for line in _finding_detail_lines(finding):
+    for line in _finding_detail_lines(finding, first):
         _emit(out, line, indent=_INDENT + "  ", first=_INDENT)
 
 
@@ -946,16 +1027,18 @@ def _terminal_external(out: list[str], results: Sequence[ExternalToolResult]) ->
 
 
 def to_terminal(report: Report, quiet: bool = False) -> str:
-    """Same order as Markdown. `quiet` keeps the disclaimer, summary line, UNKNOWN and tools."""
+    """
+    Same order as Markdown. `quiet` keeps the disclaimer, the summary, baseline, severity
+    and bucket lines, UNKNOWN and the external-tools table; it never prints a finding.
+    """
     summary = _summary_of(report)
     out: list[str] = [_T_TITLE, "=" * len(_T_TITLE)]
     _disclaimer(out, report.disclaimer)
     out.append("")
     _emit(out, _summary_line(summary))
-    if quiet:
-        _terminal_unknown(out, list(report.unknown))
-        _terminal_external(out, list(report.external_tools))
-        return "\n".join(out) + "\n"
+    baseline_line = _baseline_line(report)
+    if baseline_line:
+        _emit(out, baseline_line)
     measured, asserted_text, unknown_count = _bucket_counts(summary)
     _emit(out, _T_SEVERITY_LINE.format(items=_severity_items(summary)))
     buckets = (
@@ -963,24 +1046,25 @@ def to_terminal(report: Report, quiet: bool = False) -> str:
         f"{_T_BUCKET_UNKNOWN} {unknown_count}"
     )
     _emit(out, _T_BUCKET_LINE.format(items=buckets))
+    if quiet:
+        _terminal_unknown(out, list(report.unknown))
+        _terminal_external(out, list(report.external_tools))
+        return "\n".join(out) + "\n"
     _heading(out, _T_FINDINGS)
     findings = list(report.findings)
     if not findings:
         out.append(_T_NONE)
+    seen: dict[str, Finding] = {}
     for label, group in _grouped(findings):
         out.append("")
         out.append(label)
         for finding in group:
-            _terminal_finding(out, finding)
+            _terminal_finding(out, finding, _first_of_rule(seen, finding))
     _terminal_unknown(out, list(report.unknown))
     _terminal_external(out, list(report.external_tools))
     _heading(out, _T_INVENTORY)
     for line in _inventory_lines(report.inventory):
         _emit(out, line)
-    baseline_line = _baseline_line(report)
-    if baseline_line:
-        out.append("")
-        _emit(out, baseline_line)
     out.append("")
     _emit(out, _T_EXIT.format(code=summary.get("exit_code")))
     return "\n".join(out) + "\n"

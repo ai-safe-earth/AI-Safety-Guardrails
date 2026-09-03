@@ -1379,8 +1379,25 @@ class _Analyser:
             ):
                 reason = f"{symbol} without checkpointer"
         gate = GateSite(symbol, self.mod.relpath, node.lineno, scope.name, reason)
-        if gate not in self.facts.gates:
-            self.facts.gates.append(gate)
+        self._record_gate(gate)
+
+    def _record_gate(self, gate: GateSite) -> None:
+        """One GateSite per (file, line); an inert record wins over a live one.
+
+        The same source line reaches `_gate_text` twice: once as the whole
+        Assign (`guard = ToolPolicyGuard(require_approval=True)`, no Call to
+        inspect, so no reason) and once as the Call itself (reason resolved).
+        Keeping both let `join_gates` pick the reason-less record first and
+        report an inert gate as live.
+        """
+        gates = self.facts.gates
+        for i, existing in enumerate(gates):
+            if existing.file != gate.file or existing.line != gate.line:
+                continue
+            if existing.inert_reason is None and gate.inert_reason is not None:
+                gates[i] = gate
+            return
+        gates.append(gate)
 
     # -- loops -------------------------------------------------------------
     def _loop(self, node: ast.AST, scope: _Scope) -> None:

@@ -87,7 +87,7 @@ def _ai_tree(root: Path, model: str = "claude-3-7-sonnet-latest") -> Path:
 
 
 def _promptfoo_config(root: Path, body: str) -> Path:
-    """promptfoo is recognised by the word in the file, not by the file name."""
+    """promptfoo is recognised by the file name; a mention in a comment alone no longer counts."""
     path = root / "promptfooconfig.yaml"
     path.write_text("# promptfoo eval config\n" + body, encoding="utf-8")
     return path
@@ -526,9 +526,11 @@ def test_904_silent_on_fixtures(audit_fixture, audit_context, py_agent):
 
 
 def test_904_probe_report_is_not_an_eval_config(tmp_path, audit_context):
+    """A report records a run; discovery keeps it out of evals[] and AUD-904 stays silent."""
     root = _probe_tree(tmp_path)
     ctx = audit_context(root)
-    assert any(e["file"] == "reports/probe-report.json" for e in ctx.inventory.evals)
+    assert any(r.file == "reports/probe-report.json" for r in ctx.reports)
+    assert not any(e["file"] == "reports/probe-report.json" for e in ctx.inventory.evals)
     findings, _ = _findings(evals.NoBenignCorpus, ctx)
     assert findings == []
 

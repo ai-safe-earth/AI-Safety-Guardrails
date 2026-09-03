@@ -63,6 +63,40 @@ def _empty_context(tmp_path: Path) -> AuditContext:
     return AuditContext(root=tmp_path, inventory=Inventory())
 
 
+AUDIT_PACKAGE = Path(__file__).resolve().parents[2] / "src" / "aisg" / "devtools" / "audit"
+SELF_VOCABULARY_MODULES = sorted(
+    p.relative_to(AUDIT_PACKAGE).as_posix() for p in (AUDIT_PACKAGE / "rules").glob("*.py")
+) + ["adapters.py"]
+
+
+# ---------------------------------------------------------------------------
+# Self-vocabulary: the rule modules must not audit themselves
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("relpath", SELF_VOCABULARY_MODULES)
+def test_rule_and_adapter_modules_carry_the_ignore_marker(relpath: str) -> None:
+    # Rule modules quote the vocabulary they detect (gate bypass keys, fail-open
+    # flags, guard names); the marker keeps them out of a self-audit. It must sit
+    # in the first five lines, where walk() looks for it.
+    from aisg.devtools.audit.patterns import IGNORE_MARKER
+
+    head = (AUDIT_PACKAGE / relpath).read_text(encoding="utf-8").splitlines()[:5]
+    assert IGNORE_MARKER in head, f"{relpath} lacks the ignore-file marker in its first five lines"
+
+
+def test_walk_skips_every_marked_audit_module() -> None:
+    from aisg.devtools.audit.walk import walk
+
+    files, _units, _unknown = walk(AUDIT_PACKAGE)
+    seen = {record.relpath for record in files}
+    assert SELF_VOCABULARY_MODULES
+    leaked = sorted(seen & set(SELF_VOCABULARY_MODULES))
+    assert leaked == [], f"walk() still yields marked modules: {leaked}"
+    # The marker is an opt-out, not a blanket skip: unmarked package modules still walk.
+    assert "walk.py" in seen
+
+
 # ---------------------------------------------------------------------------
 # Registry shape
 # ---------------------------------------------------------------------------

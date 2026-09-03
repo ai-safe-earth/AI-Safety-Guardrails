@@ -1,3 +1,4 @@
+# aisg-audit: ignore-file
 """aisg/devtools/audit/rules/evals.py
 ------------------------------------
 P9 evaluation-loop rules: AUD-901 (no evals in CI), AUD-902 (probe report shows
@@ -623,10 +624,9 @@ class NoBenignCorpus(AuditRule):
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
-        # A report on disk names the tool that produced it ("aisg probe"), so discover
-        # lists it under evals[]. It records a run; it is not a config to hold benign cases.
-        report_files = {record.file for record in _reports(ctx)}
-        entries = [e for e in _eval_entries(ctx) if str(e.get("file")) not in report_files]
+        # Probe / measure reports live in `inventory.reports`, never in `evals[]`:
+        # discovery excludes them, so every entry here is an eval config or CI step.
+        entries = _eval_entries(ctx)
         if not entries:
             return []
         if any(bool(e.get("has_benign")) for e in entries):

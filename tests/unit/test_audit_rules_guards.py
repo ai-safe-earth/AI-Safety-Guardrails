@@ -166,6 +166,10 @@ def _locations(findings):
     return [(f.evidence[0].file, f.evidence[0].line) for f in findings]
 
 
+def _sites(finding):
+    return [(e.role, e.file, e.line) for e in finding.evidence]
+
+
 # ---------------------------------------------------------------------------
 # Metadata
 # ---------------------------------------------------------------------------
@@ -240,26 +244,146 @@ def test_silent_on_baseline_and_py_agent(rule, audit_fixture, audit_context, py_
 # ---------------------------------------------------------------------------
 
 
-def test_801_fires_per_enabled_guard_without_a_report(tmp_path: Path, audit_context):
+def test_801_fires_once_per_enabled_guard_without_a_report(tmp_path: Path, audit_context):
+    """One unmeasured guard is one fact: prompt_injection is constructed in agent.py
+    and enabled in the preset, and that is one finding with two sites, not two."""
     ctx = audit_context(_guarded(tmp_path))
     assert [g["lib"] for g in ctx.inventory.guardrails] == ["aisg", "aisg_preset"]
     findings, _ = _run(GuardUnmeasured, ctx)
-    assert _locations(findings) == [
-        ("agent.py", 2),
-        ("guardrails.yaml", 4),
-        ("guardrails.yaml", 10),
-    ]
+    assert _locations(findings) == [("agent.py", 2), ("guardrails.yaml", 10)]
     notes = [f.notes for f in findings]
     assert "guard prompt_injection is wired in agent.py" in notes[0]
-    assert "guard prompt_injection is wired in guardrails.yaml" in notes[1]
-    assert "guard toxicity_output is wired in guardrails.yaml" in notes[2]
+    assert "guard toxicity_output is wired in guardrails.yaml" in notes[1]
     assert not any("pii_detector" in n for n in notes)  # enabled: false
+    assert not any("more site" in n for n in notes)  # nothing was cut
+    injection, toxicity = findings
+    assert _sites(injection) == [
+        ("match", "agent.py", 2),
+        ("also", "guardrails.yaml", 4),
+    ]
+    assert "PromptInjectionGuard" in injection.evidence[0].snippet
+    assert injection.evidence[1].snippet == "prompt_injection:"
+    assert _sites(toxicity) == [("match", "guardrails.yaml", 10)]
     for finding in findings:
         assert finding.severity is Severity.MEDIUM
         assert finding.bucket is Bucket.ASSERTED
         assert finding.confidence.match_kind is MatchKind.STRUCTURED
-    assert findings[0].confidence.evidence_kind is EvidenceKind.CODE
-    assert findings[1].confidence.evidence_kind is EvidenceKind.CONFIG
+        assert finding.scope.kind == "unit" and finding.scope.unit == "u0"
+    assert injection.confidence.evidence_kind is EvidenceKind.CODE  # the anchor decides
+    assert toxicity.confidence.evidence_kind is EvidenceKind.CONFIG
+
+
+def test_801_one_guard_imported_in_three_files_is_one_finding(tmp_path: Path, audit_context):
+    files = {
+        "pyproject.toml": PYPROJECT,
+        "agent.py": AGENT_PY,
+        "pkg/__init__.py": "from aisg import PromptInjectionGuard\n",
+        "pkg/moderation.py": (
+            "from aisg import PromptInjectionGuard\n\n\nGUARD = PromptInjectionGuard()\n"
+        ),
+    }
+    ctx = audit_context(_write(tmp_path / "three", files))
+    assert [g["file"] for g in ctx.inventory.guardrails] == [
+        "agent.py",
+        "pkg/__init__.py",
+        "pkg/moderation.py",
+    ]
+    findings, _ = _run(GuardUnmeasured, ctx)
+    assert len(findings) == 1
+    finding = findings[0]
+    assert _sites(finding) == [
+        ("match", "agent.py", 2),
+        ("also", "pkg/__init__.py", 1),
+        ("also", "pkg/moderation.py", 1),
+    ]
+    assert all("PromptInjectionGuard" in e.snippet for e in finding.evidence)
+    assert "guard prompt_injection is wired in agent.py" in finding.notes
+    assert "more site" not in finding.notes
+    assert finding.scope.kind == "unit" and finding.scope.name == "."
+
+
+def test_801_evidence_order_is_file_then_line_whatever_the_write_order(
+    tmp_path: Path, audit_context
+):
+    """The anchor is the first site by (file, line), not the first file written or the
+    first entry discovery happened to record, and the fingerprint is that site's alone."""
+    later = "import os\n\nfrom aisg import ToxicityFilter\n\nGUARD = ToxicityFilter()\n"
+    first = "from aisg import ToxicityFilter\n"
+    root = _write(
+        tmp_path / "order",
+        {"pyproject.toml": PYPROJECT, "zeta.py": later, "mid/late.py": later, "alpha.py": first},
+    )
+    findings, _ = _run(GuardUnmeasured, audit_context(root))
+    assert len(findings) == 1
+    assert _sites(findings[0]) == [
+        ("match", "alpha.py", 1),
+        ("also", "mid/late.py", 3),
+        ("also", "zeta.py", 3),
+    ]
+    alone = _write(tmp_path / "alone", {"pyproject.toml": PYPROJECT, "alpha.py": first})
+    single, _ = _run(GuardUnmeasured, audit_context(alone))
+    assert [f.fingerprint for f in single] == [findings[0].fingerprint]
+
+
+def test_801_also_sites_are_capped_and_the_rest_counted_in_the_notes(tmp_path: Path, audit_context):
+    files = {"pyproject.toml": PYPROJECT}
+    for index in range(11):
+        files[f"mod_{index:02d}.py"] = "from aisg import RateLimiter\n"
+    findings, _ = _run(GuardUnmeasured, audit_context(_write(tmp_path / "many", files)))
+    assert len(findings) == 1
+    finding = findings[0]
+    assert len(finding.evidence) == 1 + 8
+    assert [e.role for e in finding.evidence] == ["match"] + ["also"] * 8
+    assert [e.file for e in finding.evidence] == [f"mod_{i:02d}.py" for i in range(9)]
+    assert finding.notes.endswith("; +2 more sites")
+    assert "guard rate_limiter is wired in mod_00.py" in finding.notes
+
+
+def test_801_groups_per_unit_not_per_repo(tmp_path: Path, audit_context):
+    agent = "from aisg import PromptInjectionGuard\n\nGUARD = PromptInjectionGuard()\n"
+    files = {
+        "svc_a/pyproject.toml": PYPROJECT,
+        "svc_a/agent.py": agent,
+        "svc_a/extra.py": agent,
+        "svc_b/pyproject.toml": PYPROJECT,
+        "svc_b/agent.py": agent,
+    }
+    ctx = audit_context(_write(tmp_path / "mono", files))
+    assert [u.id for u in ctx.inventory.units] == ["u0", "u1", "u2"]
+    findings, _ = _run(GuardUnmeasured, ctx)
+    assert [(f.scope.unit, f.scope.name) for f in findings] == [("u1", "svc_a"), ("u2", "svc_b")]
+    assert _sites(findings[0]) == [
+        ("match", "svc_a/agent.py", 1),
+        ("also", "svc_a/extra.py", 1),
+    ]
+    assert _sites(findings[1]) == [("match", "svc_b/agent.py", 1)]
+    assert len({f.fingerprint for f in findings}) == 2
+
+
+def test_801_third_party_library_in_several_files_is_one_finding(tmp_path: Path, audit_context):
+    use = "import presidio_analyzer\n\nengine = presidio_analyzer.AnalyzerEngine()\n"
+    root = _write(
+        tmp_path / "presidio",
+        {"pyproject.toml": PYPROJECT, "pii/a.py": use, "pii/b.py": use, "agent.py": PLAIN_AGENT_PY},
+    )
+    findings, _ = _run(GuardUnmeasured, audit_context(root))
+    assert len(findings) == 1
+    assert _sites(findings[0]) == [("match", "pii/a.py", 1), ("also", "pii/b.py", 1)]
+    assert findings[0].confidence.match_kind is MatchKind.GREP
+    assert "guard library presidio is used in pii/a.py" in findings[0].notes
+
+
+def test_801_hand_built_inventory_without_units_scopes_on_the_anchor_file(tmp_path: Path):
+    inventory = Inventory(
+        guardrails=[
+            {"lib": "nemoguardrails", "file": "rails/b.py", "line": 4},
+            {"lib": "nemoguardrails", "file": "rails/a.py", "line": 2},
+        ]
+    )
+    findings = GuardUnmeasured().evaluate(AuditContext(root=tmp_path, inventory=inventory))
+    assert len(findings) == 1
+    assert _sites(findings[0]) == [("match", "rails/a.py", 2), ("also", "rails/b.py", 4)]
+    assert findings[0].scope.kind == "file" and findings[0].scope.name == "rails/a.py"
 
 
 def test_801_silent_when_a_measure_report_names_the_guards(
@@ -313,6 +437,98 @@ def test_801_deep_false_gives_same_verdict(tmp_path: Path, audit_context):
     deep, _ = _run(GuardUnmeasured, audit_context(root, deep=True))
     shallow, _ = _run(GuardUnmeasured, audit_context(root, deep=False))
     assert [f.fingerprint for f in deep] == [f.fingerprint for f in shallow]
+
+
+@pytest.mark.parametrize("deep", [True, False], ids=["deep", "grep"])
+def test_801_guard_named_only_in_a_docstring_is_not_wired(tmp_path: Path, audit_context, deep):
+    """A docstring mention is not a deployment: discovery records no guardrail for it."""
+    agent = (
+        '"""Moderation notes.\n\n'
+        "We looked at LlamaGuard for this and did not adopt it; nothing here calls it.\n"
+        '"""\n'
+        "import anthropic\n"
+        "\n"
+        "client = anthropic.Anthropic()\n"
+        "\n"
+        "\n"
+        "def ask(text: str) -> str:\n"
+        "    # TODO: evaluate LlamaGuard before the next release\n"
+        "    reply = client.messages.create(model='claude-sonnet-4-5', messages=[])\n"
+        "    return reply.content[0].text\n"
+    )
+    root = _write(tmp_path / "mention", {"pyproject.toml": PYPROJECT, "agent.py": agent})
+    ctx = audit_context(root, deep=deep)
+    assert ctx.inventory.guardrails == []
+    findings, _ = _run(GuardUnmeasured, ctx)
+    assert findings == []
+
+
+def test_801_anchors_on_the_code_line_not_the_docstring_mention(tmp_path: Path, audit_context):
+    """A guard named in the docstring and wired below is reported at the wiring line."""
+    agent = (
+        '"""Agent entry point; runs PromptInjectionGuard before every call."""\n'
+        "import anthropic\n"
+        "from aisg import PromptInjectionGuard\n"
+        "\n"
+        "client = anthropic.Anthropic()\n"
+        "# ToxicityFilter is not wired here; see the output stage.\n"
+        "guard = PromptInjectionGuard()\n"
+    )
+    root = _write(tmp_path / "anchor", {"pyproject.toml": PYPROJECT, "agent.py": agent})
+    findings, _ = _run(GuardUnmeasured, audit_context(root))
+    assert [(f.notes.split(" is wired")[0], f.evidence[0].line) for f in findings] == [
+        ("guard prompt_injection", 3)
+    ]
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_801_preset_site_anchors_on_the_key_line_after_a_blank_line(
+    tmp_path: Path, audit_context, newline: str
+):
+    """
+    A blank line between a comment block and the guard key must not pull the site up
+    onto the blank line (`\\s+` did). Both line endings: the text keeps its `\\r`.
+    """
+    preset = newline.join(
+        [
+            "input:",
+            "  # tool_policy:",
+            "  #   enabled: true",
+            "",
+            "  llm_tool_filter:",
+            "    enabled: true",
+            "",
+        ]
+    )
+    root = _write(tmp_path / "blank", {"pyproject.toml": PYPROJECT})
+    (root / "guardrails.yaml").write_bytes(preset.encode("utf-8"))
+    findings, _ = _run(GuardUnmeasured, audit_context(root))
+    assert [(f.evidence[0].file, f.evidence[0].line) for f in findings] == [("guardrails.yaml", 5)]
+    assert findings[0].evidence[0].snippet.strip() == "llm_tool_filter:"
+
+
+def test_804_judge_named_only_in_a_docstring_is_not_a_site(tmp_path: Path, audit_context):
+    agent = (
+        '"""Wraps the model call.\n\nExample:\n    guard = LLMInputFilter(judge=ClaudeJudge())\n"""\n'
+        "from aisg import PromptInjectionGuard\n"
+        "\n"
+        "guard = PromptInjectionGuard()\n"
+    )
+    root = _write(tmp_path / "docjudge", {"pyproject.toml": PYPROJECT, "agent.py": agent})
+    ctx = audit_context(root)
+    assert [g["lib"] for g in ctx.inventory.guardrails] == ["aisg"]
+    findings, _ = _run(LLMJudgeWithoutCredentialsOrTimeout, ctx)
+    assert findings == []
+
+
+def test_guardrail_entries_carry_unit_and_llm_judge_from_discovery(tmp_path: Path, audit_context):
+    """The keys the rules consume are set by discovery, not re-derived here."""
+    ctx = audit_context(_guarded(tmp_path))
+    entries = {g["lib"]: g for g in ctx.inventory.guardrails}
+    assert entries["aisg"]["unit"] == "u0"
+    assert entries["aisg_preset"]["unit"] == "u0"
+    assert entries["aisg_preset"]["llm_judge"] is True
+    assert entries["aisg"]["llm_judge"] is None  # agent.py wires no judge
 
 
 # ---------------------------------------------------------------------------
@@ -549,8 +765,40 @@ def test_804_python_judge_constructor_is_a_site(tmp_path: Path, audit_context):
     )
     root = _write(tmp_path / "judge", {"pyproject.toml": PYPROJECT, "agent.py": agent})
     findings, _ = _run(LLMJudgeWithoutCredentialsOrTimeout, audit_context(root))
-    assert _locations(findings) == [("agent.py", 3), ("agent.py", 4)]
-    assert all(f.confidence.evidence_kind is EvidenceKind.CODE for f in findings)
+    assert len(findings) == 1  # one judge, one missing credential: one fact
+    assert _sites(findings[0]) == [("match", "agent.py", 3), ("also", "agent.py", 4)]
+    assert findings[0].display_id == "AUD-804/no-credentials"
+    assert findings[0].confidence.evidence_kind is EvidenceKind.CODE
+    assert findings[0].scope.kind == "unit" and findings[0].scope.unit == "u0"
+
+
+def test_804_judge_lines_across_a_unit_group_into_one_finding_per_sub(
+    tmp_path: Path, audit_context
+):
+    """Credentials and timeouts are resolved per unit, so every judge line in the unit
+    says the same thing; the preset line anchors and the constructors are `also`."""
+    agent = (
+        "from aisg import ClaudeJudge, LLMInputFilter\n"
+        "\n"
+        "judge = ClaudeJudge()\n"
+        "guard = LLMInputFilter(judge=judge)\n"
+    )
+    root = _guarded(tmp_path, **{"agent.py": agent})
+    findings, _ = _run(LLMJudgeWithoutCredentialsOrTimeout, audit_context(root))
+    assert [f.display_id for f in findings] == ["AUD-804/no-credentials"]
+    assert _sites(findings[0]) == [
+        ("match", "agent.py", 3),
+        ("also", "agent.py", 4),
+        ("also", "guardrails.yaml", 6),
+    ]
+    assert findings[0].notes == (
+        "no *_API_KEY binding in the unit's env or config files; "
+        "no timeout in the judge's file or unit"
+    )
+    # The anchor's fingerprint is the one a tree with that site alone produces.
+    alone = _write(tmp_path / "alone", {"pyproject.toml": PYPROJECT, "agent.py": agent})
+    single, _ = _run(LLMJudgeWithoutCredentialsOrTimeout, audit_context(alone))
+    assert [f.fingerprint for f in single] == [findings[0].fingerprint]
 
 
 def test_804_silent_when_no_judge_is_switched_on(tmp_path: Path, audit_context, audit_fixture):
@@ -569,6 +817,28 @@ def test_804_deep_false_gives_same_verdict(tmp_path: Path, audit_context):
     deep, _ = _run(LLMJudgeWithoutCredentialsOrTimeout, audit_context(root, deep=True))
     shallow, _ = _run(LLMJudgeWithoutCredentialsOrTimeout, audit_context(root, deep=False))
     assert [f.fingerprint for f in deep] == [f.fingerprint for f in shallow]
+
+
+def test_804_trusts_the_llm_judge_key_when_discovery_set_it(tmp_path: Path, audit_context):
+    """`llm_judge` present and None means discovery saw no judge; the file is not re-scanned."""
+    ctx = audit_context(_guarded(tmp_path))
+    for entry in ctx.inventory.guardrails:
+        if entry["lib"] == "aisg_preset":
+            assert entry["llm_judge"] is True
+            entry["llm_judge"] = None
+    findings, _ = _run(LLMJudgeWithoutCredentialsOrTimeout, ctx)
+    assert findings == []
+
+
+def test_804_falls_back_to_the_file_text_when_the_key_is_absent(tmp_path: Path, audit_context):
+    """An inventory without the key (older, or hand-built) still locates the judge line."""
+    ctx = audit_context(_guarded(tmp_path))
+    for entry in ctx.inventory.guardrails:
+        del entry["llm_judge"]
+        del entry["unit"]
+    findings, _ = _run(LLMJudgeWithoutCredentialsOrTimeout, ctx)
+    assert _locations(findings) == [("guardrails.yaml", 6)]
+    assert [f.display_id for f in findings] == ["AUD-804/no-credentials"]
 
 
 # ---------------------------------------------------------------------------

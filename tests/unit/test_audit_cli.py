@@ -4,7 +4,10 @@ tests/unit/test_audit_cli.py
 End-to-end pins for `aisg audit` run in-process: exit codes, flag handling,
 the document shape, baseline round-trip, pyproject defaults, and the two
 properties that must never regress -- no socket is ever opened, and no output
-carries verdict language.
+carries verdict language. Most tests call `aisg.devtools.audit.main.main`
+directly; the ones named `..._console_entry_...` (and the baseline and
+pyproject-override pins) go through `aisg.cli.main` so the console script's
+REMAINDER pass-through is on the path too.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from aisg import cli
 from aisg.devtools._config import find_pyproject
 from aisg.devtools.audit import adapters, walk
 from aisg.devtools.audit.main import (
@@ -238,6 +242,42 @@ def test_run_audit_accepts_audit_options_directly(py_agent: Path, tmp_path: Path
     options = AuditOptions(path=str(py_agent), no_external=True, format="json", output=str(out))
     assert run_audit(options) == EXIT_FINDINGS
     assert json.loads(out.read_text(encoding="utf-8"))["schema"] == SCHEMA_VERSION
+
+
+def test_console_entry_every_renderer_is_free_of_verdict_language(
+    py_agent: Path, tmp_path: Path, capsys
+) -> None:
+    """
+    The end-to-end pin from the carry-forward: through the `aisg audit` console
+    entry, on the reference fixture, none of the five renderings (json, sarif,
+    markdown, terminal full, terminal quiet) carries a banned phrase or the
+    banned word -- and neither does anything printed to stdout or stderr on the way.
+    """
+    base = ["audit", str(py_agent), "--no-external"]
+    rendered: dict[str, str] = {}
+    for fmt in ("json", "sarif", "markdown"):
+        out = tmp_path / f"report.{fmt}"
+        assert cli.main([*base, "--format", fmt, "-o", str(out)]) == EXIT_FINDINGS
+        captured = capsys.readouterr()
+        rendered[fmt] = out.read_text(encoding="utf-8")
+        rendered[f"{fmt}:stdout"] = captured.out
+        rendered[f"{fmt}:stderr"] = captured.err
+    assert cli.main(base) == EXIT_FINDINGS
+    rendered["terminal"] = capsys.readouterr().out
+    assert cli.main([*base, "-q"]) == EXIT_FINDINGS
+    rendered["terminal:quiet"] = capsys.readouterr().out
+
+    for fmt in ("json", "sarif", "markdown", "terminal", "terminal:quiet"):
+        assert rendered[fmt].strip(), f"{fmt} rendering is empty"
+    assert json.loads(rendered["json"])["findings"]
+    assert json.loads(rendered["sarif"])["runs"][0]["results"]
+    assert TRIFECTA_RULE_ID in rendered["terminal"]
+    assert TRIFECTA_RULE_ID not in rendered["terminal:quiet"]
+    for name, text in rendered.items():
+        _assert_no_verdict_language(text)
+        for phrase in BANNED_PHRASES:
+            assert phrase not in text.lower(), (name, phrase)
+        assert not BANNED_WORD.search(text), name
 
 
 # ---------------------------------------------------------------------------
@@ -462,6 +502,44 @@ def test_baseline_round_trip(py_agent: Path, tmp_path: Path, capsys) -> None:
     assert doc["baseline"]["unchanged"] == len(doc["findings"])
 
 
+def test_write_then_read_baseline_on_the_same_tree_exits_zero_at_fail_on_low(
+    py_agent: Path, tmp_path: Path, capsys
+) -> None:
+    """
+    `--write-baseline` then `--baseline` on an unchanged tree: nothing is new, so
+    even the strictest counted level exits 0, and the terminal summary says so.
+    """
+    baseline = tmp_path / "baseline.json"
+    assert (
+        cli.main(["audit", str(py_agent), "--no-external", "--write-baseline", str(baseline)])
+        == EXIT_OK
+    )
+    capsys.readouterr()
+    read = [
+        "audit",
+        str(py_agent),
+        "--no-external",
+        "--baseline",
+        str(baseline),
+        "--fail-on",
+        "low",
+    ]
+    assert cli.main(read) == EXIT_OK
+    out = capsys.readouterr().out
+    summary_line = next(ln for ln in out.splitlines() if ln.lower().startswith("baseline"))
+    assert re.search(r"\b0 new\b", summary_line), summary_line
+    assert "unchanged" in summary_line
+    assert "[baseline: unchanged]" in out
+    _assert_no_verdict_language(out)
+    # the machine-readable summary carries the same counts
+    code = cli.main([*read, "--format", "json", "-o", str(tmp_path / "read.json")])
+    assert code == EXIT_OK
+    doc = json.loads((tmp_path / "read.json").read_text(encoding="utf-8"))
+    assert doc["baseline"]["new"] == 0
+    assert doc["baseline"]["fixed"] == 0
+    assert doc["baseline"]["unchanged"] == len(doc["findings"]) > 0
+
+
 def test_full_report_serves_as_a_baseline(py_agent: Path, tmp_path: Path) -> None:
     code, _ = _json_run([str(py_agent), "--no-external"], tmp_path / "report.json")
     assert code == EXIT_FINDINGS
@@ -507,6 +585,27 @@ def test_pyproject_section_is_honoured(py_agent: Path, neutral_cwd: Path) -> Non
     )
     assert main([str(py_agent), "--no-external"]) == EXIT_OK
     assert main([str(py_agent), "--no-external", "--fail-on", "low"]) == EXIT_FINDINGS
+
+
+def test_explicit_fail_on_overrides_pyproject_high(
+    audit_fixture, neutral_cwd: Path, capsys
+) -> None:
+    """
+    A cwd whose pyproject sets `fail-on = "high"` (the repo's own self-audit
+    setting) is only a default: on `info_only`, the section leaves the single
+    info finding uncounted, and `--fail-on info` on the command line counts it.
+    """
+    (neutral_cwd / "pyproject.toml").write_text(
+        '[tool.aisg-audit]\nfail-on = "high"\n', encoding="utf-8"
+    )
+    target = str(audit_fixture("info_only"))
+    assert cli.main(["audit", target, "--no-external"]) == EXIT_OK
+    out = capsys.readouterr().out
+    assert "1 below --fail-on high" in out
+    assert cli.main(["audit", target, "--no-external", "--fail-on", "info"]) == EXIT_FINDINGS
+    out = capsys.readouterr().out
+    assert "0 below --fail-on info" in out
+    _assert_no_verdict_language(out)
 
 
 def test_pyproject_list_values_become_csv(

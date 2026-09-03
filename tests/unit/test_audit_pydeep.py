@@ -319,6 +319,32 @@ def test_inert_gates(tmp_path):
         line == 6 and reason and reason.startswith("bypass:")
         for (line, _s), reason in reasons.items()
     )
+    # One record per line: the Assign and the Call it wraps must not both land.
+    assert len(facts.gates) == len({(g.file, g.line) for g in facts.gates})
+
+
+def test_inert_gate_is_not_reported_live_through_the_join(tmp_path):
+    facts = _facts(
+        tmp_path,
+        """
+        from langchain_core.tools import tool
+        from aisg import ToolPolicyGuard
+
+        def guarded_send(to, body):
+            guard = ToolPolicyGuard(require_approval=True)
+            return guard.check({"to": to, "body": body})
+
+        @tool
+        def send_email(to: str, body: str):
+            return guarded_send(to, body)
+        """,
+    )
+    at_line = [g for g in facts.gates if g.line == 5]
+    assert len(at_line) == 1
+    assert at_line[0].inert_reason == "require_approval=True without approval_callback"
+    joined = facts.tool_gate_join["send_email"]
+    assert isinstance(joined, GateSite)
+    assert joined.inert_reason == "require_approval=True without approval_callback"
 
 
 # --------------------------------------------------------------------------- #

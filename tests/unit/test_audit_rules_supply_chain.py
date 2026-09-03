@@ -232,6 +232,25 @@ def test_601_ignores_malformed_inventory_rows(tmp_path: Path):
     assert findings[0].evidence[0].snippet == "openai: gpt-4o"
 
 
+@pytest.mark.parametrize("deep", [True, False], ids=["deep", "grep"])
+def test_601_commented_out_model_line_is_not_a_model(tmp_path: Path, audit_context, deep):
+    """A model id inside a YAML comment is a mention, not a deployment: no inventory row."""
+    root = tmp_path / "commented"
+    _write(root, "pyproject.toml", "[project]\nname = 'x'\n")
+    _write(root, "agent.py", "from openai import OpenAI\nclient = OpenAI()\n")
+    _write(root, "config.yaml", "# model: gpt-4o\nprovider: openai\n")
+    ctx = audit_context(root, deep=deep)
+    assert not any(m.get("file") == "config.yaml" for m in ctx.inventory.models)
+    assert _findings(UnpinnedModel, ctx) == []
+
+    # The same line uncommented is a floating alias and does fire.
+    _write(root, "config.yaml", "model: gpt-4o\nprovider: openai\n")
+    ctx = audit_context(root, deep=deep)
+    findings = _findings(UnpinnedModel, ctx)
+    assert _rows(findings) == [("config.yaml", 1, "openai")]
+    assert findings[0].confidence.evidence_kind is EvidenceKind.CONFIG
+
+
 # ---------------------------------------------------------------------------
 # AUD-602 unpinned MCP server / bootstrap
 # ---------------------------------------------------------------------------

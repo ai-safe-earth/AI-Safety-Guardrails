@@ -1,3 +1,4 @@
+# aisg-audit: ignore-file
 """aisg/devtools/audit/rules/sinks.py
 ------------------------------------
 P4 sink rules for `aisg audit`: AUD-401..AUD-406, one per sink kind. Each reports

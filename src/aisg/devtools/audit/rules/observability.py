@@ -1,3 +1,4 @@
+# aisg-audit: ignore-file
 """aisg/devtools/audit/rules/observability.py
 --------------------------------------------
 P7 absence rules: AUD-701 no LLM observability, AUD-702 no tool-call audit log,

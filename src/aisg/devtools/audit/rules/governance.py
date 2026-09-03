@@ -1,3 +1,4 @@
+# aisg-audit: ignore-file
 """aisg/devtools/audit/rules/governance.py
 -----------------------------------------
 P10 governance rules: AUD-1001 (no system card), AUD-1002 (risk tier

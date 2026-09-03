@@ -2,6 +2,12 @@
 ----------------------------
 Fingerprint baseline for `aisg audit`: load, write and diff. Only `new` findings count
 toward the exit code; `unchanged` ones are still rendered, still findings.
+
+A baseline may carry an `accepted` list next to `fingerprints`: one entry per fingerprint
+that a human looked at, with the reason it stays. `load_baseline` validates the list (a
+reason is mandatory, and the fingerprint must also be in `fingerprints`) but returns the
+same set either way: a fingerprint without a reason is a suppression, not an acceptance,
+and the committed `audit-baseline.json` is held to the stricter shape by its own test.
 """
 
 from __future__ import annotations
@@ -9,7 +15,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from aisg.devtools.audit.model import SCHEMA_VERSION, Finding, Report, now_iso
 
@@ -19,6 +25,7 @@ __all__ = [
     "BaselineDiff",
     "BaselineError",
     "diff",
+    "load_accepted",
     "load_baseline",
     "write_baseline",
 ]
@@ -32,15 +39,8 @@ class BaselineError(Exception):
     """A baseline file that cannot be used. The message is a single line; main maps it to exit 2."""
 
 
-def load_baseline(path: Path) -> set[str]:
-    """
-    Read the fingerprint set from a baseline file or from a full audit report.
-
-    Accepts `{"schema": "aisg/1", "kind": "audit-baseline", "fingerprints": [...]}` or
-    `{"schema": "aisg/1", "kind": "audit", "findings": [{"fingerprint": ...}, ...]}`.
-    Anything else raises `BaselineError` with a one-line reason.
-    """
-    path = Path(path)
+def _read_document(path: Path) -> dict[str, Any]:
+    """Parse `path` as a JSON object with the audit schema; anything else is a BaselineError."""
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
@@ -59,6 +59,57 @@ def load_baseline(path: Path) -> set[str]:
         raise BaselineError(
             f"baseline {path.as_posix()}: schema {schema!r} is not {SCHEMA_VERSION!r}"
         )
+    return doc
+
+
+def _validate_accepted(doc: dict[str, Any], fingerprints: set[str], path: Path) -> dict[str, str]:
+    """
+    Check the optional `accepted` list and return `{fingerprint: reason}`.
+
+    Every entry needs a non-empty `reason` and a `fingerprint` that is also listed under
+    `fingerprints`; the error names the offending fingerprint so it can be found in the file.
+    An absent `accepted` key is fine (a `--write-baseline` document has none).
+    """
+    raw = doc.get("accepted")
+    if raw is None:
+        return {}
+    if not isinstance(raw, list):
+        raise BaselineError(f"baseline {path.as_posix()}: 'accepted' is not a list")
+    reasons: dict[str, str] = {}
+    for index, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            raise BaselineError(
+                f"baseline {path.as_posix()}: accepted entry #{index} is not an object"
+            )
+        fingerprint = entry.get("fingerprint")
+        if not isinstance(fingerprint, str) or not fingerprint:
+            raise BaselineError(
+                f"baseline {path.as_posix()}: accepted entry #{index} has no fingerprint"
+            )
+        reason = entry.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise BaselineError(
+                f"baseline {path.as_posix()}: accepted entry {fingerprint} has no reason"
+            )
+        if fingerprint not in fingerprints:
+            raise BaselineError(
+                f"baseline {path.as_posix()}: accepted entry {fingerprint} is not in 'fingerprints'"
+            )
+        reasons[fingerprint] = reason
+    return reasons
+
+
+def load_baseline(path: Path) -> set[str]:
+    """
+    Read the fingerprint set from a baseline file or from a full audit report.
+
+    Accepts `{"schema": "aisg/1", "kind": "audit-baseline", "fingerprints": [...]}` (with an
+    optional `accepted` list, validated) or
+    `{"schema": "aisg/1", "kind": "audit", "findings": [{"fingerprint": ...}, ...]}`.
+    Anything else raises `BaselineError` with a one-line reason.
+    """
+    path = Path(path)
+    doc = _read_document(path)
     kind = doc.get("kind")
     if kind == BASELINE_KIND:
         raw = doc.get("fingerprints")
@@ -82,15 +133,31 @@ def load_baseline(path: Path) -> set[str]:
                 f"baseline {path.as_posix()}: every fingerprint must be a non-empty string"
             )
         fingerprints.add(value)
+    if kind == BASELINE_KIND:
+        _validate_accepted(doc, fingerprints, path)
     return fingerprints
 
 
-def _fingerprints_of(report_or_findings: Report | Iterable[Finding]) -> list[str]:
-    findings = (
-        report_or_findings.findings
-        if isinstance(report_or_findings, Report)
-        else list(report_or_findings)
-    )
+def load_accepted(path: Path) -> dict[str, str]:
+    """
+    `{fingerprint: reason}` from a baseline file's `accepted` list, after the same validation
+    `load_baseline` applies. A full audit report, or a baseline without the list, yields `{}`.
+    """
+    path = Path(path)
+    fingerprints = load_baseline(path)
+    doc = _read_document(path)
+    if doc.get("kind") != BASELINE_KIND:
+        return {}
+    return _validate_accepted(doc, fingerprints, path)
+
+
+def _findings_of(report_or_findings: Report | Iterable[Finding]) -> list[Finding]:
+    if isinstance(report_or_findings, Report):
+        return list(report_or_findings.findings)
+    return list(report_or_findings)
+
+
+def _fingerprints_of(findings: Iterable[Finding]) -> list[str]:
     return sorted({f.fingerprint for f in findings if f.fingerprint})
 
 
@@ -104,15 +171,64 @@ def _tool_block(report_or_findings: Report | Iterable[Finding]) -> dict[str, Any
     return {"name": TOOL_NAME, "version": tool_version()}
 
 
-def write_baseline(report_or_findings: Report | Iterable[Finding], path: Path) -> None:
-    """Write the baseline document: schema, kind, generated_at, tool, fingerprints (sorted, unique)."""
-    doc = {
+def _location_of(finding: Finding) -> str:
+    """`file:line` of the first evidence entry; the scope name for a finding without one."""
+    if finding.evidence:
+        file, line = finding.location
+        return f"{file}:{line}"
+    return finding.scope.name or ""
+
+
+def _accepted_of(findings: Iterable[Finding], reasons: Mapping[str, str]) -> list[dict[str, str]]:
+    """
+    One `accepted` entry per reason, in the order the findings were given (a report's order
+    when a report was passed), taken from the first finding that carries the fingerprint.
+    A reason for a fingerprint no finding carries, or an empty reason, is a `BaselineError`:
+    the document it would produce could not be loaded back.
+    """
+    for fingerprint, reason in reasons.items():
+        if not isinstance(reason, str) or not reason.strip():
+            raise BaselineError(f"baseline: accepted entry {fingerprint} has no reason")
+    accepted: list[dict[str, str]] = []
+    pending = set(reasons)
+    for finding in findings:
+        if finding.fingerprint not in pending:
+            continue
+        pending.discard(finding.fingerprint)
+        accepted.append(
+            {
+                "fingerprint": finding.fingerprint,
+                "rule": finding.display_id,
+                "file": _location_of(finding),
+                "reason": reasons[finding.fingerprint],
+            }
+        )
+    if pending:
+        missing = ", ".join(sorted(pending))
+        raise BaselineError(f"baseline: accepted entry {missing} matches no finding in this run")
+    return accepted
+
+
+def write_baseline(
+    report_or_findings: Report | Iterable[Finding],
+    path: Path,
+    reasons: Mapping[str, str] | None = None,
+) -> None:
+    """
+    Write the baseline document: schema, kind, generated_at, tool, fingerprints (sorted,
+    unique) and, when `reasons` (`{fingerprint: reason}`) is given, an `accepted` list with
+    `rule` (display id) and `file` (`file:line` of the first evidence) per reason.
+    """
+    findings = _findings_of(report_or_findings)
+    doc: dict[str, Any] = {
         "schema": SCHEMA_VERSION,
         "kind": BASELINE_KIND,
         "generated_at": now_iso(),
         "tool": _tool_block(report_or_findings),
-        "fingerprints": _fingerprints_of(report_or_findings),
+        "fingerprints": _fingerprints_of(findings),
     }
+    if reasons is not None:
+        doc["accepted"] = _accepted_of(findings, reasons)
     Path(path).write_text(json.dumps(doc, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 
 

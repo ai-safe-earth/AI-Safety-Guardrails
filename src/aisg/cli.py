@@ -7,14 +7,21 @@ Single entry point for the AI Safety Guardrails developer tools.
     aisg lint src/
     aisg lint src/ --format sarif --output results.sarif
     aisg misalign src/ --fail-on-warnings
+    aisg audit . --format json -o audit-report.json
+    aisg skill install --host all
 
-`lint` and `misalign` are thin wrappers around the static analysers in
-`aisg.devtools`. Everything after the subcommand is handed to the underlying
-tool untouched, so their flags, defaults and exit codes are unchanged:
+Every subcommand is a thin wrapper around a tool in `aisg.devtools`: `lint`,
+`misalign`, `init`, `probe`, `measure`, `audit` and `skill`. Each is imported
+only when invoked, so `aisg lint` never pays for the audit engine. Everything
+after the subcommand is handed to the underlying tool untouched, so their
+flags, defaults and exit codes are unchanged:
 
     0  no errors (warnings/info allowed)
     1  errors found
     2  fatal error (bad args, parse failure)
+
+`audit` adds 130 for an interrupted run; `skill` returns 1 when an install is
+refused or an installed copy differs from the packaged skill.
 """
 
 from __future__ import annotations
@@ -34,6 +41,8 @@ Commands:
   init        Write an ai-system-card.yaml for the system under assessment
   probe       Send a fixed attack corpus to a live endpoint and report what got through
   measure     Report what each guard catches, what it breaks, and what it costs
+  audit       Static AI-safety audit of a repository: findings describe evidence, never verdicts
+  skill       Install the packaged ai-safety-audit agent skill into host skill directories
 
 Run `aisg <command> --help` for a command's own options.
 
@@ -46,6 +55,10 @@ Examples:
   aisg init --defaults
   aisg probe http://localhost:8000/chat --response-path '$.response'
   aisg measure
+  aisg audit . --format json -o audit-report.json
+  aisg audit . --baseline audit-baseline.json --fail-on high
+  aisg skill install --host all
+  aisg skill diff --host all
 """
 
 
@@ -79,12 +92,26 @@ def _measure(argv: Sequence[str]) -> int:
     return measure_main(list(argv))
 
 
+def _audit(argv: Sequence[str]) -> int:
+    from aisg.devtools.audit.main import main as audit_main
+
+    return audit_main(list(argv))
+
+
+def _skill(argv: Sequence[str]) -> int:
+    from aisg.devtools.skill import main as skill_main
+
+    return skill_main(list(argv))
+
+
 COMMANDS: dict[str, Callable[[Sequence[str]], int]] = {
     "lint": _lint,
     "misalign": _misalign,
     "init": _init,
     "probe": _probe,
     "measure": _measure,
+    "audit": _audit,
+    "skill": _skill,
 }
 
 

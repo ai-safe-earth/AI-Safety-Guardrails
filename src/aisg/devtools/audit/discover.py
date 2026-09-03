@@ -1,3 +1,4 @@
+# aisg-audit: ignore-file
 """aisg/devtools/audit/discover.py
 ---
 Grep-level discovery: every enumerated file becomes a list of `Hit`s, and the
@@ -164,6 +165,9 @@ _KILL_SWITCH_READ_ROWS: Table = list(
 ]
 _APPROVAL_ROWS: Table = [("approval", vocab.APPROVAL_SYMBOLS)]
 _GATE_BYPASS_ROWS: Table = [("gate_bypass", vocab.GATE_BYPASS)]
+# Structured config (YAML/JSON/TOML) gets the key/value subset only: a `--yes` in a
+# workflow `run:` step is a shell command, not a gate the config switches off.
+_GATE_BYPASS_CONFIG_ROWS: Table = [("gate_bypass", vocab.GATE_BYPASS_CONFIG)]
 _LOOP_CAP_RE = re.compile(r"\b" + _alternation(vocab.LOOP_CAP_SYMBOLS) + r"\b", re.I)
 
 _OLLAMA_CALL_RE = re.compile(r"\bollama\.(?:chat|generate)\(|localhost:11434")
@@ -194,11 +198,16 @@ _DESCRIPTION_RES = (
 )
 
 _AISG_SECTION_RE = re.compile(r"^(?:input|processing|output|policy):\s*$", re.M)
+# Horizontal whitespace only (plus a CRLF tail): ``\s`` would swallow a blank line
+# before the key and anchor the evidence one line too early.
 _AISG_GUARD_RE = re.compile(
-    r"^\s+(?:pii_detector|pii_restorer|prompt_injection|rate_limiter|tool_policy|llm_input_filter"
-    r"|llm_tool_filter|llm_output_filter|toxicity_output|eu_ai_act|nist_ai_rmf|nemo_rails):\s*$",
+    r"^[ \t]+(?:pii_detector|pii_restorer|prompt_injection|rate_limiter|tool_policy|llm_input_filter"
+    r"|llm_tool_filter|llm_output_filter|toxicity_output|eu_ai_act|nist_ai_rmf|nemo_rails):[ \t]*\r?$",
     re.M,
 )
+
+# ``kind`` values the audit itself emits; its own output is never evidence.
+_OWN_OUTPUT_KINDS = frozenset({"audit", "audit-baseline"})
 
 _IDENT_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]{3,}\b")
 _IDENT_STOP = frozenset(
@@ -278,6 +287,14 @@ class _Match:
     text: str
 
 
+# A mention is not a deployment: on these tables a hit whose match starts inside a
+# comment or a Python triple-quoted string is dropped (`# model: gpt-4o-mini`, "uses
+# LlamaGuard" in a module docstring, `// import { Langfuse }`). Every other table is
+# recorded wherever it matches -- a key in a comment is still a leak, a sink in a
+# commented-out line is still worth a look.
+_MENTION_TABLES = frozenset({"guardrail", "llm_observability", "eval_tool", "model_id"})
+
+
 @dataclass
 class _FileCtx:
     record: FileRecord
@@ -288,11 +305,37 @@ class _FileCtx:
     folded_starts: list[int]
     out: list[_Match]
     seen: set[tuple[str, str, int]]
+    _comment_spans: patterns.CommentSpans | None = None
 
     def line_of(self, offset: int) -> int:
         return bisect_right(self.line_starts, offset)
 
-    def add(self, table: str, key: str, line: int, col: int, snippet: str, text: str) -> bool:
+    def comment_spans(self) -> patterns.CommentSpans:
+        """Comment / docstring columns per line, computed once and only when a
+        mention-sensitive table first matches."""
+        if self._comment_spans is None:
+            self._comment_spans = _spans_for(self.record.relpath, self.record.lang, self.text)
+        return self._comment_spans
+
+    def add(
+        self,
+        table: str,
+        key: str,
+        line: int,
+        col: int,
+        snippet: str,
+        text: str,
+        *,
+        by_name: bool = False,
+    ) -> bool:
+        """Record one hit. `by_name` marks evidence that is the file name rather than
+        the text at (line, col), so the mention filter does not apply to it."""
+        if (
+            not by_name
+            and table in _MENTION_TABLES
+            and patterns.in_comment(self.comment_spans(), line, col - 1)
+        ):
+            return False
         stamp = (table, key, line)
         if stamp in self.seen:
             return False
@@ -335,6 +378,18 @@ def _file_class(record: FileRecord) -> str:
     if record.lang == "config":
         return "config"
     return "code"
+
+
+def _spans_for(relpath: str, lang: str | None, text: str) -> patterns.CommentSpans:
+    """Comment / docstring columns for one file, by the walk's language tag. Docs are
+    prose: nothing in them is a comment. A `.json` file is tagged `config` by the walk
+    but takes `//` rather than `#`, so it is handed to the tokenizer as `json`."""
+    ext = PurePosixPath(relpath).suffix.lower()
+    if ext in _DOC_EXTS:
+        return {}
+    if lang == "config" and ext == ".json":
+        lang = "json"
+    return patterns.comment_spans(text, lang or "")
 
 
 # --- literal prefilter -------------------------------------------------------
@@ -661,6 +716,16 @@ def _scan_ingress_to_prompt(ctx: _FileCtx) -> None:
                 )
 
 
+def _scan_eval_files(ctx: _FileCtx) -> None:
+    """A file an eval tool reads by default is an `eval_tool` hit on line 1, whatever
+    its body says; the snippet is the file name so the evidence reads as what it is."""
+    relpath = ctx.record.relpath
+    name = PurePosixPath(relpath).name
+    for key, rx in patterns.EVAL_FILE_GLOBS:
+        if rx.search(relpath):
+            ctx.add("eval_tool", key, 1, 1, name, name, by_name=True)
+
+
 def _scan_code(ctx: _FileCtx) -> None:
     lang = ctx.record.lang
     table_for = patterns.table_for
@@ -680,7 +745,10 @@ def _scan_code(ctx: _FileCtx) -> None:
     _scan_rows(ctx, "weights", patterns.WEIGHTS_PATTERNS)
     _scan_rows(ctx, "loop", table_for(lang, patterns.LOOP_PATTERNS))
     _scan_rows(ctx, "prompt_assembly", table_for(lang, patterns.PROMPT_ASSEMBLY_PATTERNS))
-    _scan_rows(
+    # Whole-text: a list whose first quoted word sits on the line after the `[` is still
+    # a keyword filter (AUD-805 evidence). The anchor is the name (group 1), so the hit
+    # lands on the assignment line.
+    _scan_whole(
         ctx,
         "keyword_filter",
         table_for(lang, patterns.KEYWORD_FILTER_PATTERNS),
@@ -709,11 +777,16 @@ def _matches(record: FileRecord, text: str) -> list[_Match]:
         _scan_rows(ctx, "overgrant_literal", literal_rows)
         if _glob_hit(patterns.ANNEX_III_FILE_GLOBS, relpath):
             _scan_rows(ctx, "annex_iii", patterns.ANNEX_III_KEYWORDS)
+        # A prompt template is a doc by extension (prompts/system.md, *.txt) but PII in
+        # it ships to the model on every request; PII_FILE_GLOBS decides, not the class.
+        if _glob_hit(patterns.PII_FILE_GLOBS, relpath):
+            _scan_pii(ctx)
         return ctx.out
     _scan_secrets(ctx)
     if _glob_hit(patterns.PII_FILE_GLOBS, relpath):
         _scan_pii(ctx)
     _scan_rows(ctx, "broad_cred", patterns.BROAD_CRED_NAMES)
+    _scan_eval_files(ctx)
     _scan_rows(ctx, "eval_tool", patterns.EVAL_TOOLS)
     _scan_rows(ctx, "fail_open", patterns.FAIL_OPEN_PATTERNS)
     _scan_rows(ctx, "overgrant_literal", literal_rows)
@@ -731,6 +804,8 @@ def _matches(record: FileRecord, text: str) -> list[_Match]:
         _scan_model_ids(ctx, config=True)
         _scan_rows(ctx, "kill_switch_symbol", _KILL_SWITCH_SYMBOL_ROWS)
         _scan_aisg_preset(ctx)
+        if PurePosixPath(relpath).suffix.lower() in _STRUCTURED_EXTS:
+            _scan_rows(ctx, "gate_bypass", _GATE_BYPASS_CONFIG_ROWS)
         return ctx.out
     _scan_code(ctx)
     return ctx.out
@@ -1077,6 +1152,10 @@ def read_report(path: Path, root: Path) -> tuple[ReportRecord | None, UnknownIte
             file=relpath,
         )
     kind = _report_kind(body)
+    if kind is None and body.get("kind") in _OWN_OUTPUT_KINDS:
+        # The audit's own output (a report or a committed baseline) is not evidence
+        # about the system; skip it silently rather than call it an unknown report.
+        return None, None
     if kind is None:
         return None, UnknownItem(
             category=UnknownCategory.REPORTS,
@@ -1358,20 +1437,44 @@ def _build_legs(matches: list[_Match]) -> list[dict[str, Any]]:
     return _sorted(out)
 
 
-def _build_guardrails(matches: list[_Match], fail_open_files: set[str]) -> list[dict[str, Any]]:
+def _llm_judge_in(text: str, spans: patterns.CommentSpans) -> bool:
+    """A judge literal outside every comment and docstring. `# llm_judge: true` in a
+    preset comment or `ClaudeJudge()` in a usage docstring is a mention; the flag has
+    to mean what AUD-804 reads it as, that the file wires a judge."""
+    starts = _newline_starts(text)
+    for _key, pattern in patterns.LLM_JUDGE_PATTERNS:
+        for match in pattern.finditer(text):
+            number = bisect_right(starts, match.start())
+            col = match.start() - starts[number - 1]
+            if not patterns.in_comment(spans, number, col):
+                return True
+    return False
+
+
+def _build_guardrails(
+    matches: list[_Match], fail_open_files: set[str], texts: dict[str, str]
+) -> list[dict[str, Any]]:
+    """`fail_open` and `llm_judge` are True or None, never False: a guard whose file
+    carries no such literal has not been shown to lack one."""
     seen: set[tuple[str, str]] = set()
+    judge_cache: dict[str, bool] = {}
     out: list[dict[str, Any]] = []
     for match in sorted(matches, key=lambda m: (m.hit.file, m.hit.line, m.hit.key)):
         hit = match.hit
         if (hit.file, hit.key) in seen:
             continue
         seen.add((hit.file, hit.key))
+        if hit.file not in judge_cache:
+            text = texts.get(hit.file, "")
+            judge_cache[hit.file] = _llm_judge_in(text, _spans_for(hit.file, hit.lang, text))
         out.append(
             {
                 "lib": hit.key,
                 "file": hit.file,
                 "line": hit.line,
+                "unit": hit.unit,
                 "fail_open": True if hit.file in fail_open_files else None,
+                "llm_judge": True if judge_cache[hit.file] else None,
             }
         )
     return _sorted(out)
@@ -1392,12 +1495,17 @@ def _build_observability(llm: list[_Match], apm: list[_Match]) -> list[dict[str,
     return _sorted(out)
 
 
-def _build_evals(matches: list[_Match], texts: dict[str, str]) -> list[dict[str, Any]]:
+def _build_evals(
+    matches: list[_Match], texts: dict[str, str], exclude: frozenset[str] = frozenset()
+) -> list[dict[str, Any]]:
+    """`exclude` is the set of files `_looks_like_report` accepted: a probe or measure
+    report names its tool in the body, but it is evidence of a past run, not an eval
+    harness the project keeps. Those live in `inventory.reports` only."""
     seen: set[tuple[str, str]] = set()
     out: list[dict[str, Any]] = []
     for match in matches:
         hit = match.hit
-        if (hit.file, hit.key) in seen:
+        if hit.file in exclude or (hit.file, hit.key) in seen:
             continue
         seen.add((hit.file, hit.key))
         out.append(
@@ -1601,11 +1709,12 @@ def discover(
     inventory.external_actions = _build_legs(tables.get("external_action", []))
     inventory.sinks = _build_legs(tables.get("sink", []))
     fail_open_files = {m.hit.file for m in tables.get("fail_open", [])}
-    inventory.guardrails = _build_guardrails(tables.get("guardrail", []), fail_open_files)
+    inventory.guardrails = _build_guardrails(tables.get("guardrail", []), fail_open_files, texts)
     inventory.observability = _build_observability(
         tables.get("llm_observability", []), tables.get("apm", [])
     )
-    inventory.evals = _build_evals(tables.get("eval_tool", []), texts)
+    report_files = frozenset(r.relpath for r in scanned if _looks_like_report(r))
+    inventory.evals = _build_evals(tables.get("eval_tool", []), texts, report_files)
     inventory.loops = _build_loops(tables.get("loop", []), lines_by_file)
     inventory.secrets = _secret_counts(
         tables.get("secret", []) + tables.get("secret_var", []), facts
@@ -1620,7 +1729,7 @@ def discover(
 
     reports: list[ReportRecord] = []
     for record in scanned:
-        if not _looks_like_report(record):
+        if record.relpath not in report_files:
             continue
         report, item = read_report(record.path, root)
         if item is not None:

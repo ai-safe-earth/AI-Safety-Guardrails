@@ -206,7 +206,15 @@ LLM_CALL_PATTERNS: LangTable = {
                 r"https?://api\.(?:openai|anthropic|mistral|cohere|groq|together|perplexity|fireworks)\.",
             ),
         ]
-    )
+    ),
+    # Vercel AI SDK: the `ai` package's call sites. The provider is whichever
+    # `@ai-sdk/*` adapter is passed as `model:`, so the row says "multi".
+    "typescript": _t(
+        [
+            ("vercel_ai", r"\b(?:generateText|streamText|generateObject|streamObject)\s*\("),
+            ("vercel_ai", r"""\bfrom\s+['"]ai['"]"""),
+        ]
+    ),
 }
 
 # sdk key -> provider, the second column of the section 4.2 table.
@@ -223,6 +231,7 @@ LLM_PROVIDER_BY_KEY: dict[str, str] = {
     "litellm": "multi",
     "hf": "huggingface",
     "generic_http": "unknown",
+    "vercel_ai": "multi",
 }
 
 # ---------------------------------------------------------------------------
@@ -645,6 +654,8 @@ SINK_PATTERNS: LangTable = {
 LLM_RESPONSE_ACCESSORS: Table = _t(
     [
         ("choices_message_content", r"\.choices\[0\]\.message\.content\b"),
+        # Go SDKs and hand-rolled structs export the same path in CamelCase.
+        ("choices_message_content_go", r"\.Choices\[0\]\.Message\.Content\b"),
         ("content_text", r"\.content\[0\]\.text\b"),
         ("output_text", r"\.output_text\b"),
         (
@@ -688,6 +699,17 @@ FAIL_OPEN_PATTERNS: Table = _t(
     [
         ("fail_open", r"\bfail_open\s*[:=]\s*[Tt]rue\b"),
         ("on_error_allow", r"""\bon_error\s*[:=]\s*["']allow"""),
+    ]
+)
+
+# A guard that calls a model to decide. Sets `inventory.guardrails[].llm_judge` when the
+# guard's file (code or preset) matches; AUD-802 reads the flag instead of re-deriving it.
+LLM_JUDGE_PATTERNS: Table = _t(
+    [
+        ("llm_judge_flag", r"\b(?:use_)?llm_judge\s*[:=]\s*[Tt]rue\b"),
+        ("llm_judge_class", r"\bLLMJudge\w*\s*\("),
+        ("aisg_judge", r"\b(?:ClaudeJudge|OpenAIModerationJudge|LlamaGuardJudge|CachedJudge)\s*\("),
+        ("aisg_llm_filter", r"\bLLM(?:Input|Output|Tool)Filter\s*\("),
     ]
 )
 
@@ -752,6 +774,19 @@ EVAL_TOOLS: Table = _t(
         ("aisg_probe", r"\baisg\s+probe\b"),
     ],
     re.M | re.I,
+)
+
+# File names an eval tool reads by default (same shape adapters.py accepts as a
+# promptfoo config). The file is the harness whatever its body says: a promptfoo
+# config often names the tool only in a `# yaml-language-server: $schema=https://
+# promptfoo.dev/...` comment, which the mention filter drops. Key is the EVAL_TOOLS
+# key; the hit lands on line 1 with the file name as snippet.
+EVAL_FILE_GLOBS: Table = _globs_by_key(
+    [
+        ("promptfoo", "promptfooconfig*.yaml"),
+        ("promptfoo", "promptfooconfig*.yml"),
+        ("promptfoo", "promptfooconfig*.json"),
+    ]
 )
 
 # ---------------------------------------------------------------------------
@@ -1225,3 +1260,153 @@ def is_mention(line: str, start: int, end: int) -> bool:
     before = line[max(0, start - _MENTION_WINDOW) : start]
     after = line[end : end + _MENTION_WINDOW]
     return bool(DISCUSSION_CUES.search(before) or DISCUSSION_CUES.search(after))
+
+
+# ---------------------------------------------------------------------------
+# Comments and docstrings: a mention is not a deployment.
+#
+# `comment_spans` is a tokenizer-free pass that returns, per line, the column
+# ranges that are a comment or (Python only) a triple-quoted string. discover.py
+# applies it to the mention-sensitive tables alone -- guardrail libraries, LLM
+# observability, eval tools, model ids -- so `# model: gpt-4o` in a YAML comment
+# or "uses LlamaGuard" in a module docstring is not recorded as a deployment.
+# Secrets, PII, over-grant literals, hooks and sinks are never filtered: a key in
+# a comment is still a leak. Unknown languages get no spans, so nothing is dropped.
+# ---------------------------------------------------------------------------
+
+CommentSpans = dict[int, list[tuple[int, int]]]
+
+# `hash`: `#` to end of line. `python`: hash plus `"""` / `'''` strings, which may
+# span lines. `slash`: `//` to end of line and `/* ... */`, which may span lines;
+# backtick strings (template literals, Go raw strings) may span lines too and only
+# suppress comment detection inside them. "json" is the `config` lang for a .json
+# file; strict JSON has no comments, but `//` outside a string cannot be valid JSON.
+_COMMENT_STYLE: dict[str, str] = {
+    "python": "python",
+    "ruby": "hash",
+    "config": "hash",
+    "json": "slash",
+    "typescript": "slash",
+    "go": "slash",
+    "jvm": "slash",
+    "rust": "slash",
+    "dotnet": "slash",
+}
+
+
+def _skip_string(line: str, i: int, quote: str) -> int:
+    """Index just past the string opening at ``line[i] == quote``; end of line if unterminated."""
+    j = i + 1
+    n = len(line)
+    while j < n:
+        ch = line[j]
+        if ch == "\\":
+            j += 2
+            continue
+        if ch == quote:
+            return j + 1
+        j += 1
+    return n
+
+
+def _hash_line(line: str, i: int, spans: list[tuple[int, int]], triple: bool) -> str | None:
+    """Scan ``line[i:]`` in `#` style. Returns the triple quote left open, or None."""
+    n = len(line)
+    while i < n:
+        ch = line[i]
+        if ch == "#":
+            spans.append((i, n))
+            return None
+        if ch in "\"'":
+            if triple and line.startswith(ch * 3, i):
+                close = line.find(ch * 3, i + 3)
+                if close == -1:
+                    spans.append((i, n))
+                    return ch * 3
+                spans.append((i, close + 3))
+                i = close + 3
+                continue
+            i = _skip_string(line, i, ch)
+            continue
+        i += 1
+    return None
+
+
+_STAR_LINE_RE = re.compile(r"^\s*\*(?:\s|/|$)")
+
+
+def _slash_line(line: str, i: int, spans: list[tuple[int, int]]) -> str | None:
+    """Scan ``line[i:]`` in `//` style. Returns "/*" or "`" when left open, else None."""
+    n = len(line)
+    if i == 0:
+        # A JSDoc-style continuation whose opener was not seen, or a stray closer,
+        # reads as comment from the star onwards.
+        star = _STAR_LINE_RE.match(line)
+        if star is not None:
+            spans.append((line.index("*"), n))
+            return None
+    while i < n:
+        if line.startswith("//", i):
+            spans.append((i, n))
+            return None
+        if line.startswith("/*", i):
+            close = line.find("*/", i + 2)
+            if close == -1:
+                spans.append((i, n))
+                return "/*"
+            spans.append((i, close + 2))
+            i = close + 2
+            continue
+        ch = line[i]
+        if ch == "`":
+            close = line.find("`", i + 1)
+            if close == -1:
+                return "`"
+            i = close + 1
+            continue
+        if ch in "\"'":
+            i = _skip_string(line, i, ch)
+            continue
+        i += 1
+    return None
+
+
+def comment_spans(text: str, lang: str) -> CommentSpans:
+    """Per line (1-based), the ``[start, end)`` column ranges that are a comment or a
+    Python triple-quoted string. Lines with no such range are absent. A language with
+    no known comment syntax yields ``{}``: nothing is filtered rather than guessed."""
+    style = _COMMENT_STYLE.get(lang or "")
+    if style is None:
+        return {}
+    out: CommentSpans = {}
+    open_token: str | None = None
+    for number, raw in enumerate(text.split("\n"), 1):
+        line = raw.rstrip("\r")
+        spans: list[tuple[int, int]] = []
+        i = 0
+        if open_token == "`":
+            close = line.find("`")
+            if close == -1:
+                continue
+            i = close + 1
+            open_token = None
+        elif open_token is not None:
+            close = line.find(open_token if style == "python" else "*/")
+            if close == -1:
+                out[number] = [(0, len(line))]
+                continue
+            i = close + len(open_token if style == "python" else "*/")
+            spans.append((0, i))
+            open_token = None
+        if style == "slash":
+            open_token = _slash_line(line, i, spans)
+        else:
+            open_token = _hash_line(line, i, spans, style == "python")
+        if spans:
+            out[number] = spans
+    return out
+
+
+def in_comment(spans: CommentSpans, line: int, col: int) -> bool:
+    """True when 0-based column ``col`` of 1-based ``line`` falls inside a recorded span."""
+    return any(s <= col < e for s, e in spans.get(line, ()))

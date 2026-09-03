@@ -1,3 +1,4 @@
+# aisg-audit: ignore-file
 """aisg/devtools/audit/rules/supply_chain.py
 -------------------------------------------
 P6 rules, AUD-601..606: floating model ids, unpinned MCP servers and bootstrap

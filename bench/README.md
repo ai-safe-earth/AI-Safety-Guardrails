@@ -110,6 +110,12 @@ Two distinct cases both read as unmeasured, and `precision.md` separates them:
 
 Neither is evidence of quality. Do not fill in a number for either.
 
+**`aisg audit` rules are not covered yet.** `bench/run.py --tool audit` -- the
+same corpus, label loop and `score.py` output for the `AUD-*` rules -- is planned,
+not built; `run.py` has no `--tool` flag today. Until it exists every audit rule
+stays `measured_precision = None`, renders as `[UNMEASURED]`, and keeps firing.
+Do not type a number in ahead of the labelling.
+
 ## Corpus
 
 `corpus.yaml` — 20 public repositories that call LLMs, spanning agent

@@ -1,3 +1,4 @@
+# aisg-audit: ignore-file
 """aisg/devtools/audit/rules/guards.py
 -------------------------------------
 P8 guard rules: AUD-801 guard present but unmeasured, AUD-802 guard configured
@@ -9,6 +10,15 @@ already on disk, so they are ASSERTED with `evidence_kind: report` and carry the
 report's age; the renderer shows them as `[REPORTED <age>]`. The rule compares the
 report's `threshold_failures` and `false_positive_rate` only -- `aisg measure`
 emits no other per-guard rate that a rule may read.
+
+One unmeasured guard is one fact. AUD-801 groups its sites per (unit, guard): a
+guard imported, re-exported and constructed in a dozen modules of one unit is one
+finding, anchored on the first site by (file, line) -- the fingerprint is computed
+from that site alone, so adding a second import never changes it -- with the other
+sites appended as `also` evidence (at most `_ALSO_CAP`, then "+N more sites" in the
+notes). AUD-804 groups the same way per (unit, sub-finding), because both facts it
+reports, a credential binding and a timeout, are resolved per unit, not per judge
+line.
 
 Every rule here tolerates an empty or partial context: the inventory sections it
 reads may be empty, `ctx.pyfacts` / `ctx.config_facts` may be None, and a file the
@@ -39,6 +49,12 @@ from aisg.devtools.audit.model import (
     Unit,
     UnknownCategory,
     UnknownItem,
+)
+from aisg.devtools.audit.patterns import (
+    LLM_JUDGE_PATTERNS,
+    CommentSpans,
+    comment_spans,
+    in_comment,
 )
 from aisg.devtools.audit.rules import AuditRule, file_text, unit_of
 
@@ -73,17 +89,20 @@ _AISG_LIB = "aisg"
 _CONFIG_EXTS = frozenset({".yaml", ".yml", ".toml", ".json", ".ini", ".cfg", ".env"})
 _CODE_LANGS_EXCLUDED = frozenset({"config", "other"})
 
+# The same vocabulary discovery uses to set `guardrails[].llm_judge`; built from that
+# table so the flag and the line the rule points at can never disagree.
 _JUDGE_RE = re.compile(
-    r"(?:\b(?:use_)?llm_judge\s*[:=]\s*[Tt]rue\b"
-    r"|\bLLMJudge\w*\s*\("
-    r"|\b(?:ClaudeJudge|OpenAIModerationJudge|LlamaGuardJudge|CachedJudge)\s*\("
-    r"|\bLLM(?:Input|Output|Tool)Filter\s*\()"
+    "(?:" + "|".join(pattern.pattern for _key, pattern in LLM_JUDGE_PATTERNS) + ")"
 )
 _API_KEY_RE = re.compile(r"\b[A-Za-z0-9_]*_API_KEY\b", re.I)
 _TIMEOUT_RE = re.compile(r"timeout", re.I)
 _QUOTED_RE = re.compile(r"""["'][^"'\n]+["']""")
 _MIN_KEYWORDS = 5
 _LITERAL_WINDOW = 200
+# Sites after the anchor that a grouped finding lists as `also` evidence; the rest
+# are counted in the notes so the reader knows the list is cut, not complete.
+_ALSO_CAP = 8
+_ALSO_ROLE = "also"
 
 
 @dataclass(frozen=True)
@@ -92,6 +111,95 @@ class _GuardSite:
     file: str
     line: int
     enabled: bool
+
+
+@dataclass(frozen=True)
+class _SiteRef:
+    """One location of a grouped finding: the anchor or an `also` entry."""
+
+    file: str
+    line: int
+    snippet: str
+
+
+@dataclass(frozen=True)
+class _Candidate:
+    """A site plus what the finding built from it would say; the group's anchor decides."""
+
+    site: _SiteRef
+    unit: Unit | None
+    evidence_kind: EvidenceKind
+    match_kind: MatchKind
+    notes: str
+    sub: str | None = None
+
+    @property
+    def order(self) -> tuple[str, int, str]:
+        return (self.site.file, self.site.line, self.site.snippet)
+
+
+def _grouped_evidence(sites: list[_SiteRef]) -> tuple[list[Evidence], int]:
+    """
+    The anchor as `match` evidence plus up to `_ALSO_CAP` further sites as `also`
+    evidence, in the order given. Returns the evidence and how many sites were cut.
+    """
+    anchor, extra = sites[0], sites[1:]
+    evidence = [Evidence(role="match", file=anchor.file, line=anchor.line, snippet=anchor.snippet)]
+    evidence.extend(
+        Evidence(role=_ALSO_ROLE, file=site.file, line=site.line, snippet=site.snippet)
+        for site in extra[:_ALSO_CAP]
+    )
+    return evidence, max(0, len(extra) - _ALSO_CAP)
+
+
+def _more_sites(notes: str, overflow: int) -> str:
+    if overflow <= 0:
+        return notes
+    return f"{notes}; +{overflow} more site{'s' if overflow != 1 else ''}"
+
+
+def _group_scope(unit: Unit | None, anchor_file: str) -> Scope:
+    """A grouped finding is about a unit; without one it falls back to the anchor file."""
+    if unit is None:
+        return Scope(kind="file", name=anchor_file)
+    return Scope(kind="unit", unit=unit.id, name=unit.root or ".")
+
+
+def _emit_groups(rule: AuditRule, groups: dict[Any, list[_Candidate]]) -> list[Finding]:
+    """
+    One finding per group. Candidates are sorted by (file, line, snippet) so the anchor,
+    and with it the fingerprint, is the first site by path regardless of insertion
+    order; a site seen twice for the same group is listed once.
+    """
+    findings: list[Finding] = []
+    for candidates in groups.values():
+        ordered: list[_Candidate] = []
+        seen: set[tuple[str, int]] = set()
+        for candidate in sorted(candidates, key=lambda c: c.order):
+            key = (candidate.site.file, candidate.site.line)
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(candidate)
+        anchor = ordered[0]
+        evidence, overflow = _grouped_evidence([c.site for c in ordered])
+        findings.append(
+            rule.finding(
+                file=anchor.site.file,
+                line=anchor.site.line,
+                snippet=anchor.site.snippet,
+                evidence=evidence,
+                scope=_group_scope(anchor.unit, anchor.site.file),
+                sub=anchor.sub,
+                evidence_kind=anchor.evidence_kind,
+                match_kind=anchor.match_kind,
+                notes=_more_sites(anchor.notes, overflow),
+            )
+        )
+    return sorted(
+        findings,
+        key=lambda f: (f.evidence[0].file, f.evidence[0].line, f.sub or "", f.notes or ""),
+    )
 
 
 def _entries(ctx: AuditContext, section: str) -> list[dict[str, Any]]:
@@ -124,6 +232,33 @@ def _owning_unit(ctx: AuditContext, relpath: str) -> Unit | None:
     return best
 
 
+def _entry_unit(ctx: AuditContext, entry: dict[str, Any]) -> Unit | None:
+    """
+    The Unit a `guardrails[]` entry belongs to. Discovery records the unit id under
+    `unit`; that value is authoritative when present. An entry without the key (an
+    older inventory, a hand-built one) falls back to resolving the file's owner.
+    """
+    if "unit" in entry:
+        unit_id = entry.get("unit")
+        if unit_id is not None:
+            for unit in ctx.inventory.units:
+                if unit.id == unit_id:
+                    return unit
+    return _owning_unit(ctx, str(entry.get("file") or ""))
+
+
+def _entry_llm_judge(entry: dict[str, Any], text: str | None) -> bool:
+    """
+    Whether the entry's file wires an LLM judge. Discovery records `llm_judge` as
+    True or None (None is "not shown", never "shown absent"); when the key is
+    present, None means the file carries no judge literal and the regex is skipped.
+    Without the key the file text is searched, as it was before discovery recorded it.
+    """
+    if "llm_judge" in entry:
+        return entry.get("llm_judge") is True
+    return bool(text and _JUDGE_RE.search(text))
+
+
 def _unit_files(ctx: AuditContext, unit: Unit | None, *, code_only: bool) -> list[str]:
     """Relpaths the walk enumerated for `unit` (every file when the unit is unknown)."""
     out: list[str] = []
@@ -139,6 +274,17 @@ def _unit_files(ctx: AuditContext, unit: Unit | None, *, code_only: bool) -> lis
     return sorted(out)
 
 
+def _lang_of(ctx: AuditContext, relpath: str) -> str:
+    """The walk's language tag for `relpath`; 'python' / 'config' by suffix when unknown."""
+    key = relpath.replace("\\", "/")
+    for record in ctx.files or []:
+        if getattr(record, "relpath", None) == key:
+            return str(getattr(record, "lang", "") or "")
+    if key.endswith((".py", ".pyi")):
+        return "python"
+    return "config" if _is_config(key) else ""
+
+
 def _line(text: str | None, number: int) -> str:
     if not text or number < 1:
         return ""
@@ -149,6 +295,15 @@ def _line(text: str | None, number: int) -> str:
 def _line_of(text: str, pattern: re.Pattern[str]) -> int:
     match = pattern.search(text)
     return text.count("\n", 0, match.start()) + 1 if match else 0
+
+
+def _preset_key_re(name: str) -> re.Pattern[str]:
+    """
+    The `  <name>:` line of a preset guard block. Horizontal whitespace only (plus a
+    CRLF tail): `\\s` would swallow a blank line before the key and anchor the site one
+    line too early.
+    """
+    return re.compile(rf"^[ \t]+{re.escape(name)}:[ \t]*\r?$", re.M)
 
 
 def _is_config(relpath: str) -> bool:
@@ -177,22 +332,37 @@ def _preset_guards(text: str, relpath: str) -> list[_GuardSite]:
                 if not isinstance(name, str) or not isinstance(cfg, dict):
                     continue
                 enabled = cfg.get("enabled", True) is not False
-                line = _line_of(text, re.compile(rf"^\s+{re.escape(name)}:\s*$", re.M))
+                line = _line_of(text, _preset_key_re(name))
                 sites.append(_GuardSite(name, relpath, line, enabled))
     else:
         for name in _GUARD_CLASSES:
-            line = _line_of(text, re.compile(rf"^\s+{re.escape(name)}:\s*$", re.M))
+            line = _line_of(text, _preset_key_re(name))
             if line:
                 sites.append(_GuardSite(name, relpath, line, True))
     return sorted(sites, key=lambda s: (s.line, s.name))
 
 
+def _code_line_of(text: str, pattern: re.Pattern[str], spans: CommentSpans) -> int:
+    """First line where `pattern` matches outside a comment or docstring; 0 when none."""
+    for match in pattern.finditer(text):
+        line = text.count("\n", 0, match.start()) + 1
+        col = match.start() - (text.rfind("\n", 0, match.start()) + 1)
+        if not in_comment(spans, line, col):
+            return line
+    return 0
+
+
 def _python_guards(text: str, relpath: str) -> list[_GuardSite]:
-    """Guards a Python file names, by registry name or class name."""
+    """
+    Guards a Python file names, by registry name or class name. A name that appears
+    only in a comment or a docstring is a mention, not a wired guard, and the site is
+    anchored on the first occurrence in code rather than the first occurrence at all.
+    """
     sites: list[_GuardSite] = []
+    spans = comment_spans(text, "python")
     for name, klass in _GUARD_CLASSES.items():
         pattern = re.compile(rf"\b(?:{re.escape(name)}|{re.escape(klass)})\b")
-        line = _line_of(text, pattern)
+        line = _code_line_of(text, pattern, spans)
         if line:
             sites.append(_GuardSite(name, relpath, line, True))
     return sorted(sites, key=lambda s: (s.line, s.name))
@@ -266,6 +436,9 @@ class GuardUnmeasured(AuditRule):
         "or of whether the guard's configuration changed since; AUD-903 covers age.",
         "For a third-party guard library the check is only that an eval file or report "
         "mentions the library name at all.",
+        "Sites are grouped per unit and guard and anchored on the first by path, so the "
+        "anchor may be a re-export or an example rather than the wiring that serves traffic; "
+        "the other sites are listed as `also` evidence.",
     )
     recommendation = Recommendation(
         tier=Tier.T2,
@@ -294,13 +467,15 @@ class GuardUnmeasured(AuditRule):
             if text:
                 eval_texts.append(text)
 
-        findings: list[Finding] = []
-        seen: set[tuple[str, int, str]] = set()
         guard_sites = _guard_sites(ctx)
         sites_by_file: dict[str, list[_GuardSite]] = {}
         for site in guard_sites:
             sites_by_file.setdefault(site.file, []).append(site)
 
+        # One group per (unit, guard). An aisg guard is identified by its registry name
+        # whether a preset enables it or code constructs it; a third-party library is
+        # its own guard; a bare `aisg` import that names no guard is its own group too.
+        groups: dict[tuple[str | None, str, str], list[_Candidate]] = {}
         for entry in sorted(
             _entries(ctx, "guardrails"),
             key=lambda e: (str(e.get("file") or ""), int(e.get("line") or 0), str(e.get("lib"))),
@@ -312,22 +487,22 @@ class GuardUnmeasured(AuditRule):
                 continue
             text = file_text(ctx, file)
             kind = EvidenceKind.CONFIG if _is_config(file) else EvidenceKind.CODE
+            unit = _entry_unit(ctx, entry)
+            unit_id = unit.id if unit is not None else None
             if lib in (_PRESET_LIB, _AISG_LIB) and sites_by_file.get(file):
                 for site in sites_by_file[file]:
                     if not site.enabled:
                         continue
                     if site.name in report_names or _named(site.name, eval_texts):
                         continue
-                    key = (file, site.line, site.name)
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    findings.append(
-                        self.finding(
-                            file=file,
-                            line=site.line,
-                            snippet=_line(text, site.line) or f"{site.name}:",
+                    groups.setdefault((unit_id, "guard", site.name), []).append(
+                        _Candidate(
+                            site=_SiteRef(
+                                file, site.line, _line(text, site.line) or f"{site.name}:"
+                            ),
+                            unit=unit,
                             evidence_kind=kind,
+                            match_kind=self.match_kind,
                             notes=(
                                 f"guard {site.name} is wired in {file}; no measure report "
                                 "and no eval file in the tree names it"
@@ -338,6 +513,7 @@ class GuardUnmeasured(AuditRule):
             if lib == _AISG_LIB:
                 if reports or _named(_AISG_LIB, eval_texts):
                     continue
+                key = (unit_id, "bare", lib)
                 note = (
                     f"aisg imported in {file} without naming a guard; the tree holds no "
                     "measure report and no eval file mentions aisg"
@@ -347,22 +523,18 @@ class GuardUnmeasured(AuditRule):
             else:
                 if _named(lib, eval_texts) or any(lib in n for n in report_names):
                     continue
+                key = (unit_id, "lib", lib)
                 note = f"guard library {lib} is used in {file}; no report or eval file names it"
-            key = (file, line, lib)
-            if key in seen:
-                continue
-            seen.add(key)
-            findings.append(
-                self.finding(
-                    file=file,
-                    line=line,
-                    snippet=_line(text, line) or lib,
+            groups.setdefault(key, []).append(
+                _Candidate(
+                    site=_SiteRef(file, line, _line(text, line) or lib),
+                    unit=unit,
                     evidence_kind=kind,
                     match_kind=MatchKind.GREP,
                     notes=note,
                 )
             )
-        return sorted(findings, key=lambda f: (f.evidence[0].file, f.evidence[0].line, f.notes))
+        return _emit_groups(self, groups)
 
 
 class GuardFailOpen(AuditRule):
@@ -616,6 +788,9 @@ class LLMJudgeWithoutCredentialsOrTimeout(AuditRule):
         "Any `*_API_KEY` binding in the unit counts, even one for an unrelated service.",
         "Any `timeout` token in the judge's file or a loop-cap hit in the unit counts as a "
         "timeout, whether or not it applies to the judge call.",
+        "Judge lines are grouped per unit and anchored on the first by path; the anchor "
+        "may be a preset entry while the judge that matters is constructed in code, listed "
+        "as `also` evidence.",
     )
     recommendation = Recommendation(
         tier=Tier.T1,
@@ -635,23 +810,36 @@ class LLMJudgeWithoutCredentialsOrTimeout(AuditRule):
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
-        judge_files: list[str] = []
+        # Files holding an aisg guard entry, and the unit discovery assigned each one.
+        # Discovery's `llm_judge` flag decides whether the file is searched for the
+        # judge line at all; the regex still locates the line once a file qualifies.
+        judge_files: dict[str, Unit | None] = {}
         for entry in _entries(ctx, "guardrails"):
             file = str(entry.get("file") or "")
             lib = str(entry.get("lib") or "")
-            if file and lib in (_PRESET_LIB, _AISG_LIB) and file not in judge_files:
-                judge_files.append(file)
+            if not file or lib not in (_PRESET_LIB, _AISG_LIB) or file in judge_files:
+                continue
+            if not _entry_llm_judge(entry, file_text(ctx, file)):
+                continue
+            judge_files[file] = _entry_unit(ctx, entry)
 
+        # Both facts are resolved per unit (`_has_timeout` scans every judge file of
+        # the unit), so every judge line in a unit says the same thing: one group per
+        # (unit, sub-finding), anchored on the first judge line by path.
         cred_cache: dict[str | None, bool] = {}
         timeout_cache: dict[str | None, bool] = {}
-        findings: list[Finding] = []
+        groups: dict[tuple[str | None, str], list[_Candidate]] = {}
         for file in sorted(judge_files):
             text = file_text(ctx, file)
             if not text:
                 continue
+            spans = comment_spans(text, _lang_of(ctx, file))
             for match in _JUDGE_RE.finditer(text):
                 line = text.count("\n", 0, match.start()) + 1
-                unit = _owning_unit(ctx, file)
+                col = match.start() - (text.rfind("\n", 0, match.start()) + 1)
+                if in_comment(spans, line, col):
+                    continue  # a judge named in a comment or docstring is not wired
+                unit = judge_files[file]
                 unit_id = unit.id if unit is not None else None
                 if unit_id not in cred_cache:
                     cred_cache[unit_id] = self._has_credentials(ctx, unit)
@@ -666,19 +854,20 @@ class LLMJudgeWithoutCredentialsOrTimeout(AuditRule):
                     missing.append("no *_API_KEY binding in the unit's env or config files")
                 if not has_timeout:
                     missing.append("no timeout in the judge's file or unit")
-                findings.append(
-                    self.finding(
-                        file=file,
-                        line=line,
-                        snippet=_line(text, line) or match.group(0),
-                        sub="no-credentials" if not has_creds else "no-timeout",
+                sub = "no-credentials" if not has_creds else "no-timeout"
+                groups.setdefault((unit_id, sub), []).append(
+                    _Candidate(
+                        site=_SiteRef(file, line, _line(text, line) or match.group(0)),
+                        unit=unit,
                         evidence_kind=EvidenceKind.CONFIG
                         if _is_config(file)
                         else EvidenceKind.CODE,
+                        match_kind=self.match_kind,
                         notes="; ".join(missing),
+                        sub=sub,
                     )
                 )
-        return findings
+        return _emit_groups(self, groups)
 
     @staticmethod
     def _has_credentials(ctx: AuditContext, unit: Unit | None) -> bool:
@@ -698,12 +887,14 @@ class LLMJudgeWithoutCredentialsOrTimeout(AuditRule):
         return False
 
     @staticmethod
-    def _has_timeout(ctx: AuditContext, unit: Unit | None, judge_files: list[str]) -> bool:
+    def _has_timeout(
+        ctx: AuditContext, unit: Unit | None, judge_files: dict[str, Unit | None]
+    ) -> bool:
         unit_id = unit.id if unit is not None else None
         if any(hit.key == "timeout" for hit in _hits(ctx, "loop_cap", unit=unit_id)):
             return True
-        for relpath in judge_files:
-            if unit is not None and _owning_unit(ctx, relpath) is not unit:
+        for relpath, owner in judge_files.items():
+            if unit is not None and (owner is None or owner.id != unit.id):
                 continue
             text = file_text(ctx, relpath)
             if text and _TIMEOUT_RE.search(text):
@@ -757,7 +948,7 @@ class KeywordOnlyFilter(AuditRule):
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
         guarded_units: set[str | None] = set()
         for entry in _entries(ctx, "guardrails"):
-            unit = _owning_unit(ctx, str(entry.get("file") or ""))
+            unit = _entry_unit(ctx, entry)
             guarded_units.add(unit.id if unit is not None else None)
 
         findings: list[Finding] = []

@@ -3,8 +3,9 @@
 Pins for the audit renderers: schema-first JSON, the disclaimer in every format, no
 compliance language and never the word the design bans, `[UNMEASURED]` on every
 finding, `[REPORTED <age>d, <source>]` on report-derived findings, ASCII terminal
-output, the mandatory `below --fail-on` summary line, the exit-code rule and the
-section 3.2 summary shape.
+output, the mandatory `below --fail-on` summary line, the exit-code rule, the
+section 3.2 summary shape, rule-level blocks printed once per rule id, the quiet
+mode's severity and bucket lines, and the baseline line after the count line.
 
 Findings are built by hand. The `rules[]` catalogue always lists the whole registry
 (`ran: false` for rules that did not run), so a local `AuditRule` subclass with an id
@@ -802,6 +803,132 @@ def test_terminal_quiet_prints_disclaimer_summary_unknown_and_tools_only():
     assert text.isascii()
 
 
+def test_terminal_quiet_keeps_severity_and_bucket_lines_without_finding_detail():
+    """A CI log must say what kind of evidence the count rests on, but never a finding."""
+    text = to_terminal(build(), quiet=True)
+    lines = text.splitlines()
+    count_at = next(i for i, ln in enumerate(lines) if ln.startswith("7 findings ("))
+    assert lines[count_at + 1] == "severity: critical 3, high 3, medium 0, low 0, info 1"
+    assert (
+        lines[count_at + 2] == "buckets: MEASURED 1 | ASSERTED 6 (of which REPORTED 1) | UNKNOWN 2"
+    )
+    for marker in (
+        "scope:",
+        "fix (",
+        "alternatives",
+        "controls:",
+        "known failure modes",
+        "[match]",
+    ):
+        assert marker not in text, marker
+    assert "[UNMEASURED]" not in text
+    assert not any(ln.startswith("[#") for ln in lines)
+    # Every line in quiet mode is one the full renderer prints too.
+    full_lines = set(to_terminal(build()).splitlines())
+    assert set(lines) <= full_lines
+
+
+# ---------------------------------------------------------------------------
+# rule-level blocks once per rule id
+# ---------------------------------------------------------------------------
+
+ALTERNATIVES_LINE = "alternatives: aisg ToolPolicyGuard; NeMo Guardrails; LLM Guard"
+FAILURE_MODES_LINE = "known failure modes: scope over-approximates in monorepos; grep tier"
+CONTROLS_LINE = "controls: ASI01, EU:Art.9"
+SEE_FIRST = "alternatives / controls / known failure modes: see the first AUD-101 above"
+
+
+def two_of_the_same_rule() -> list[Finding]:
+    return [
+        make_finding("AUD-101", line=3, snippet="permissions.allow: Bash(*)"),
+        make_finding("AUD-101", line=4, snippet="permissions.allow: WebFetch"),
+    ]
+
+
+def test_terminal_prints_rule_blocks_once_and_references_them_after():
+    text = render(build(two_of_the_same_rule()), "terminal")
+    assert text.count(ALTERNATIVES_LINE) == 1
+    assert text.count(FAILURE_MODES_LINE) == 1
+    assert text.count(CONTROLS_LINE) == 1
+    assert text.count(SEE_FIRST) == 1
+    # The blocks sit under the first finding, the reference under the second.
+    first = text.index("permissions.allow: Bash(*)")
+    second = text.index("permissions.allow: WebFetch")
+    assert first < text.index(ALTERNATIVES_LINE) < second < text.index(SEE_FIRST)
+    # The per-finding lines stay per finding.
+    assert text.count("fix (T1): fix for AUD-101") == 2
+    assert text.count("scope: file services/agent/app.py") == 2
+    assert text.count("[UNMEASURED]") == 2
+
+
+def test_terminal_reference_appears_once_across_every_kind():
+    """every_kind() carries AUD-501 twice and five other rules once: six full blocks, one reference."""
+    report = build()
+    distinct = len({f.id for f in report.findings})
+    assert distinct == 6
+    text = render(report, "terminal")
+    assert text.count(ALTERNATIVES_LINE) == distinct
+    assert text.count(FAILURE_MODES_LINE) == distinct
+    assert text.count("see the first ") == 1
+    assert "see the first AUD-501 above" in text
+
+
+def test_markdown_anchors_the_first_occurrence_and_links_the_rest():
+    text = render(build(two_of_the_same_rule()), "markdown")
+    assert text.count('<a id="aud-101"></a>') == 1
+    assert text.count("see the first [AUD-101](#aud-101) above") == 1
+    assert text.count(ALTERNATIVES_LINE) == 1
+    assert text.count(FAILURE_MODES_LINE) == 1
+    assert text.count(CONTROLS_LINE) == 1
+    anchored = next(ln for ln in text.splitlines() if 'id="aud-101"' in ln)
+    assert anchored.startswith('- <a id="aud-101"></a>**AUD-101** ')
+    # A rule with a single finding gets no anchor: nothing links to it.
+    single = render(build([make_finding("AUD-101")]), "markdown")
+    assert "<a id=" not in single and "see the first" not in single
+
+
+def test_reference_names_the_display_id_of_the_first_finding_of_the_rule():
+    """Sub-findings share their rule's blocks; the reference points at the display id printed."""
+    findings = [
+        make_finding("AUD-107", sub="inert", severity=Severity.HIGH, line=1),
+        make_finding("AUD-107", severity=Severity.MEDIUM, line=2),
+    ]
+    term = render(build(findings), "terminal")
+    assert "see the first AUD-107/inert above" in term
+    assert term.count(ALTERNATIVES_LINE) == 1
+    md = render(build(findings), "markdown")
+    assert '<a id="aud-107-inert"></a>**AUD-107/inert**' in md
+    assert "see the first [AUD-107/inert](#aud-107-inert) above" in md
+
+
+def test_a_block_that_differs_from_the_first_is_printed_in_full():
+    """A reference never hides a difference: only identical blocks fold."""
+    first, second = two_of_the_same_rule()
+    second.recommendation = Recommendation(
+        tier=Tier.T2, summary="different fix", alternatives=("x", "y", "z")
+    )
+    second.known_failure_modes = ("something else",)
+    for fmt in ("terminal", "markdown"):
+        text = render(build([first, second]), fmt)
+        assert text.count(ALTERNATIVES_LINE) == 1, fmt
+        assert "alternatives: x; y; z" in text, fmt
+        assert "known failure modes: something else" in text, fmt
+        assert text.count(CONTROLS_LINE) == 1, fmt
+        assert "controls: see the first " in text, fmt
+        assert "alternatives / controls" not in text, fmt
+
+
+def test_first_finding_of_a_rule_never_carries_a_reference():
+    text = render(build([make_finding("AUD-101")]), "terminal")
+    assert "see the first" not in text
+    assert ALTERNATIVES_LINE in text and FAILURE_MODES_LINE in text and CONTROLS_LINE in text
+
+
+def test_reference_line_is_a_renderer_template():
+    assert any("see the first" in t for t in _TEMPLATES)
+    assert any('<a id="' in t for t in _TEMPLATES)
+
+
 def test_zero_findings_still_prints_unknown_and_disclaimer():
     report = build([])
     assert report.summary["findings"] == 0 and report.summary["top"] is None
@@ -853,20 +980,59 @@ def test_info_only_exits_zero_but_stays_a_finding():
         assert not CLEAN_WORD.search(text), fmt
 
 
-def test_baseline_block_and_tags_render():
+# ---------------------------------------------------------------------------
+# baseline
+# ---------------------------------------------------------------------------
+
+BASELINE_LINE = "baseline: 6 new, 1 unchanged, 1 fixed (audit-baseline.json)"
+
+
+def with_baseline() -> Report:
+    """every_kind() diffed against a baseline: AUD-1002 unchanged, six new, one fixed."""
     findings = every_kind()
-    diff = BaselineDiff(file="audit-baseline.json")
+    diff = BaselineDiff(file="audit-baseline.json", fixed=["0123456789abcdef"])
     for finding in findings:
         finding.baseline_status = "unchanged" if finding.id == "AUD-1002" else "new"
         (diff.unchanged if finding.baseline_status == "unchanged" else diff.new).append(finding)
-    diff.fixed = ["0123456789abcdef"]
-    report = build(findings, baseline=diff)
+    return build(findings, baseline=diff)
+
+
+def test_baseline_block_and_tags_render():
+    report = with_baseline()
     assert report.baseline == {"file": "audit-baseline.json", "new": 6, "fixed": 1, "unchanged": 1}
     assert report.summary["baseline_new"] == 6
     text = render(report, "terminal")
-    assert "baseline audit-baseline.json: 6 new, 1 fixed, 1 unchanged" in text
+    assert BASELINE_LINE in text
     assert text.count("[baseline: new]") == 6
     assert text.count("[baseline: unchanged]") == 1
     doc = json.loads(render(report, "json"))
     assert doc["baseline"] == report.baseline
     assert {f["baseline_status"] for f in doc["findings"]} == {"new", "unchanged"}
+
+
+@pytest.mark.parametrize("quiet", [False, True])
+def test_baseline_line_follows_the_count_line_in_both_terminal_modes(quiet: bool):
+    text = to_terminal(with_baseline(), quiet=quiet)
+    lines = text.splitlines()
+    count_at = next(i for i, ln in enumerate(lines) if ln.startswith("7 findings ("))
+    assert lines[count_at + 1] == BASELINE_LINE
+    assert lines[count_at + 2].startswith("severity: ")
+    assert lines[count_at + 3].startswith("buckets: ")
+    assert text.count(BASELINE_LINE) == 1
+    # The per-finding marks belong to full mode only; quiet prints no finding line.
+    assert text.count("[baseline: new]") == (0 if quiet else 6)
+    assert text.count("[baseline: unchanged]") == (0 if quiet else 1)
+
+
+def test_baseline_line_precedes_findings_in_markdown():
+    text = render(with_baseline(), "markdown")
+    assert text.count(BASELINE_LINE) == 1
+    assert text.index("7 findings (") < text.index(BASELINE_LINE) < text.index("## Findings")
+    assert text.count("[baseline: new]") == 6
+    assert text.count("[baseline: unchanged]") == 1
+
+
+def test_no_baseline_line_without_a_baseline():
+    for quiet in (False, True):
+        assert "baseline:" not in to_terminal(build(), quiet=quiet)
+    assert "baseline:" not in render(build(), "markdown")

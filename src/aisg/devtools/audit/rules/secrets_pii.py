@@ -1,3 +1,4 @@
+# aisg-audit: ignore-file
 """aisg/devtools/audit/rules/secrets_pii.py
 ------------------------------------------
 P5 rules, AUD-501..505: secret literals in source, secrets in host / MCP config,

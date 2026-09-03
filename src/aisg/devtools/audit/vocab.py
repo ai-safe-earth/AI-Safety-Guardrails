@@ -9,7 +9,8 @@ Two kinds of table live here, and consumers must treat them differently:
   compare against ``identifier.lower()`` at AST depth, or compile as
   ``\\b(?:a|b|c)\\b`` with ``re.I`` for grep depth. Tokens, never substrings.
 * compiled ``re.Pattern`` (``*_CAPABILITY``, ``APPROVAL_SYMBOLS``, ``GATE_BYPASS``,
-  ``KILL_SWITCH_ENV_READS``): ``.search()`` the text; ``group(0)`` is the evidence.
+  ``GATE_BYPASS_CONFIG``, ``KILL_SWITCH_ENV_READS``): ``.search()`` the text;
+  ``group(0)`` is the evidence.
 
 The first line of this file is the audit's ignore marker so the walker never
 matches the audit against its own vocabulary. Nothing here measures anything:
@@ -70,11 +71,25 @@ APPROVAL_SYMBOLS = re.compile(
 # Literals that switch a gate off. `-y` only counts beside a destructive CLI (`rm`,
 # package managers, `kubectl`, `terraform`, `gh`, `az`, `aws`, `gcloud`, `docker`):
 # a bare `-y` is `npx -y`, which is supply chain (AUD-602), not gate bypass.
-GATE_BYPASS = re.compile(
-    r"(?:\bauto_?[aA]pprove\s*[:=]\s*[Tt]rue|\brequire_approval\s*[:=]\s*[Ff]alse"
-    r"|\bhuman_in_the_loop\s*[:=]\s*[Ff]alse|\bconfirm\s*[:=]\s*[Ff]alse"
-    r"|\bapproval_callback\s*[:=]\s*(?:None|null|undefined)\b|\bskip_confirmation\b|--yes\b"
-    r"|\b(?:rm|apt(?:-get)?|yum|dnf|kubectl|terraform|gh|az|aws|gcloud|docker)\b[^\n|;&]*\s-y\b)"
+# The key/value forms accept an optional closing quote before the separator so a
+# JSON `"auto_approve": true` reads the same as YAML `auto_approve: true`.
+_GATE_BYPASS_KV = (
+    r"\bauto_?[aA]pprove\b[\"']?\s*[:=]\s*[Tt]rue|\brequire_approval\b[\"']?\s*[:=]\s*[Ff]alse"
+    r"|\bhuman_in_the_loop\b[\"']?\s*[:=]\s*[Ff]alse|\bconfirm\b[\"']?\s*[:=]\s*[Ff]alse"
+    r"|\bapproval_callback\b[\"']?\s*[:=]\s*(?:None|null|undefined)\b"
+)
+_GATE_BYPASS_CLI = (
+    r"\bskip_confirmation\b|--yes\b"
+    r"|\b(?:rm|apt(?:-get)?|yum|dnf|kubectl|terraform|gh|az|aws|gcloud|docker)\b[^\n|;&]*\s-y\b"
+)
+GATE_BYPASS = re.compile(f"(?:{_GATE_BYPASS_KV}|{_GATE_BYPASS_CLI})")
+
+# The subset that means something in a config file: only the key/value forms plus an
+# explicit `skip_confirmation: true`. `--yes` / `rm -y` in a workflow `run:` step is a
+# shell command (supply chain, AUD-602), not a gate the config switches off, and a
+# bare `skip_confirmation` key set to false is the opposite of a bypass.
+GATE_BYPASS_CONFIG = re.compile(
+    f"(?:{_GATE_BYPASS_KV}" + r"|\bskip_confirmation\b[\"']?\s*[:=]\s*[Tt]rue)"
 )
 
 # Names that bound an agent loop (AUD-102). Excludes bare counters (`i`, `n`, `count`,

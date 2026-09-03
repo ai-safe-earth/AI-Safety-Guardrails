@@ -1,3 +1,4 @@
+# aisg-audit: ignore-file
 """aisg/devtools/audit/rules/trust_boundary.py
 --------------------------------------------
 P3 trust-boundary rules for `aisg audit`: AUD-301 (lethal trifecta), AUD-302

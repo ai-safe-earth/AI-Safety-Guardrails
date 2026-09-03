@@ -1,0 +1,188 @@
+{
+  "schema": "aisg/1",
+  "kind": "audit-baseline",
+  "generated_at": "2026-09-03T21:04:10Z",
+  "tool": {
+    "name": "aisg-audit",
+    "version": "unknown"
+  },
+  "fingerprints": [
+    "08b0e1380a7102bd",
+    "0d2cdc732e6ea080",
+    "1bb1add015c24db4",
+    "287c0a092b452b24",
+    "3128013255a8f070",
+    "37a89e88c61c038a",
+    "398588db744fc780",
+    "4a967929f06e5b9e",
+    "4dae46cb15045924",
+    "677f326872e21e77",
+    "6e57ee39bf3b176a",
+    "771b7ed47f258cf3",
+    "78fb1a3c4007a491",
+    "80fa4b2f73752472",
+    "828e94542630a851",
+    "a3285f3844224e17",
+    "a5bc7c520b00255b",
+    "a7550f41ecd36285",
+    "bc65de5b165e9ed0",
+    "bf4da3fcfd2705d9",
+    "c264651cc03bd5e7",
+    "c2d3f96f75c092c5",
+    "c8de003db6557853",
+    "cd0a20265f703b75",
+    "ff45027259024d0a"
+  ],
+  "accepted": [
+    {
+      "fingerprint": "4a967929f06e5b9e",
+      "rule": "AUD-107",
+      "file": ".:0",
+      "reason": "the disable-all flag is declared in Settings and .env.example but nothing in aisg.core or aisg.modules reads it; CLAUDE.md documents it as inert. This repository is a guardrails library, not a deployed AI system, so no runtime kill switch is wired"
+    },
+    {
+      "fingerprint": "78fb1a3c4007a491",
+      "rule": "AUD-107/inert",
+      "file": ".env.example:163",
+      "reason": "example env file documenting the flag; the disable-all flag is declared in Settings and .env.example but nothing in aisg.core or aisg.modules reads it; CLAUDE.md documents it as inert. This repository is a guardrails library, not a deployed AI system, so no runtime kill switch is wired"
+    },
+    {
+      "fingerprint": "37a89e88c61c038a",
+      "rule": "AUD-107/inert",
+      "file": "src/aisg/config/settings.py:294",
+      "reason": "the Settings field is declared here and consulted by no pipeline or guard; the disable-all flag is declared in Settings and .env.example but nothing in aisg.core or aisg.modules reads it; CLAUDE.md documents it as inert. This repository is a guardrails library, not a deployed AI system, so no runtime kill switch is wired"
+    },
+    {
+      "fingerprint": "0d2cdc732e6ea080",
+      "rule": "AUD-107/inert",
+      "file": "src/aisg/config/settings.py:327",
+      "reason": "the only read of the field is this production-environment warning, which disables nothing; the disable-all flag is declared in Settings and .env.example but nothing in aisg.core or aisg.modules reads it; CLAUDE.md documents it as inert. This repository is a guardrails library, not a deployed AI system, so no runtime kill switch is wired"
+    },
+    {
+      "fingerprint": "3128013255a8f070",
+      "rule": "AUD-107/inert",
+      "file": "src/aisg/config/settings.py:329",
+      "reason": "warning text naming the flag inside that same warnings.warn call; the disable-all flag is declared in Settings and .env.example but nothing in aisg.core or aisg.modules reads it; CLAUDE.md documents it as inert. This repository is a guardrails library, not a deployed AI system, so no runtime kill switch is wired"
+    },
+    {
+      "fingerprint": "287c0a092b452b24",
+      "rule": "AUD-101/docs",
+      "file": ".agents/skills/ai-safety-audit/references/controls.md:48",
+      "reason": "the packaged skill's controls reference names the Claude Code permission-bypass flag as a literal to remove from CI and hooks: a documentation mention, not a grant (byte-identical mirror of the canonical copy)"
+    },
+    {
+      "fingerprint": "c264651cc03bd5e7",
+      "rule": "AUD-101/docs",
+      "file": ".claude/skills/ai-safety-audit/references/controls.md:48",
+      "reason": "the packaged skill's controls reference names the Claude Code permission-bypass flag as a literal to remove from CI and hooks: a documentation mention, not a grant (byte-identical mirror of the canonical copy)"
+    },
+    {
+      "fingerprint": "398588db744fc780",
+      "rule": "AUD-101/docs",
+      "file": "src/aisg/skills/ai-safety-audit/references/controls.md:48",
+      "reason": "the packaged skill's controls reference names the Claude Code permission-bypass flag as a literal to remove from CI and hooks: a documentation mention, not a grant (canonical copy)"
+    },
+    {
+      "fingerprint": "4dae46cb15045924",
+      "rule": "AUD-602/pip",
+      "file": ".github/workflows/eu-ai-act-compliance.yml:71",
+      "reason": "unpinned pyyaml bootstrap in the compliance-lint workflow; pyyaml is already a base dependency constrained by pyproject and that workflow is untouched this wave -- pin it when eu-ai-act-compliance.yml is next edited"
+    },
+    {
+      "fingerprint": "677f326872e21e77",
+      "rule": "AUD-602/pip",
+      "file": ".github/workflows/eu-ai-act-compliance.yml:184",
+      "reason": "unpinned pyyaml bootstrap in the compliance-lint workflow; pyyaml is already a base dependency constrained by pyproject and that workflow is untouched this wave -- pin it when eu-ai-act-compliance.yml is next edited"
+    },
+    {
+      "fingerprint": "08b0e1380a7102bd",
+      "rule": "AUD-601/openai",
+      "file": "config/nemo_rails/config.yml:15",
+      "reason": "the shipped NeMo Guardrails example config names a floating OpenAI mini alias as its placeholder main model (the comment above it says to replace it); a template, not a deployment (local-dev copy)"
+    },
+    {
+      "fingerprint": "1bb1add015c24db4",
+      "rule": "AUD-601/openai",
+      "file": "src/aisg/config/nemo_rails/config.yml:15",
+      "reason": "the shipped NeMo Guardrails example config names a floating OpenAI mini alias as its placeholder main model (the comment above it says to replace it); a template, not a deployment (packaged copy)"
+    },
+    {
+      "fingerprint": "bf4da3fcfd2705d9",
+      "rule": "AUD-802",
+      "file": "src/aisg/modules/input/prompt_injection.py:353",
+      "reason": "PromptInjectionGuard._llm_judge_check: the LLM judge is an optional second layer, its exception is swallowed and the guard falls back to its pattern detection; CLAUDE.md documents this layered judge fail-open and `aisg measure` reports its cost"
+    },
+    {
+      "fingerprint": "c2d3f96f75c092c5",
+      "rule": "AUD-802",
+      "file": "src/aisg/modules/output/toxicity.py:142",
+      "reason": "ToxicityFilter._llm_judge: the LLM judge is an optional second layer, its exception is swallowed and the guard falls back to its pattern detection; CLAUDE.md documents this layered judge fail-open and `aisg measure` reports its cost"
+    },
+    {
+      "fingerprint": "ff45027259024d0a",
+      "rule": "AUD-801",
+      "file": "config/default.yaml:137",
+      "reason": "eu_ai_act wired in the shipped default preset (anchor; the packaged copy, the eu_high_risk preset, the guard's own module, its re-exports and the quickstart example are the grouped sites); the CI measure job runs `aisg measure` on the default preset every push and uploads measure-report.json as an artifact, so no report naming the guard is committed"
+    },
+    {
+      "fingerprint": "a7550f41ecd36285",
+      "rule": "AUD-801",
+      "file": "config/eu_high_risk.yaml:91",
+      "reason": "llm_tool_filter wired in the shipped eu_high_risk preset, a template for deployments (grouped with the packaged copy, the guard's own module and its re-export); the library defines guards, deployments measure them"
+    },
+    {
+      "fingerprint": "c8de003db6557853",
+      "rule": "AUD-801",
+      "file": "src/aisg/__init__.py:57",
+      "reason": "package re-export of NISTAIRMFCompliance (grouped with the policy package re-export and the guard's own register_guard line); the library defines guards, deployments measure them"
+    },
+    {
+      "fingerprint": "cd0a20265f703b75",
+      "rule": "AUD-801",
+      "file": "src/aisg/config/settings.py:172",
+      "reason": "Field description string naming LlamaGuard on the default judge provider setting, grouped with the default model-id table inside the LlamaGuard judge's own source; string literals in the library, not a wired guard"
+    },
+    {
+      "fingerprint": "a5bc7c520b00255b",
+      "rule": "AUD-801",
+      "file": "src/aisg/integrations/__init__.py:6",
+      "reason": "package re-export of the NemoRailsGuard integration (grouped with its register_guard line); the library defines guards, deployments measure them"
+    },
+    {
+      "fingerprint": "80fa4b2f73752472",
+      "rule": "AUD-801",
+      "file": "src/aisg/integrations/nemo_rails.py:60",
+      "reason": "optional import of nemoguardrails inside the NemoRailsGuard integration's own source; the library defines guards, deployments measure them"
+    },
+    {
+      "fingerprint": "a3285f3844224e17",
+      "rule": "AUD-801",
+      "file": "src/aisg/modules/input/__init__.py:1",
+      "reason": "package re-export of LLMInputFilter (grouped with the guard's own register_guard line); the library defines guards, deployments measure them"
+    },
+    {
+      "fingerprint": "828e94542630a851",
+      "rule": "AUD-801",
+      "file": "src/aisg/modules/input/__init__.py:2",
+      "reason": "package re-export of PIIDetector and PIIRestorer (grouped with the pii_restorer register_guard line and the output package re-export); the library defines guards, deployments measure them"
+    },
+    {
+      "fingerprint": "bc65de5b165e9ed0",
+      "rule": "AUD-801",
+      "file": "src/aisg/modules/input/pii_detector.py:130",
+      "reason": "optional presidio import inside PIIDetector's own source; the library defines guards, deployments measure them"
+    },
+    {
+      "fingerprint": "771b7ed47f258cf3",
+      "rule": "AUD-801",
+      "file": "src/aisg/modules/output/__init__.py:2",
+      "reason": "package re-export of LLMOutputFilter (grouped with the guard's own register_guard line); the library defines guards, deployments measure them"
+    },
+    {
+      "fingerprint": "6e57ee39bf3b176a",
+      "rule": "AUD-1001",
+      "file": ".:0",
+      "reason": "no system card because this repository is a guardrails library, not an AI system; `aisg init` writes the card for the deployments that use it"
+    }
+  ]
+}

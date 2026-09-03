@@ -24,7 +24,7 @@ local-dev copy. Keep the two in sync when editing either.
 No Makefile, no script runner — everything is ad-hoc.
 
 ```bash
-pytest                                                    # 472 tests, ~3s, no API keys (all LLM calls mocked)
+pytest                                                    # ~2700 tests, ~2 min, no API keys (all LLM calls mocked)
 python -m pytest tests/unit/test_pii_tokenization.py::TestPIIRestorer -q   # single test
 python -m pytest tests/unit/test_pii_tokenization.py -k "roundtrip" -q
 
@@ -33,7 +33,12 @@ ruff check --fix <file>
 
 aisg lint src/                                            # EU AI Act compliance linter
 aisg misalign src/                                        # ALIGN-001..008 rule set
+aisg audit .                                              # AI-surface audit, AUD-101..1003 (see below)
+aisg skill list                                           # where each agent host keeps skills
 ```
+
+`aisg` is not on PATH in a bare checkout; `PYTHONPATH=src python -m aisg.cli <verb> ...` is
+the equivalent. Set `PYTHONIOENCODING=utf-8` on Windows.
 
 `aisg` is the single console script (`aisg.cli:main`); `euaiact-lint` and
 `misalignment-check` remain as aliases. Both subcommands share flags: `--staged`, `--diff`,
@@ -46,8 +51,16 @@ Their defaults come from `[tool.euaiact-lint]` / `[tool.misalignment-check]` in
 boolean there cannot be switched back off from the command line.
 
 **Verify before reporting done:** `pytest`, `ruff check` on changed files, then both `devtools/`
-CLIs on the changed modules. CI runs *only* `euaiact_lint.py` — no pytest, no ruff, no mypy — so
-local verification is the only real gate.
+CLIs on the changed modules, then the self-audit:
+
+```bash
+aisg audit . --no-external --fail-on high --baseline audit-baseline.json
+```
+
+It must exit 0. A non-zero exit means a new finding at `high` or above that is not in the
+baseline; either fix it or add it to `audit-baseline.json` with a reason (see below). CI
+(`tests.yml`) runs pytest, ruff, `aisg measure` and the same audit gate, and
+`eu-ai-act-compliance.yml` runs `aisg lint`; mypy and `aisg misalign` are local-only.
 
 ## Style
 
@@ -110,11 +123,9 @@ module-level `settings = Settings()` singleton at import time. `.env` resolves t
 
 1. `.secrets.baseline` is gitignored and absent, so `pre-commit run --all-files` fails on the
    `detect-secrets` hook in any fresh clone.
-2. `ruff check .` reports 8 `F841` unused-variable findings, left in place deliberately. Two
-   look like real bugs rather than dead code: `aisg/modules/llm_judges/claude_judge.py` parses
-   `reason` from the model's JSON but `JudgeVerdict` has no such field, so the explanation is
-   dropped; `aisg/modules/llm_judges/openai_mod.py` parses per-category `flags` and never uses
-   them. Do not blind-delete the rest — some are side-effecting calls in tests.
+2. (Cleared in `48ded50`: `ruff check .` passes; the `claude_judge.py` `reason` and
+   `openai_mod.py` `flags` defects it listed are fixed. Kept so the numbering below stays
+   stable.)
 3. `examples/advanced_injection_demo.py:68` raises `AttributeError` — it calls `.encode()` on
    the `bytes` returned by `base64.b64encode`. Examples are not covered by pytest.
 4. Console output uses `✓`/`✗`, which crashes on a cp1252 Windows terminal. Run examples with
@@ -255,6 +266,87 @@ partly-labelled CSV.
 across repos. The unsampled 25,568 live in `findings-all.csv`. Sampling is
 deterministic and nested, so re-running or lowering `--sample-per-rule` never
 orphans a labelled row; tests pin both properties. See `bench/README.md`.
+
+## aisg audit and the skill
+
+`aisg audit <path>` (`src/aisg/devtools/audit/`) is walk -> discover -> pydeep ->
+rules -> adapters -> baseline -> report. 46 rules, `AUD-<priority><NN>` from
+AUD-101 to AUD-1003, ordered by blast radius; the registry lists them all and
+`--list-rules` prints them. Invariants the tests pin:
+
+- **Three buckets, all counted.** MEASURED = an adapter ran *during this
+  audit*. ASSERTED = one of our own regex/AST rules, a system-card claim, or
+  a report read from disk (`evidence_kind: report`), which additionally carries
+  `REPORTED <age>` -- a report is never rendered as if the audit had just
+  measured it. UNKNOWN = what could not be established (categories `tools`,
+  `deep`, `reports`, `runtime`); it is listed, never hidden, and a run with no
+  findings still prints it. "Absence of a finding is not evidence of safety"
+  is in every renderer.
+- **`measured_precision` is `None` on every rule** and rendered `[UNMEASURED]`.
+  `None` means unmeasured, never good, and an unmeasured rule still fires.
+  Never type a number in; `bench/` will produce one when a labelled corpus
+  exists (it does not yet).
+- **`"schema": "aisg/1"` is the first key** of every JSON document (report,
+  inventory, baseline), same as the other CLIs.
+- **Exit codes:** `0` no counted finding, `1` a finding at or above `--fail-on`
+  or an UNKNOWN item in a `--fail-on-unknown` category, `2` fatal, `130`
+  interrupted. Constants are `EXIT_OK` / `EXIT_FINDINGS` / `EXIT_FATAL` /
+  `EXIT_INTERRUPTED` in `main.py`. Findings below `--fail-on` are still
+  reported; the summary line says how many were not counted.
+- **No LLM, no install, no socket, ever**, from the audit process. External
+  scanners run only if already on PATH or importable; each `AdapterResult`
+  records `network`. `adapters.FORBIDDEN_LAUNCHERS` (`pip`, `pip3`, `uv`,
+  `uvx`, `npx`, `pipx`) may never be `argv[0]`, and no argv token may be or
+  start with `install`; a test enumerates every adapter. `install_hint` is
+  text for the UNKNOWN row, nothing runs it.
+- **`--no-redact` is refused** (exit 2, `_REDACT_REFUSED`). Secret-shaped
+  snippets are redacted in every format; there is no flag that prints them.
+- **`patterns.IGNORE_MARKER`** (`# aisg-audit: ignore-file`) in the first five
+  lines makes `walk` skip the file, and no flag re-includes it
+  (`--include-ignored` only overrides `.gitignore`). It sits on `rules/*.py`,
+  `adapters.py`, `discover.py`, `patterns.py`, `vocab.py`, the skill scripts
+  and their tests, because those files *are* the audit's vocabulary: they
+  spell out every over-grant literal, secret shape, launcher name and guard
+  registry name the audit looks for, and would otherwise report themselves.
+  Nothing else should carry it; a real finding goes in the baseline with a
+  reason, not behind the marker.
+- **`[tool.aisg-audit]` in `pyproject.toml` is resolved from the CWD**, like
+  `lint` and `misalign`, not from the audited path. Ours sets `exclude` and
+  `fail-on = "high"`, so a fixture run from the repo root inherits them; run
+  fixtures from a temporary cwd or pass `--fail-on` explicitly.
+- **The word the audit tests ban** must not appear anywhere under
+  `src/aisg/devtools/audit/` (`EXIT_OK`, not the obvious name), and neither
+  may any of `report.BANNED_PHRASES`; `report.check_templates()` self-checks
+  the renderers and `--debug` turns a hit into exit 2. Do not spell the
+  phrases out in prose -- point at `BANNED_PHRASES`.
+- **Fingerprints are stable across line renumbering.** `model.fingerprint()`
+  is `sha1(rule_id | posix relpath | normalised snippet)[:16]`, where the
+  normalisation collapses whitespace and strips digits from identifiers of
+  three or more characters. Line numbers are not part of it, on purpose.
+- **The skill has one canonical copy**, `src/aisg/skills/ai-safety-audit/`
+  (ships in the wheel). `.claude/skills/ai-safety-audit/` and
+  `.agents/skills/ai-safety-audit/` are byte-identical mirrors pinned by
+  `tests/unit/test_skill_package.py::test_mirror_is_byte_identical`; edit the
+  canonical copy and run `python scripts/sync_skill.py` (`--check` lists
+  drift and exits 1). The bootstrap scripts pin `AISG_VERSION` to the
+  pyproject version, so **every version bump must be followed by
+  `python scripts/sync_skill.py`** or `test_version_pinned_to_pyproject`
+  fails. `aisg skill install --host <name>|all` copies from the installed
+  package and `aisg skill diff --host <name>|all` compares; `path` and `list`
+  take no host. `codex` and `antigravity` locations are marked unverified and
+  say so on stderr.
+- **`audit-baseline.json` is the accepted-findings list** for the self-audit
+  gate (`aisg audit . --no-external --fail-on high --baseline
+  audit-baseline.json`). Every entry carries a reason; a fingerprint without
+  one is a suppression, not an acceptance. `--write-baseline` records, it
+  does not judge (it exits 0 on purpose); a full JSON report is also accepted
+  as a baseline. The baseline file is itself scanned by the self-audit (it is
+  not excluded, and `read_report` skips it only as a *report*), so a reason
+  must describe the evidence without quoting the literal that produced the
+  finding -- otherwise the baseline reproduces the finding it accepts;
+  `test_committed_baseline_does_not_reproduce_the_findings_it_accepts` pins
+  this. Fingerprints ignore line numbers, but the `file` field on an accepted
+  entry does not: regenerate it when an anchor moves.
 
 ## Adding a guard
 

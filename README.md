@@ -560,7 +560,7 @@ eu_guard = EUAIActCompliance(
 
 | Article | Check |
 |---|---|
-| Art. 5 | Blocks social scoring, real-time biometric surveillance, subliminal manipulation |
+| Art. 5 | Blocks the Art. 5(1) prohibited practices: scoring of citizens by public authorities, real-time biometric surveillance, subliminal manipulation |
 | Art. 9 | Risk management hooks |
 | Art. 12 | Tamper-evident JSONL audit log |
 | Art. 13 | Transparency — AI disclosure enforcement |
@@ -684,7 +684,7 @@ The middleware automatically skips `/health`, `/ready`, `/metrics`, and `/docs`.
 from aisg.integrations.anthropic_middleware import AnthropicGuardrailMiddleware
 import anthropic
 
-client = anthropic.Anthropic(api_key="sk-ant-...")
+client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment
 middleware = AnthropicGuardrailMiddleware(client=client, pipeline=pipeline)
 
 response = await middleware.messages.create(
@@ -873,6 +873,168 @@ treated as remote even if it would resolve to loopback.
 
 ---
 
+## Audit
+
+### `aisg audit` -- what talks to a model, what it can reach, what stands between
+
+```bash
+aisg audit .                                   # terminal report, exit 1 on any finding
+aisg audit . --format json -o audit-report.json
+aisg audit . --inventory-only                  # the AI surface only, no rules
+aisg audit . --list-rules                      # 46 rules: id, priority, severity, tier, precision
+```
+
+`aisg audit <path>` walks a repository, builds an inventory of its AI surface
+-- LLM calls and model ids, tools and the gates in front of them, MCP servers,
+host permission files, data sources, ingress, sinks, guards, evals, on-disk
+reports -- and runs 46 rules over it, ordered by blast radius: `AUD-1xx` host
+permissions and agent loops first, `AUD-10xx` governance last. Python gets an
+AST layer (taint from model output to sinks, gate resolution, the lethal
+trifecta per scope); every other language gets grep-level discovery and the
+report says so. The audit process itself never calls a model, never installs
+anything and never opens a socket; the only network use comes from external
+scanners you already have on `PATH`, and each one declares it.
+
+**Three buckets.** Every observation lands in one, and the summary counts
+all three:
+
+| bucket | meaning |
+|---|---|
+| `MEASURED` | An external scanner ran *during this audit* and produced the result. |
+| `ASSERTED` | One of the audit's own regex/AST rules fired, the system card asserts something, or a report on disk (`measure-report.json`, `probe-report.json`) said so. Findings read from a report carry the sub-label `REPORTED <age>`: a three-month-old file is never rendered as if the audit had just measured it. |
+| `UNKNOWN` | What could not be established -- a scanner not on `PATH` or skipped by flag (`tools`), a language or file the AST layer does not cover (`deep`), a report whose age or origin is unclear (`reports`), symlinks and unreadable files (`runtime`). |
+
+UNKNOWN is listed, never hidden. A scanner that did not run is not a pass,
+and a run with no findings still prints the UNKNOWN list and the disclaimer.
+Every rule is `UNMEASURED`: no labelled corpus has scored it yet (see
+`bench/README.md`), so the report never attaches a confidence figure and
+never states a verdict.
+
+The quiet form on the fixture agent in `tests/fixtures/audit/py_agent`, with
+every external scanner switched off (real output, trimmed):
+
+```
+$ aisg audit tests/fixtures/audit/py_agent --no-external -q
+aisg audit
+==========
+This report lists observations about a codebase.
+Not an assessment of compliance with any regulation.
+Risk classification under the EU AI Act is a legal determination made by the operator, not a tool
+output.
+Every rule in this report is UNMEASURED: no precision figure exists for it yet.
+Absence of a finding is not evidence of safety.
+
+21 findings (1 below --fail-on low, not counted in exit code); 8 unknown items
+severity: critical 6, high 8, medium 5, low 1, info 1
+buckets: MEASURED 0 | ASSERTED 21 (of which REPORTED 0) | UNKNOWN 8
+
+UNKNOWN
+-------
+[tools] secrets: regex-only: gitleaks skipped by --no-external
+        resolve: run without --no-external (and with gitleaks on PATH)
+        rules: AUD-501, AUD-502
+[tools] dependency vulnerabilities: pip-audit skipped by --no-external
+        resolve: run without --no-external (and with pip-audit on PATH)
+        rules: AUD-606
+...
+
+External tools
+--------------
+name            status           network  version  argv
+gitleaks        skipped_by_flag  no       -        -
+pip-audit       skipped_by_flag  yes      -        -
+mcp-scan        skipped_by_flag  no       -        -
+...
+```
+
+Without `-q` the same run also prints each finding with its evidence lines,
+the pinned one first:
+
+```
+[#####] AUD-301 critical asserted [UNMEASURED] LETHAL TRIFECTA: private data + untrusted content +
+        external action in one scope
+        scope: function app.py::chat
+        [private] app.py:25: os.environ.get('CUSTOMER_DB', 'customers.db')
+        [untrusted] app.py:33: @app.post('/chat')
+        [external_action] app.py:62: subprocess.run(f'echo {reply}', shell=True)
+```
+
+followed by the recommended control and its tier (T1 config, T2 gate or
+file, T3 restructuring), alternatives including ones that do not use this
+package, related control ids (OWASP ASI/LLM, EU AI Act articles, NIST AI RMF
+-- evidence for a reviewer, not a verdict) and the rule's known failure
+modes. Secret-shaped snippets are redacted in every format; `--no-redact`
+exists only to be refused.
+
+**Exit codes.** `0` no finding at or above `--fail-on` (default `low`);
+`1` at least one counted finding, or an UNKNOWN item in a category named by
+`--fail-on-unknown`; `2` fatal (missing target, unwritable output, bad
+baseline); `130` interrupted. Findings below `--fail-on` are still findings:
+the summary line always says how many were not counted.
+
+**In CI:**
+
+```bash
+aisg audit . --fail-on high --fail-on-unknown tools,reports --baseline audit-baseline.json
+```
+
+`--baseline` takes a fingerprint list written by `--write-baseline` (a full
+JSON report works too); only findings absent from it count towards the exit
+code, and the run reports `new`, `unchanged`, `fixed`. A fingerprint hashes
+the rule id, the path and a normalised snippet, so a renumbered line is not a
+new finding. `--fail-on-unknown` takes a CSV of `tools,deep,reports,runtime`;
+the bare flag means all four, which no real pipeline survives -- `deep`
+fires for every non-Python unit and `tools` on any runner missing a scanner
+that applies to the repo -- so name the categories the runner actually provisions.
+Install the scanners you want counted before the step; the audit never
+installs them.
+
+**External scanners.** Each is used only if it is already on `PATH` (or
+importable as `python -m <module>`), reports a status on every run, and
+lands in UNKNOWN when it did not run:
+
+| tool | what it adds | network | note |
+|---|---|---|---|
+| `gitleaks` | corroborates the regex-only secret hits (AUD-501/502) as MEASURED | no | |
+| `detect-secrets` | the same, used only when gitleaks is absent | no | |
+| `pip-audit` | dependency vulnerabilities, Python (AUD-606) | yes | audits the interpreter given by `--pip-audit-env`, else `requirements*.txt` with `--no-deps`; never resolves the target's dependencies |
+| `npm audit` | dependency vulnerabilities, Node (AUD-606) | yes | used only when osv-scanner is absent |
+| `osv-scanner` | dependency vulnerabilities, any lockfile (AUD-606) | yes | |
+| `mcp-scan` | MCP tool-description poisoning (AUD-603/604) | no | always `--local-only`; tool descriptions never leave the machine |
+| `semgrep` | model-output sink taint in non-Python code (AUD-401..406) | no | |
+| `promptfoo` | eval results (AUD-902/904) | yes | runs only with `--run-evals`, because it may call model providers |
+
+`--no-external` skips all of them; `--tools gitleaks,semgrep,mcp-scan`
+limits a run to the offline ones. The `network` column is declared per tool
+and printed on every run.
+
+### The skill
+
+```bash
+aisg skill install --host claude       # .claude/skills/ai-safety-audit/
+aisg skill install --host codex        # .agents/skills/ai-safety-audit/ (alias of agents)
+aisg skill install --host agents       # any agentskills.io host
+aisg skill install --host all          # claude + agents, plus every host whose directory already exists
+aisg skill list                        # host table: project dir, global dir, verified, source
+aisg skill diff --host all             # exit 1 when an installed copy has drifted
+```
+
+The skill (`ai-safety-audit`, shipped inside the wheel) is what an agent host
+adds on top of the CLI: a five-phase procedure -- discover, diagnose,
+prescribe, apply, verify -- in which the agent runs `aisg audit` through a
+bootstrap script pinned to this package's version, presents findings in
+report order with their `[UNMEASURED]` label and the UNKNOWN list verbatim,
+proposes the recommended control from a per-language guide, applies one
+change per user approval, and re-audits against the baseline written in
+phase 1. The intelligence stays in the CLI; the skill adds explanation and a
+gated change workflow, and it never edits permission files, CI or secrets
+without a per-diff approval.
+
+The audit is evidence, not a compliance verdict: it lists what it found and
+what it could not check. Absence of a finding is not evidence of safety.
+
+---
+
 ## Observability
 
 ### Audit logging
@@ -1024,7 +1186,7 @@ input:
 
 ```bash
 pip install pytest pytest-asyncio
-pytest                        # run all 475 tests
+pytest                        # run all ~2700 tests (about two minutes)
 pytest tests/unit/            # unit tests only
 pytest -v -k "nemo"           # filter by name
 pytest -v -k "pii"            # PII tokenization + restoration tests
