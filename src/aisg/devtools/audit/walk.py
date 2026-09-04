@@ -621,8 +621,11 @@ def file_age(path: Path, root: Path) -> tuple[datetime | None, str]:
         return None, "unknown"
     out = _git(["log", "-1", "--format=%cI", "--", rel], Path(root))
     if out and out.strip():
+        # git writes a UTC committer date as `...Z`; fromisoformat only accepts
+        # that suffix from 3.11, so on 3.10 every UTC commit would fall to unknown.
+        stamp = out.strip().splitlines()[0].replace("Z", "+00:00")
         try:
-            when = datetime.fromisoformat(out.strip().splitlines()[0])
+            when = datetime.fromisoformat(stamp)
         except ValueError:
             return None, "unknown"
         if when.tzinfo is None:

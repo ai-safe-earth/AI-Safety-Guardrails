@@ -56,6 +56,8 @@ __all__ = [
     "build_parser",
     "build_report",
     "measure_guard",
+    "describe_measurement",
+    "TIMING_PASSES",
     "config_digest",
     "config_models",
     "GuardMeasurement",
@@ -112,30 +114,69 @@ class GuardMeasurement:
         )
 
 
-async def measure_guard(guard: GuardrailBase, cases: list[ProbeCase]) -> GuardMeasurement:
-    """Run every case through one guard, alone, and record what it did."""
+# How many timed calls each case gets. The recorded latency is the median of
+# them: with one call per case, p99 over a 90-case corpus is the second-slowest
+# call, and a single scheduler hiccup on a shared CI runner fails the build
+# while telling nothing about the guard. A case that is slow every time still
+# shows; a call that was slow once does not.
+TIMING_PASSES = 3
+
+
+def _context_for(case: ProbeCase, tag: str) -> dict:
+    # A fresh context per call: the pipeline threads one dict through a
+    # request, and reusing it here would let PII token maps, session counters
+    # and rate-limiter buckets leak between unrelated measurements.
+    ctx: dict = {"user_id": f"measure-{case.id}-{tag}", "role": "admin"}
+    if case.family == "tool_abuse":
+        ctx["tool_call"] = {"name": "send_email", "arguments": {"body": case.payload}}
+    return ctx
+
+
+async def measure_guard(
+    guard: GuardrailBase, cases: list[ProbeCase], timing_passes: int = TIMING_PASSES
+) -> GuardMeasurement:
+    """
+    Run every case through one guard, alone, and record what it did.
+
+    Verdicts come from the first call of each case; the latency recorded for a
+    case is the median of `timing_passes` calls. A single slow call -- a lazily
+    compiled pattern on the very first case, a scheduler hiccup on a shared CI
+    host -- is then one outlying sample, not the case's latency, and cannot set
+    the guard's p99 on its own.
+    """
     m = GuardMeasurement(
         guard_name=guard.name,
         stage=getattr(guard.stage, "value", str(guard.stage)),
     )
+    timing_passes = max(1, timing_passes)
+    verdicts_failed = 0
 
     for case in cases:
-        # A fresh context per case: the pipeline threads one dict through a
-        # request, and reusing it here would let PII token maps and session
-        # counters leak between unrelated measurements.
-        ctx: dict = {"user_id": f"measure-{case.id}", "role": "admin"}
-        if case.family == "tool_abuse":
-            ctx["tool_call"] = {"name": "send_email", "arguments": {"body": case.payload}}
-
-        started = time.perf_counter()
-        try:
-            result = await guard(case.payload, ctx)
-        except Exception as exc:  # noqa: BLE001 - report, never crash the run
-            m.errors.append(f"{case.id}: {type(exc).__name__}: {exc}")
-            if len(m.errors) >= 3 and not m.unavailable:
-                m.unavailable = f"{type(exc).__name__}: {exc}"[:120]
+        samples: list[float] = []
+        result = None
+        for pass_no in range(timing_passes):
+            started = time.perf_counter()
+            try:
+                outcome = await guard(case.payload, _context_for(case, f"t{pass_no}"))
+            except Exception as exc:  # noqa: BLE001 - report, never crash the run
+                # Every failed call is recorded, timing passes included: a
+                # guard that raises on its second call per payload is a
+                # finding, not a warm-up to hide. Only the verdict pass counts
+                # towards `unavailable`, which means "could not get verdicts".
+                m.errors.append(f"{case.id}/t{pass_no}: {type(exc).__name__}: {exc}")
+                if pass_no == 0:
+                    verdicts_failed += 1
+                    if verdicts_failed >= 3 and not m.unavailable:
+                        m.unavailable = f"{type(exc).__name__}: {exc}"[:120]
+                continue
+            samples.append((time.perf_counter() - started) * 1000)
+            if pass_no == 0:
+                result = outcome
+        if result is None:
             continue
-        m.latencies_ms.append((time.perf_counter() - started) * 1000)
+        # The median of the calls that completed; a failed timing pass is in
+        # `errors` above, and the case's figure rests on fewer samples.
+        m.latencies_ms.append(statistics.median(samples))
 
         fired = result.action != Action.ALLOW
         sanitized = (
@@ -172,6 +213,14 @@ async def measure_guard(guard: GuardrailBase, cases: list[ProbeCase]) -> GuardMe
                 m.benign_modified += 1
 
     return m
+
+
+def describe_measurement(attacks: int, benign: int) -> str:
+    """The `measured_on` provenance string: corpus size and how latency was sampled."""
+    return (
+        f"aisg probe corpus ({attacks} attack + {benign} benign), "
+        f"latency = per-case median of {TIMING_PASSES} calls"
+    )
 
 
 def collect_guards(pipeline: GuardrailPipeline) -> list[GuardrailBase]:
@@ -251,14 +300,14 @@ def build_report(
     Deliberately absent: any precision figure (the corpus is a stand-in and
     cannot ground one) and any compliance verdict.
     """
-    measured_on = f"aisg probe corpus ({attacks} attack + {benign} benign)"
+    measured_on = describe_measurement(attacks, benign)
     return {
         "schema": SCHEMA_VERSION,
         "generated_at": utc_now_iso(),
         "models": config_models(config_path),
         "config_digest": config_digest(config_path),
         "config": str(config_path),
-        "corpus": {"attacks": attacks, "benign": benign},
+        "corpus": {"attacks": attacks, "benign": benign, "timing_passes": TIMING_PASSES},
         "thresholds": {
             "min_precision": thresholds.min_precision,
             "max_false_positive_rate": thresholds.max_false_positive_rate,
@@ -467,7 +516,7 @@ def main(argv: list[str] | None = None) -> int:
             "for a fair catch rate."
         )
 
-    measured_on = f"aisg probe corpus ({len(attacks)} attack + {len(benign)} benign)"
+    measured_on = describe_measurement(len(attacks), len(benign))
     report = build_report(measurements, config_path, len(attacks), len(benign), thresholds)
 
     demoted = [m for m in measurements if thresholds.failures(m.to_profile(measured_on))]

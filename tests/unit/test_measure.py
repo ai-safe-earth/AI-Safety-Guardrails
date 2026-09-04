@@ -12,6 +12,7 @@ only for being imprecise.
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 
@@ -23,7 +24,12 @@ from aisg.core.measurement import (
     Profile,
     Thresholds,
 )
-from aisg.devtools.measure import GuardMeasurement, measure_guard
+from aisg.devtools.measure import (
+    TIMING_PASSES,
+    GuardMeasurement,
+    describe_measurement,
+    measure_guard,
+)
 from aisg.devtools.probe import ProbeCase, load_corpus
 
 
@@ -209,6 +215,141 @@ class TestMeasureGuard:
         assert m.catch_rate is None
         assert m.false_positive_rate is None
         assert m.p50 is None
+
+
+class _Counting(GuardrailBase):
+    """Records every call it receives; the named passes of each case are slow."""
+
+    name = "counting"
+    stage = GuardrailStage.INPUT
+
+    def __init__(self, slow_ms: float = 0.0, slow_passes: tuple[str, ...] = ("t0",)):
+        super().__init__()
+        self.calls: list[str] = []
+        self.slow_ms = slow_ms
+        self.slow_passes = slow_passes
+
+    async def check(self, content, context):
+        user = context["user_id"]
+        self.calls.append(user)
+        if self.slow_ms and user.rsplit("-", 1)[-1] in self.slow_passes:
+            deadline = time.perf_counter() + self.slow_ms / 1000
+            while time.perf_counter() < deadline:
+                pass
+        return CheckResult(passed=True, action=Action.ALLOW)
+
+
+class _RaisesOnPasses(_Counting):
+    """Succeeds on the verdict pass, raises on the named timing passes."""
+
+    def __init__(self, raise_on: tuple[str, ...]):
+        super().__init__()
+        self.raise_on = raise_on
+
+    async def check(self, content, context):
+        if context["user_id"].rsplit("-", 1)[-1] in self.raise_on:
+            raise RuntimeError("flaky on repeat")
+        return await super().check(content, context)
+
+
+class TestLatencySampling:
+    """
+    Why the latency figure is a per-case median: with one call per case, p99
+    over a 90-case corpus is the second-slowest call, so one scheduler hiccup
+    on a shared CI runner failed the ratchet while saying nothing about the
+    guard. The 32 ms p99 that motivated this was a 1 ms guard.
+    """
+
+    def test_timing_passes_per_case(self):
+        guard = _Counting()
+        cases = [case(f"a{i}", "x") for i in range(4)]
+        m = asyncio.run(measure_guard(guard, cases))
+        assert len(guard.calls) == TIMING_PASSES * len(cases)
+        assert len(m.latencies_ms) == len(cases), "one figure per case, not per call"
+        assert m.to_profile("t").sample_size == len(cases)
+
+    def test_verdicts_are_counted_once_per_case(self):
+        cases = [case(f"a{i}", "x") for i in range(3)] + [case("b1", "y", kind="benign")]
+        m = asyncio.run(measure_guard(_AlwaysBlock(), cases))
+        assert m.attacks_seen == 3
+        assert m.benign_seen == 1
+        assert m.per_family["prompt_injection"] == {"seen": 3, "caught": 3}
+
+    def test_a_single_slow_call_does_not_set_the_case_latency(self):
+        """One 100 ms call among three: the mean would be 33 ms, the median is
+        the fast call. The bound rules the mean out, not only the maximum."""
+        guard = _Counting(slow_ms=100.0)
+        m = asyncio.run(measure_guard(guard, [case("a1", "x")], timing_passes=3))
+        assert m.latencies_ms[0] < 20.0, "the median of three calls, not the slow one"
+
+    def test_two_slow_calls_of_three_do_set_it(self):
+        """The middle sample, not the fastest: with two slow passes the
+        figure is slow. Together with the test above this pins the median --
+        the minimum would pass one, the mean the other, only the median both."""
+        guard = _Counting(slow_ms=10.0, slow_passes=("t0", "t1"))
+        m = asyncio.run(measure_guard(guard, [case("a1", "x")], timing_passes=3))
+        assert m.latencies_ms[0] >= 10.0
+
+    def test_a_slow_first_call_on_the_first_case_is_absorbed_without_a_warm_up(self):
+        """Lazy pattern compilation lands on case 0, pass 0; the median discards it."""
+        guard = _Counting(slow_ms=40.0)
+        cases = [case(f"a{i}", "x") for i in range(3)]
+        m = asyncio.run(measure_guard(guard, cases))
+        assert max(m.latencies_ms) < 20.0
+
+    def test_a_guard_that_raises_on_its_first_call_is_reported(self):
+        """No silent warm-up: an exception on the very first call reaches m.errors."""
+        m = asyncio.run(measure_guard(_Broken(), [case("a1", "x")]))
+        assert m.errors and m.errors[0].startswith("a1/t0:")
+        assert m.latencies_ms == []
+
+    def test_a_failed_timing_pass_is_recorded_not_swallowed(self):
+        """The verdict came from t0, so the case still counts and has a
+        latency -- but the t1 failure is in `errors`, named by pass, and
+        does not by itself make the guard `unavailable`."""
+        guard = _RaisesOnPasses(raise_on=("t1",))
+        cases = [case(f"a{i}", "x") for i in range(3)]
+        m = asyncio.run(measure_guard(guard, cases))
+        assert m.attacks_seen == 3
+        assert len(m.latencies_ms) == 3
+        assert [e.split(":")[0] for e in m.errors] == ["a0/t1", "a1/t1", "a2/t1"]
+        assert not m.unavailable
+
+    def test_unavailable_needs_three_failed_verdicts_not_three_failed_calls(self):
+        """One case whose three calls all fail is one failed verdict."""
+        m = asyncio.run(measure_guard(_Broken(), [case("a1", "x")]))
+        assert len(m.errors) == TIMING_PASSES
+        assert not m.unavailable
+        m = asyncio.run(measure_guard(_Broken(), [case(f"a{i}", "x") for i in range(3)]))
+        assert m.unavailable
+
+    def test_a_case_that_is_always_slow_still_shows(self):
+        class _Slow(_Counting):
+            async def check(self, content, context):
+                deadline = time.perf_counter() + 0.01
+                while time.perf_counter() < deadline:
+                    pass
+                return CheckResult(passed=True, action=Action.ALLOW)
+
+        m = asyncio.run(measure_guard(_Slow(), [case("a1", "x")], timing_passes=3))
+        assert m.latencies_ms[0] >= 10.0
+
+    def test_single_pass_is_the_old_behaviour(self):
+        guard = _Counting()
+        m = asyncio.run(measure_guard(guard, [case("a1", "x")], timing_passes=1))
+        assert len(guard.calls) == 1
+        assert len(m.latencies_ms) == 1
+
+    def test_each_call_gets_a_fresh_context(self):
+        """Rate-limiter buckets and session counters key on user_id."""
+        guard = _Counting()
+        asyncio.run(measure_guard(guard, [case("a1", "x")]))
+        assert len(set(guard.calls)) == len(guard.calls)
+
+    def test_provenance_names_the_sampling(self):
+        text = describe_measurement(48, 42)
+        assert "48 attack + 42 benign" in text
+        assert f"median of {TIMING_PASSES} calls" in text
 
 
 class TestAgainstTheShippedCorpus:

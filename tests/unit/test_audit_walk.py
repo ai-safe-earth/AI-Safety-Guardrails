@@ -729,6 +729,39 @@ class TestFileAge:
         assert when.tzinfo is timezone.utc
         assert abs((datetime.now(timezone.utc) - when).total_seconds()) < 600
 
+    @pytest.mark.parametrize(
+        ("stamp", "expected"),
+        [
+            # git writes a UTC committer date with a `Z` suffix, which
+            # datetime.fromisoformat rejects before 3.11; both forms must parse.
+            ("2026-09-03T21:46:25Z", datetime(2026, 9, 3, 21, 46, 25, tzinfo=timezone.utc)),
+            ("2026-09-03T21:46:25+00:00", datetime(2026, 9, 3, 21, 46, 25, tzinfo=timezone.utc)),
+            ("2026-09-03T23:46:25+02:00", datetime(2026, 9, 3, 21, 46, 25, tzinfo=timezone.utc)),
+        ],
+    )
+    def test_git_date_forms_parse_on_every_supported_python(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stamp: str, expected: datetime
+    ) -> None:
+        # Independent of the git on PATH: the git call is replaced by its output.
+        from aisg.devtools.audit import walk as walk_mod
+
+        path = _touch(tmp_path, "dated.txt", "v1\n")
+        real_stat = Path.stat
+
+        def fake_stat(self: Path, *args: object, **kwargs: object) -> os.stat_result:
+            if self == path:
+                raise OSError("stat failed")
+            return real_stat(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "stat", fake_stat)
+        monkeypatch.setattr(walk_mod, "_git", lambda args, cwd: stamp + "\n")
+
+        when, source = file_age(path, tmp_path)
+
+        assert source == "git"
+        assert when == expected
+        assert when is not None and when.tzinfo is timezone.utc
+
     @needs_git
     def test_unknown_when_stat_and_git_both_fail(self, tmp_path: Path) -> None:
         _touch(tmp_path, "tracked.txt")
