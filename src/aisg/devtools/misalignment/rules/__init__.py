@@ -1,3 +1,4 @@
+# misalignment-check: ignore-file
 """
 devtools/misalignment/rules/__init__.py
 ----------------------------------------
@@ -17,7 +18,12 @@ import ast
 import re
 from typing import Iterator
 
-from aisg.modules.policy.code_analyzer.analyzer import BaseRule, CodeFinding, Severity
+from aisg.modules.policy.code_analyzer.analyzer import (
+    BaseRule,
+    CodeFinding,
+    Severity,
+    physical_lines,
+)
 
 # ---------------------------------------------------------------------------
 # ALIGN-001 — Safety bypass patterns
@@ -53,7 +59,7 @@ class Rule_ALIGN001_SafetyBypass(BaseRule):
     )
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
-        for i, line in enumerate(source.splitlines(), 1):
+        for i, line in enumerate(physical_lines(source), 1):
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
@@ -122,7 +128,7 @@ class Rule_ALIGN002_UnsafeDefaults(BaseRule):
     _TOP_P = re.compile(r"\btop_p\s*=\s*1(\.0+)?\b", re.I)
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
-        for i, line in enumerate(source.splitlines(), 1):
+        for i, line in enumerate(physical_lines(source), 1):
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
@@ -305,7 +311,7 @@ class Rule_ALIGN005_HiddenContent(BaseRule):
     _UNUSUAL_UNICODE = re.compile(r"[\ue000-\uf8ff\U000f0000-\U000fffff]")
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
-        lines = source.splitlines()
+        lines = physical_lines(source)
         for i, line in enumerate(lines, 1):
             if self._BASE64.search(line):
                 yield self._finding(
@@ -412,7 +418,7 @@ class Rule_ALIGN007_UnnecessaryData(BaseRule):
     _LARGE_STRING = re.compile(r"['\"][ -~]{500,}['\"]")
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
-        for i, line in enumerate(source.splitlines(), 1):
+        for i, line in enumerate(physical_lines(source), 1):
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
@@ -481,7 +487,7 @@ class Rule_ALIGN008_UndesiredObjectives(BaseRule):
     )
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
-        for i, line in enumerate(source.splitlines(), 1):
+        for i, line in enumerate(physical_lines(source), 1):
             if self._PATTERNS.search(line):
                 yield self._finding(filename, i, snippet=line)
 

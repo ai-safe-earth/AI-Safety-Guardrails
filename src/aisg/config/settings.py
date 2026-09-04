@@ -22,7 +22,7 @@ Usage:
     print(settings.eu_ai_act_risk_tier)
 
     # Override at runtime (useful in tests)
-    settings2 = Settings(groq_api_key="test-key", guardrails_env="test")
+    settings2 = Settings(groq_api_key="...", guardrails_env="test")
 
 .env file (optional, loaded from project root):
     GROQ_API_KEY=gsk_...

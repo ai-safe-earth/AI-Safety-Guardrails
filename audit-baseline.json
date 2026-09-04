@@ -1,7 +1,7 @@
 {
   "schema": "aisg/1",
   "kind": "audit-baseline",
-  "generated_at": "2026-09-03T21:04:10Z",
+  "generated_at": "2026-09-03T22:11:31Z",
   "tool": {
     "name": "aisg-audit",
     "version": "unknown"
@@ -15,8 +15,6 @@
     "37a89e88c61c038a",
     "398588db744fc780",
     "4a967929f06e5b9e",
-    "4dae46cb15045924",
-    "677f326872e21e77",
     "6e57ee39bf3b176a",
     "771b7ed47f258cf3",
     "78fb1a3c4007a491",
@@ -81,18 +79,6 @@
       "rule": "AUD-101/docs",
       "file": "src/aisg/skills/ai-safety-audit/references/controls.md:48",
       "reason": "the packaged skill's controls reference names the Claude Code permission-bypass flag as a literal to remove from CI and hooks: a documentation mention, not a grant (canonical copy)"
-    },
-    {
-      "fingerprint": "4dae46cb15045924",
-      "rule": "AUD-602/pip",
-      "file": ".github/workflows/eu-ai-act-compliance.yml:71",
-      "reason": "unpinned pyyaml bootstrap in the compliance-lint workflow; pyyaml is already a base dependency constrained by pyproject and that workflow is untouched this wave -- pin it when eu-ai-act-compliance.yml is next edited"
-    },
-    {
-      "fingerprint": "677f326872e21e77",
-      "rule": "AUD-602/pip",
-      "file": ".github/workflows/eu-ai-act-compliance.yml:184",
-      "reason": "unpinned pyyaml bootstrap in the compliance-lint workflow; pyyaml is already a base dependency constrained by pyproject and that workflow is untouched this wave -- pin it when eu-ai-act-compliance.yml is next edited"
     },
     {
       "fingerprint": "08b0e1380a7102bd",

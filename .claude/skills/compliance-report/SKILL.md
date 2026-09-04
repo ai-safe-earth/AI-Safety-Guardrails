@@ -7,7 +7,9 @@ disable-model-invocation: true
 # Compliance report
 
 Reproduces `.github/workflows/eu-ai-act-compliance.yml` locally. Run from the **repo root**.
-Target: `$ARGUMENTS` if given, otherwise `modules/ integrations/ examples/ devtools/`.
+Target: `$ARGUMENTS` if given, otherwise `src examples` -- what CI scans. `tests/` is outside
+the gate on purpose (see CLAUDE.md, "EU AI Act linter suppression"). A path that does not
+exist is exit 2, not a warning.
 
 ## Run
 
@@ -20,7 +22,7 @@ aisg lint <target> --format markdown --output euaiact-report.md
 
 ## Gate
 
-CI fails on `report["summary"]["errors"] > 0` — warnings do not block. Check it:
+CI fails on `report["summary"]["error_count"] > 0` — warnings do not block. Check it:
 
 ```bash
 python -c "import json; d=json.load(open('euaiact-report.json')); print(d['summary'])"
@@ -28,7 +30,9 @@ python -c "import json; d=json.load(open('euaiact-report.json')); print(d['summa
 
 ## Report back
 
-- The `summary` block: error count, warning count, files scanned.
+- The `summary` block: `error_count`, `warning_count`, `scanned_files`, and what the scan
+  did not look at: `skipped_files` (files carrying `# euaiact-lint: ignore-file`) and
+  `suppressed_count` (findings silenced by a `# euaiact-lint: ignore <rule>` line directive).
 - Every ERROR finding with its rule ID, file, and line. Use
   `aisg lint --list-rules` to explain any rule ID you cite.
 - Whether the gate would pass or fail in CI.

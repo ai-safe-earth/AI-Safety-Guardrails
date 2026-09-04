@@ -1,3 +1,4 @@
+# euaiact-lint: ignore-file
 """
 modules/policy/code_analyzer/rules/__init__.py
 ------------------------------------------------
@@ -27,6 +28,7 @@ from aisg.modules.policy.code_analyzer.analyzer import (
     BaseRule,
     CodeFinding,
     Severity,
+    physical_lines,
 )
 
 # ===========================================================================
@@ -60,7 +62,7 @@ class Rule_005a_SocialScoringDetected(BaseRule):
     )
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
-        for i, line in enumerate(source.splitlines(), 1):
+        for i, line in enumerate(physical_lines(source), 1):
             if self._PATTERNS.search(line) and not line.strip().startswith("#"):
                 yield self._finding(
                     filename,
@@ -95,7 +97,7 @@ class Rule_005b_BiometricSurveillance(BaseRule):
     )
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
-        for i, line in enumerate(source.splitlines(), 1):
+        for i, line in enumerate(physical_lines(source), 1):
             if self._PATTERNS.search(line) and not line.strip().startswith("#"):
                 yield self._finding(filename, i, snippet=line)
 
@@ -142,7 +144,7 @@ class Rule_005c_EmotionRecognitionWorkplace(BaseRule):
                     )
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
-        lines = source.splitlines()
+        lines = physical_lines(source)
         for i, line in enumerate(lines, 1):
             if self._EMOTION_PATTERNS.search(line) and self._CONTEXT_PATTERNS.search(line):
                 if not line.strip().startswith("#"):
@@ -217,7 +219,7 @@ class Rule_010a_HardcodedDataPath(BaseRule):
     )
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
-        for i, line in enumerate(source.splitlines(), 1):
+        for i, line in enumerate(physical_lines(source), 1):
             if self._HARDCODED.search(line) and not line.strip().startswith("#"):
                 yield self._finding(filename, i, snippet=line)
 
@@ -248,7 +250,7 @@ class Rule_010b_NoBiasCheck(BaseRule):
         has_bias = bool(self._BIAS_MARKERS.search(source))
         if has_training and not has_bias:
             # Find first training line for better location
-            for i, line in enumerate(source.splitlines(), 1):
+            for i, line in enumerate(physical_lines(source), 1):
                 if self._TRAIN_MARKERS.search(line):
                     yield self._finding(
                         filename,
@@ -368,7 +370,7 @@ class Rule_012b_LogsNotTamperResistant(BaseRule):
     _PLAIN_LOG_WRITE = re.compile(r"""open\s*\(\s*["'][^"']*\.log["']\s*,\s*["']a["']""")
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
-        for i, line in enumerate(source.splitlines(), 1):
+        for i, line in enumerate(physical_lines(source), 1):
             if self._PLAIN_LOG_WRITE.search(line):
                 yield self._finding(filename, i, snippet=line)
 
@@ -447,7 +449,7 @@ class Rule_013b_HardcodedSystemPromptNoTransparency(BaseRule):
     )
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
-        for i, line in enumerate(source.splitlines(), 1):
+        for i, line in enumerate(physical_lines(source), 1):
             if self._PATTERNS.search(line):
                 yield self._finding(filename, i, snippet=line)
 
@@ -621,7 +623,7 @@ class Rule_015b_UnsafeDeserialization(BaseRule):
     )
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
-        for i, line in enumerate(source.splitlines(), 1):
+        for i, line in enumerate(physical_lines(source), 1):
             if self._UNSAFE.search(line) and not line.strip().startswith("#"):
                 yield self._finding(filename, i, snippet=line)
 
@@ -652,7 +654,7 @@ class Rule_015c_SecretsInCode(BaseRule):
     ]
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
-        for i, line in enumerate(source.splitlines(), 1):
+        for i, line in enumerate(physical_lines(source), 1):
             if line.strip().startswith("#"):
                 continue
             for pattern in self._PATTERNS:
@@ -738,7 +740,7 @@ class Rule_050b_DeepfakeNoDisclosure(BaseRule):
     )
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
-        for i, line in enumerate(source.splitlines(), 1):
+        for i, line in enumerate(physical_lines(source), 1):
             if self._PATTERNS.search(line) and not line.strip().startswith("#"):
                 yield self._finding(filename, i, snippet=line)
 
@@ -774,12 +776,13 @@ class Rule_GDPR_001_NoPurposeLimitation(BaseRule):
     )
 
     def check_text(self, source: str, filename: str) -> Iterator[CodeFinding]:
+        lines = physical_lines(source)
         for match in self._PII_PASSED.finditer(source):
             line = source[: match.start()].count("\n") + 1
             yield self._finding(
                 filename,
                 line,
-                snippet=source.splitlines()[line - 1] if line <= len(source.splitlines()) else "",
+                snippet=lines[line - 1] if line <= len(lines) else "",
             )
 
 

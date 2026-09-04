@@ -29,6 +29,20 @@ from .analyzer import CodeFinding, ScanReport, Severity
 SCHEMA_VERSION = "aisg/1"
 
 
+def _suppression_note(report: ScanReport) -> str:
+    """What the scan did not look at, so a clean result is read with that in mind."""
+    parts = []
+    if report.skipped_files:
+        n = len(report.skipped_files)
+        parts.append(f"{n} file{'s' if n != 1 else ''} skipped by `# {report.tool}: ignore-file`")
+    if report.suppressed_count:
+        n = report.suppressed_count
+        parts.append(
+            f"{n} finding{'s' if n != 1 else ''} suppressed by `# {report.tool}: ignore <rule>`"
+        )
+    return "; ".join(parts)
+
+
 class Colors:
     """ANSI escape codes for colored terminal output."""
 
@@ -119,6 +133,8 @@ class TerminalReporter:
         self._print(
             f"{icon} {summary} {c.GRAY}({file_count} file{'s' if file_count != 1 else ''} scanned in {duration}){c.RESET}\n"
         )
+        if report.skipped_files or report.suppressed_count:
+            self._print(f"{c.GRAY}{_suppression_note(report)}{c.RESET}\n")
 
         # Parse errors
         if report.errors:
@@ -264,6 +280,8 @@ class JSONReporter:
             "schema": SCHEMA_VERSION,
             "summary": {
                 "scanned_files": len(report.scanned_files),
+                "skipped_files": len(report.skipped_files),
+                "suppressed_count": report.suppressed_count,
                 "error_count": report.error_count,
                 "warning_count": report.warning_count,
                 "info_count": report.info_count,
@@ -391,6 +409,8 @@ class SARIFReporter:
                     ],
                     "properties": {
                         "scanned_files": len(report.scanned_files),
+                        "skipped_files": len(report.skipped_files),
+                        "suppressed_count": report.suppressed_count,
                         "scan_duration_s": round(report.scan_duration_s, 3),
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
@@ -501,6 +521,8 @@ class MarkdownReporter:
         self._print(
             f"{status_emoji} — {summary} ({file_count} file{'s' if file_count != 1 else ''} scanned in {duration})\n"
         )
+        if report.skipped_files or report.suppressed_count:
+            self._print(f"_{_suppression_note(report)}_\n")
 
         # Parse errors
         if report.errors:

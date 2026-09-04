@@ -1,3 +1,4 @@
+# euaiact-lint: ignore-file
 """
 modules/policy/eu_ai_act.py
 ----------------------------

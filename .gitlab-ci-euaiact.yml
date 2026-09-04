@@ -7,36 +7,64 @@
 #     - local: '.gitlab-ci-euaiact.yml'
 #
 # Or merge the stages/jobs into your existing pipeline.
+#
+# The gate is errors-only: a job fails on ERROR findings, never on
+# warnings, unless FAIL_ON_WARNINGS is "true". Point SCAN_PATH at the
+# source tree(s) that ship, not at tests: test code exercises the very
+# patterns the rules look for. A path that does not exist fails the job
+# (exit 2) instead of passing with nothing scanned.
+#
+# Every `aisg lint` call is followed by `|| [ $? -eq 1 ]`: exit 1 means
+# findings, which the verdict step reads from the JSON; anything else is
+# a broken run and must stay fatal.
 
 stages:
   - compliance
 
 variables:
-  SCAN_PATH: "."
+  SCAN_PATH: "src"                    # space-separated; e.g. "src examples"
   FAIL_ON_WARNINGS: "false"
+  AISG_VERSION: "0.1.0"               # a release tag of the project below; pinned
+  # Installed from the project's own repository at that tag. The PyPI name
+  # `ai-safety-guardrails` belongs to an unrelated package, so a PyPI spec
+  # would install someone else's code.
+  AISG_SOURCE: "git+https://github.com/ai-safe-earth/AI-Safety-Guardrails.git"
+
+.eu-ai-act-base:
+  stage: compliance
+  image: python:3.11-slim
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git >/dev/null
+    - pip install --quiet "ai-safety-guardrails[devtools] @ ${AISG_SOURCE}@v${AISG_VERSION}"
 
 # ── Full scan (all pushes to main/develop) ───────────────────────────────
 
 eu-ai-act-full-scan:
-  stage: compliance
-  image: python:3.11-slim
+  extends: .eu-ai-act-base
   rules:
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
     - if: '$CI_PIPELINE_SOURCE == "web"'  # Manual trigger
-  before_script:
-    - pip install pyyaml --quiet
   script:
+    - 'echo "Running EU AI Act compliance scan on: $SCAN_PATH"'
+    - aisg lint $SCAN_PATH --format terminal --no-color || [ $? -eq 1 ]
+    - aisg lint $SCAN_PATH --format json --output eu-ai-act-report.json || [ $? -eq 1 ]
+    - aisg lint $SCAN_PATH --format sarif --output eu-ai-act-results.sarif || [ $? -eq 1 ]
     - |
-      echo "🔍 Running EU AI Act compliance scan..."
-      aisg lint $SCAN_PATH \
-        --format terminal \
-        --no-color \
-        $([ "$FAIL_ON_WARNINGS" = "true" ] && echo "--fail-on-warnings" || echo "")
-    - |
-      # Generate artifacts
-      aisg lint $SCAN_PATH --format json --output eu-ai-act-report.json
-      aisg lint $SCAN_PATH --format sarif --output eu-ai-act-results.sarif
+      python - <<'EOF'
+      import json, os, sys
+      report = json.load(open("eu-ai-act-report.json", encoding="utf-8"))
+      if report.get("schema") != "aisg/1":
+          sys.exit(f"unexpected report schema: {report.get('schema')!r}")
+      s = report["summary"]
+      print(f"errors={s['error_count']} warnings={s['warning_count']} info={s['info_count']} "
+            f"scanned={s['scanned_files']} skipped={s['skipped_files']} "
+            f"suppressed={s['suppressed_count']}")
+      if s["error_count"] > 0:
+          sys.exit(1)
+      if os.environ.get("FAIL_ON_WARNINGS") == "true" and s["warning_count"] > 0:
+          sys.exit(1)
+      EOF
   artifacts:
     name: "eu-ai-act-compliance-$CI_COMMIT_SHORT_SHA"
     paths:
@@ -51,57 +79,42 @@ eu-ai-act-full-scan:
 # ── Diff-only scan (Merge Requests) ──────────────────────────────────────
 
 eu-ai-act-mr-scan:
-  stage: compliance
-  image: python:3.11-slim
+  extends: .eu-ai-act-base
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-  before_script:
-    - pip install pyyaml --quiet
-    - apt-get update -qq && apt-get install -y -qq git 2>/dev/null
+  variables:
+    GIT_DEPTH: 0                      # the merge base must be in the clone
   script:
     - |
-      echo "🔍 EU AI Act — scanning changed files in MR..."
-      
-      # Get changed Python files in this MR
-      git diff --name-only origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME...HEAD \
-        | grep '\.py$' > changed_files.txt || true
-      
+      echo "EU AI Act — scanning changed files in MR, under: $SCAN_PATH"
+      # A failing git diff fails the job (set -e); only grep's "no match" (1)
+      # is tolerated. "Nothing to scan" must never be the result of an error.
+      git diff --name-only --diff-filter=ACMR "$CI_MERGE_REQUEST_DIFF_BASE_SHA" HEAD -- $SCAN_PATH > changed_all.txt
+      grep '\.py$' changed_all.txt > changed_files.txt || [ $? -eq 1 ]
       if [ ! -s changed_files.txt ]; then
-        echo "No Python files changed. Skipping."
+        echo "No Python files changed under $SCAN_PATH. Nothing to scan."
         exit 0
       fi
-      
       echo "Changed files:"
       cat changed_files.txt
-      
-      # Scan each changed file
-      EXIT_CODE=0
-      while IFS= read -r file; do
-        if [ -f "$file" ]; then
-          aisg lint "$file" \
-            --errors-only \
-            --no-color || EXIT_CODE=1
-        fi
-      done < changed_files.txt
-      
-      exit $EXIT_CODE
+      mapfile -t FILES < changed_files.txt
+      aisg lint "${FILES[@]}" --errors-only --no-color
   allow_failure: false
 
 # ── Scheduled weekly audit ────────────────────────────────────────────────
 # Add to your project's CI/CD Schedules:
 #   Description: "EU AI Act Weekly Audit"
 #   Cron: "0 9 * * 1"  (every Monday 9 AM)
+#
+# Informational: warnings turn the job yellow, never red.
 
 eu-ai-act-weekly-audit:
-  stage: compliance
-  image: python:3.11-slim
+  extends: .eu-ai-act-base
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
-  before_script:
-    - pip install pyyaml --quiet
   script:
-    - aisg lint . --format json --output weekly-audit.json
-    - aisg lint . --format terminal --no-color --fail-on-warnings
+    - aisg lint $SCAN_PATH --format json --output weekly-audit.json || [ $? -eq 1 ]
+    - aisg lint $SCAN_PATH --format terminal --no-color --fail-on-warnings
   artifacts:
     name: "eu-ai-act-weekly-audit-$CI_COMMIT_SHORT_SHA"
     paths:

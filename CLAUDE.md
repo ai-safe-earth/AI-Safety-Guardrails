@@ -45,10 +45,18 @@ the equivalent. Set `PYTHONIOENCODING=utf-8` on Windows.
 `--errors-only`, `--fail-on-warnings`, `--format terminal|json|sarif|markdown`,
 `--output <path>`, `--list-rules`. The CLI passes everything after the subcommand through
 verbatim (`argparse.REMAINDER`), so `aisg lint --help` shows the linter's own help.
-Exit codes: `0` clean, `1` findings, `2` fatal.
+Exit codes: `0` clean, `1` findings, `2` fatal. A path that does not exist is fatal
+(exit 2), not a warning, and so is a failing `git diff` under `--staged`/`--diff`:
+scanning nothing and exiting 0 reads as a clean result in CI.
 Their defaults come from `[tool.euaiact-lint]` / `[tool.misalignment-check]` in
-`pyproject.toml` via `src/aisg/devtools/_config.py`; an explicit CLI flag always wins, but a `true`
-boolean there cannot be switched back off from the command line.
+`pyproject.toml` via `src/aisg/devtools/_config.py`, resolved from the CWD (so `paths`
+from pyproject do not resolve from a subdirectory; the exit-2 message says where they
+came from); an explicit CLI flag always wins, but a `true` boolean there cannot be
+switched back off from the command line. `exclude` entries are POSIX path fragments
+matched as consecutive segments (`tests/fixtures`) or bare directory names matched
+anywhere (`__pycache__`); `analyzer.is_excluded` is the single implementation and
+`scan_diff` honours it too, so the pre-commit hook does not block a commit that touches a
+fixture the full scan excludes.
 
 **Verify before reporting done:** `pytest`, `ruff check` on changed files, then both `devtools/`
 CLIs on the changed modules, then the self-audit:
@@ -59,8 +67,52 @@ aisg audit . --no-external --fail-on high --baseline audit-baseline.json
 
 It must exit 0. A non-zero exit means a new finding at `high` or above that is not in the
 baseline; either fix it or add it to `audit-baseline.json` with a reason (see below). CI
-(`tests.yml`) runs pytest, ruff, `aisg measure` and the same audit gate, and
-`eu-ai-act-compliance.yml` runs `aisg lint`; mypy and `aisg misalign` are local-only.
+(`tests.yml`) runs pytest on 3.10 and 3.13, ruff, `aisg measure --max-p99-ms 25` and the
+same audit gate; `eu-ai-act-compliance.yml` runs `aisg lint src examples` and fails on
+errors only (see "EU AI Act linter suppression" for what is and is not in that gate);
+mypy and `aisg misalign` are local-only.
+
+Two CI-only failure modes worth knowing: git's `%cI` writes a UTC committer date with a
+`Z` suffix, which `datetime.fromisoformat` only accepts from 3.11 (`audit/walk.py`
+normalises it -- 3.10 is in the matrix), and the measure ratchet's p99 over 90 cases is the
+second-slowest sample, so one scheduler hiccup on a shared runner used to fail it.
+
+## EU AI Act linter suppression
+
+`aisg lint` and `aisg misalign` share `EUAIActCodeAnalyzer`, and each honours only its
+own markers (`analyzer.tool`, default `euaiact-lint`; misalign passes
+`misalignment-check`). Two forms, both explicit:
+
+- `# euaiact-lint: ignore-file` within the first five lines skips the file. It is for
+  the files that ARE the rule vocabulary -- `code_analyzer/rules/__init__.py` and
+  `modules/policy/eu_ai_act.py` spell out every prohibited-practice phrase and would
+  otherwise report themselves; `# misalignment-check: ignore-file` sits on
+  `devtools/misalignment/rules/__init__.py` for the same reason. A test pins that exactly
+  those files under `src/` carry each marker; a real finding anywhere else gets a line
+  directive, not the marker.
+- `# euaiact-lint: ignore EU-AIA-005a[, ...]` on the finding's own line suppresses that
+  rule there. **The rule id is required**; a bare `ignore` is not honoured, so every
+  suppression says what it silences. Not spelled `noqa`: ruff parses every `# noqa`
+  comment and warns on codes it does not know.
+
+Suppression stays observable: skipped files land in `ScanReport.skipped_files`, silenced
+findings in `ScanReport.suppressed_count`, and the JSON summary, terminal and markdown
+reporters all print them. A clean run says what it did not look at.
+
+Line numbers are physical lines: the directive lookup, the `source_lines` handed to
+`check_ast` and every text rule go through `analyzer.physical_lines()` (`split("\n")`),
+never `str.splitlines()`. The latter also breaks on form feed, NEL and U+2028/2029, which
+`ast.parse` does not, so after one of those a directive on the finding's line was missed
+and one on the line above silenced the *next* finding. A new text rule must use the helper.
+
+The compliance gate scans `src` and `examples`, errors only. `tests/` is outside it on
+purpose -- the suite asserts on the very phrases the rules match, and `tests/fixtures/`
+is deliberately non-compliant linter input (the pyproject `exclude` keeps it out of a
+bare `aisg lint .` too). `tests/unit/test_euaiact_lint.py::TestComplianceGate` runs the
+same scan, so a new error in `src`/`examples` fails `pytest` before it fails CI.
+`.gitlab-ci-euaiact.yml` is the downstream template of the same gate (pinned PyPI
+install, `SCAN_PATH`, errors-only, `|| [ $? -eq 1 ]` after every report call);
+`TestCITemplates` parses both files and pins the template's version to `pyproject.toml`.
 
 ## Style
 
@@ -201,6 +253,18 @@ it breaks, and what it costs. Rules that hold:
   `None` is UNMEASURED, never good; unmeasured still fires. `GuardrailBase.
   fires_by_default(thresholds)` demotes a guard for being imprecise, noisy, or
   over a latency budget. Latency has no default cap -- it is deployment-specific.
+- **A case's latency is the median of `TIMING_PASSES` (3) calls**; its verdict
+  comes from the first. p99 over the 90-case corpus is the second-slowest
+  sample, so with one call per case a single scheduler hiccup on a shared CI
+  runner set p99 to 32 ms for a 1 ms guard and failed the ratchet. The median
+  makes one slow call an outlier, not the figure; a guard that is always slow
+  still shows. `sample_size` stays the number of cases, and the report's
+  `corpus.timing_passes` and provenance string name the sampling. There is no
+  separate warm-up call: it would need to swallow the guard's exception
+  (AUD-802), and the median already absorbs a slow first call. For the same
+  reason a failed timing pass is not swallowed either: every raising call
+  lands in `errors` as `<case>/t<pass>`, and only verdict-pass (`t0`) failures
+  count towards `unavailable`.
 - Populate a Profile from `aisg measure` output. Never by hand.
 
 Two findings this produced, both still true of the shipped code: the

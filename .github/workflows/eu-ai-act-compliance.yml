@@ -1,18 +1,28 @@
 # .github/workflows/eu-ai-act-compliance.yml
-# -------------------------------------------------------
-# EU AI Act Compliance Check — GitHub Actions
-# -------------------------------------------------------
-# Triggers on:
-#   - Pull requests (blocks merge if errors found)
-#   - Push to main/develop
-#   - Manual dispatch (run on any branch)
-#   - Weekly scheduled scan (full repo audit)
+# ---------------------------------------------------------------------------
+# EU AI Act compliance linter (`aisg lint`) as a CI gate.
+#
+# What it gates: ERRORS in src/ and examples/. Warnings are reported, uploaded
+# and commented on, but do not fail the build unless the `fail_on_warnings`
+# dispatch input is set. tests/ is outside the gate on purpose: the suite
+# asserts on the very phrases the rules look for, and tests/fixtures/ is
+# deliberately non-compliant linter input.
+#
+# Two files under src/ carry `# euaiact-lint: ignore-file` because they ARE
+# the rule vocabulary; the scan reports how many files it skipped and how
+# many findings a line directive silenced, so a clean run says what it did
+# not look at. See CLAUDE.md, "EU AI Act linter suppression".
 #
 # Outputs:
-#   - Terminal summary in CI logs
+#   - Terminal summary in the job log
 #   - SARIF uploaded to GitHub Code Scanning (Security tab)
-#   - JSON artifact for downstream processing
-#   - PR comment with Markdown summary (on PRs)
+#   - JSON report as an artifact (kept 90 days -- Art. 12 record keeping)
+#   - Markdown in the job summary, and as a sticky PR comment on pull requests
+#
+# `aisg lint` exits 0 clean, 1 with findings at the gate level, 2 fatal. The
+# report steps accept 1 so every format is produced before the verdict; the
+# verdict is one step, reading the JSON summary.
+# ---------------------------------------------------------------------------
 
 name: EU AI Act Compliance
 
@@ -27,103 +37,93 @@ on:
     branches: [main, develop]
     paths:
       - "**/*.py"
+      - ".github/workflows/eu-ai-act-compliance.yml"
 
   schedule:
-    # Weekly full audit — every Monday 09:00 UTC
+    # Weekly full scan -- every Monday 09:00 UTC
     - cron: "0 9 * * 1"
 
   workflow_dispatch:
     inputs:
-      scan_path:
-        description: "Directory to scan (default: .)"
+      scan_paths:
+        description: "Space-separated paths to scan"
         required: false
-        default: "."
+        default: "src examples"
       fail_on_warnings:
-        description: "Fail on warnings (not just errors)"
+        description: "Fail on warnings, not just errors"
         type: boolean
         default: false
+
+concurrency:
+  group: eu-ai-act-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   eu-ai-act-lint:
     name: EU AI Act Compliance Scan
     runs-on: ubuntu-latest
     permissions:
-      security-events: write    # Required for SARIF upload
-      pull-requests: write      # Required for PR comments
+      security-events: write # SARIF upload
+      pull-requests: write # sticky PR comment
       contents: read
 
-    steps:
-      # ── Checkout ────────────────────────────────────────────────────────
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0        # Full history for diff-based scanning
+    env:
+      # Free-text only on workflow_dispatch, which needs write access to trigger.
+      # Read through env, never interpolated into a shell line.
+      SCAN_PATHS: ${{ inputs.scan_paths || 'src examples' }}
+      FAIL_ON_WARNINGS: ${{ inputs.fail_on_warnings == true && 'true' || 'false' }}
 
-      # ── Python setup ────────────────────────────────────────────────────
-      - name: Set up Python
-        uses: actions/setup-python@v5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
           cache: pip
 
-      - name: Install dependencies
-        run: |
-          pip install pyyaml
-          # Install the guardrails package in editable mode
-          pip install -e . --no-deps 2>/dev/null || true
+      - name: Install
+        # The linter's dependencies come from pyproject (pyyaml is a base
+        # dependency; tomli backfills tomllib on 3.10 only). No separate
+        # unpinned bootstrap line -- the self-audit (AUD-602) flags those.
+        run: pip install -e ".[devtools]"
 
-      # ── Determine scan scope ────────────────────────────────────────────
-      - name: Set scan path
-        id: scan-path
+      # ── Scan ─────────────────────────────────────────────────────────────
+      # `|| [ $? -eq 1 ]` keeps exit 1 (findings) from stopping the job here
+      # while still failing on 2 (fatal). The verdict is the last step.
+      - name: Scan (terminal)
         run: |
-          SCAN_PATH="${{ github.event.inputs.scan_path || '.' }}"
-          echo "path=$SCAN_PATH" >> $GITHUB_OUTPUT
+          # shellcheck disable=SC2086  # SCAN_PATHS is a word list on purpose
+          aisg lint $SCAN_PATHS --format terminal --no-color || [ $? -eq 1 ]
 
-      # ── Run compliance scan ─────────────────────────────────────────────
-      - name: Run EU AI Act compliance scan (terminal)
-        id: lint-terminal
+      - name: Report (JSON)
         run: |
-          aisg lint "${{ steps.scan-path.outputs.path }}" \
-            --format terminal \
-            --no-color \
-            ${{ github.event.inputs.fail_on_warnings == 'true' && '--fail-on-warnings' || '' }}
-        continue-on-error: true   # We handle exit code manually below
+          # shellcheck disable=SC2086
+          aisg lint $SCAN_PATHS --format json --output eu-ai-act-report.json || [ $? -eq 1 ]
 
-      # ── JSON report ─────────────────────────────────────────────────────
-      - name: Generate JSON report
+      - name: Report (SARIF)
         run: |
-          aisg lint "${{ steps.scan-path.outputs.path }}" \
-            --format json \
-            --output eu-ai-act-report.json
+          # shellcheck disable=SC2086
+          aisg lint $SCAN_PATHS --format sarif --output eu-ai-act-results.sarif || [ $? -eq 1 ]
 
-      - name: Upload JSON report artifact
+      - name: Report (Markdown)
+        run: |
+          # shellcheck disable=SC2086
+          aisg lint $SCAN_PATHS --format markdown --output eu-ai-act-summary.md || [ $? -eq 1 ]
+          cat eu-ai-act-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Publish ──────────────────────────────────────────────────────────
+      - name: Upload JSON report
         uses: actions/upload-artifact@v4
         with:
           name: eu-ai-act-compliance-report
           path: eu-ai-act-report.json
-          retention-days: 90    # Art. 12 — retain for audit purposes
-
-      # ── SARIF report (GitHub Code Scanning) ─────────────────────────────
-      - name: Generate SARIF report
-        run: |
-          aisg lint "${{ steps.scan-path.outputs.path }}" \
-            --format sarif \
-            --output eu-ai-act-results.sarif
+          retention-days: 90 # Art. 12 -- keep for audit purposes
 
       - name: Upload SARIF to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: eu-ai-act-results.sarif
           category: eu-ai-act-compliance
-
-      # ── Markdown PR comment ─────────────────────────────────────────────
-      - name: Generate Markdown summary
-        if: github.event_name == 'pull_request'
-        run: |
-          aisg lint "${{ steps.scan-path.outputs.path }}" \
-            --format markdown \
-            --output eu-ai-act-summary.md
 
       - name: Post PR comment
         if: github.event_name == 'pull_request'
@@ -132,38 +132,38 @@ jobs:
           header: eu-ai-act-compliance
           path: eu-ai-act-summary.md
 
-      # ── Check results & set job status ──────────────────────────────────
+      # ── Verdict ──────────────────────────────────────────────────────────
       - name: Check compliance results
         run: |
           python - <<'EOF'
-          import json, sys
+          import json, os, sys
 
-          with open("eu-ai-act-report.json") as f:
+          with open("eu-ai-act-report.json", encoding="utf-8") as f:
               report = json.load(f)
+          if report.get("schema") != "aisg/1":
+              print(f"::error::unexpected report schema {report.get('schema')!r}")
+              sys.exit(2)
 
-          errors   = report["summary"]["errors"]
-          warnings = report["summary"]["warnings"]
-          total    = report["summary"]["total_findings"]
-          files    = report["summary"]["files_scanned"]
+          s = report["summary"]
+          errors, warnings, infos = s["error_count"], s["warning_count"], s["info_count"]
+          print(
+              f"Scanned {s['scanned_files']} file(s): "
+              f"{errors} error(s), {warnings} warning(s), {infos} info. "
+              f"{s['skipped_files']} file(s) skipped by ignore-file, "
+              f"{s['suppressed_count']} finding(s) suppressed by a line directive."
+          )
 
-          print(f"Scanned {files} files — {total} findings: {errors} error(s), {warnings} warning(s)")
-
-          # Write to GitHub job summary
-          with open("eu-ai-act-summary.md") as f:
-              summary_md = f.read() if open("eu-ai-act-summary.md").read() else ""
-          import os
-          with open(os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null"), "a") as f:
-              f.write(summary_md)
-
-          fail_on_warnings = "${{ github.event.inputs.fail_on_warnings }}" == "true"
-          if errors > 0 or (fail_on_warnings and warnings > 0):
-              print(f"::error::EU AI Act compliance check FAILED — {errors} error(s) found.")
+          fail_on_warnings = os.environ.get("FAIL_ON_WARNINGS") == "true"
+          if errors > 0:
+              print(f"::error::EU AI Act compliance check FAILED: {errors} error(s).")
               sys.exit(1)
-          else:
-              print("EU AI Act compliance check PASSED.")
+          if fail_on_warnings and warnings > 0:
+              print(f"::error::EU AI Act compliance check FAILED: {warnings} warning(s) with fail_on_warnings.")
+              sys.exit(1)
+          print("EU AI Act compliance check passed at the gate level (errors" + (" and warnings" if fail_on_warnings else "") + ").")
           EOF
 
-  # ── Diff-only fast check for PRs ──────────────────────────────────────
+  # ── Changed files only, errors only: a fast signal on pull requests ──────
   eu-ai-act-diff-check:
     name: EU AI Act — Changed Files Only (Fast)
     runs-on: ubuntu-latest
@@ -171,30 +171,31 @@ jobs:
     permissions:
       contents: read
 
+    env:
+      BASE_REF: ${{ github.base_ref }}
+
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # the diff needs the base branch
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
           cache: pip
 
-      - run: pip install pyyaml
+      - run: pip install -e ".[devtools]"
 
-      - name: Get changed Python files
+      - name: Get changed Python files in src/ and examples/
         id: changed
         run: |
-          git diff --name-only origin/${{ github.base_ref }}...HEAD \
-            | grep '\.py$' \
-            | head -50 > changed_files.txt
-          echo "files=$(cat changed_files.txt | wc -l)" >> $GITHUB_OUTPUT
+          git diff --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" \
+            -- 'src/*.py' 'examples/*.py' > changed_files.txt
+          echo "count=$(wc -l < changed_files.txt)" >> "$GITHUB_OUTPUT"
           cat changed_files.txt
 
-      - name: Scan changed files only
-        if: steps.changed.outputs.files != '0'
+      - name: Scan changed files
+        if: steps.changed.outputs.count != '0'
         run: |
-          while IFS= read -r file; do
-            [ -f "$file" ] && aisg lint "$file" --errors-only --no-color || true
-          done < changed_files.txt
+          mapfile -t FILES < changed_files.txt
+          aisg lint "${FILES[@]}" --errors-only --no-color
