@@ -325,6 +325,12 @@ class SARIFReporter:
     display findings in their Security/Code Scanning tabs.
 
     Spec: https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html
+
+    The document is validated strictly on upload (GitHub's `codeql-action`
+    rejects the whole file on the first violation), so this reporter emits
+    only what the 2.1.0 schema defines: the `aisg/1` marker lives in the
+    run's property bag rather than at the root, and optional objects such
+    as `region.snippet` or `helpUri` are omitted when empty, never `null`.
     """
 
     def __init__(self, out: TextIO = sys.stdout):
@@ -340,74 +346,24 @@ class SARIFReporter:
 
         # SARIF structure
         sarif = {
-            "schema": SCHEMA_VERSION,
-            "version": "2.1.0",
             "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+            "version": "2.1.0",
             "runs": [
                 {
                     "tool": {
                         "driver": {
-                            "name": "euaiact-lint",
+                            "name": report.tool,
                             "version": "0.1.0",
-                            "informationUri": "https://github.com/YOUR_ORG/ai-safety-guardrails",
+                            "informationUri": "https://github.com/ai-safe-earth/AI-Safety-Guardrails",
                             "semanticVersion": "0.1.0",
                             "rules": [
-                                {
-                                    "id": rule_id,
-                                    "name": f.title,
-                                    "shortDescription": {"text": f.title},
-                                    "fullDescription": {"text": f.description or f.title},
-                                    "help": {
-                                        "text": f.suggestion or "Review for EU AI Act compliance",
-                                        "markdown": f"{f.description}\n\n**Fix:** {f.suggestion}\n\n[Reference]({f.reference})"
-                                        if f.suggestion
-                                        else f.description,
-                                    },
-                                    "helpUri": f.reference,
-                                    "properties": {
-                                        "tags": ["security", "compliance", "eu-ai-act", f.article],
-                                        "precision": "medium",
-                                        "security-severity": self._severity_to_score(f.severity),
-                                    },
-                                    "defaultConfiguration": {
-                                        "level": self._severity_to_level(f.severity),
-                                    },
-                                }
-                                for rule_id, f in sorted(rules_map.items())
+                                self._rule(rule_id, f) for rule_id, f in sorted(rules_map.items())
                             ],
                         }
                     },
-                    "results": [
-                        {
-                            "ruleId": f.rule_id,
-                            "level": self._severity_to_level(f.severity),
-                            "message": {
-                                "text": f"{f.title}: {f.description}" if f.description else f.title
-                            },
-                            "locations": [
-                                {
-                                    "physicalLocation": {
-                                        "artifactLocation": {
-                                            "uri": f.file.replace(
-                                                "\\", "/"
-                                            ),  # Normalize path separators
-                                            "uriBaseId": "%SRCROOT%",
-                                        },
-                                        "region": {
-                                            "startLine": f.line,
-                                            "startColumn": f.col if f.col else 1,
-                                            "snippet": {"text": f.snippet} if f.snippet else None,
-                                        },
-                                    }
-                                }
-                            ],
-                            "partialFingerprints": {
-                                "primaryLocationLineHash": self._hash_location(f),
-                            },
-                        }
-                        for f in report.findings
-                    ],
+                    "results": [self._result(f) for f in report.findings],
                     "properties": {
+                        "aisg_schema": SCHEMA_VERSION,
                         "scanned_files": len(report.scanned_files),
                         "skipped_files": len(report.skipped_files),
                         "suppressed_count": report.suppressed_count,
@@ -420,6 +376,55 @@ class SARIFReporter:
 
         json.dump(sarif, self.out, indent=2)
         self.out.write("\n")
+
+    def _rule(self, rule_id: str, f: CodeFinding) -> dict:
+        """One `reportingDescriptor`, built from the first finding of the rule."""
+        help_block: dict[str, str] = {"text": f.suggestion or "Review for EU AI Act compliance"}
+        if f.suggestion:
+            help_block["markdown"] = (
+                f"{f.description}\n\n**Fix:** {f.suggestion}\n\n[Reference]({f.reference})"
+            )
+        elif f.description:
+            help_block["markdown"] = f.description
+        rule = {
+            "id": rule_id,
+            "name": f.title,
+            "shortDescription": {"text": f.title},
+            "fullDescription": {"text": f.description or f.title},
+            "help": help_block,
+            "properties": {
+                "tags": ["security", "compliance", "eu-ai-act", f.article],
+                "precision": "medium",
+                "security-severity": self._severity_to_score(f.severity),
+            },
+            "defaultConfiguration": {"level": self._severity_to_level(f.severity)},
+        }
+        if f.reference:
+            rule["helpUri"] = f.reference
+        return rule
+
+    def _result(self, f: CodeFinding) -> dict:
+        """One `result`; the snippet key is present only when there is a snippet."""
+        region: dict = {"startLine": f.line, "startColumn": f.col if f.col else 1}
+        if f.snippet:
+            region["snippet"] = {"text": f.snippet}
+        return {
+            "ruleId": f.rule_id,
+            "level": self._severity_to_level(f.severity),
+            "message": {"text": f"{f.title}: {f.description}" if f.description else f.title},
+            "locations": [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": {
+                            "uri": f.file.replace("\\", "/"),  # Normalize path separators
+                            "uriBaseId": "%SRCROOT%",
+                        },
+                        "region": region,
+                    }
+                }
+            ],
+            "partialFingerprints": {"primaryLocationLineHash": self._hash_location(f)},
+        }
 
     @staticmethod
     def _severity_to_level(severity: Severity) -> str:

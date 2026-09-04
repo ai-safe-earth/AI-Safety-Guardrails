@@ -842,8 +842,10 @@ def to_sarif(report: Report) -> str:
             )
         )
     version = (report.tool or {}).get("version") or tool_version()
+    # No `schema` at the root: the 2.1.0 schema forbids unknown root keys and
+    # Code Scanning uploads validate strictly. The marker rides in the run's
+    # property bag, which is the one place SARIF allows arbitrary keys.
     doc = {
-        "schema": SCHEMA_VERSION,
         "$schema": SARIF_SCHEMA_URI,
         "version": SARIF_VERSION,
         "runs": [
@@ -851,6 +853,7 @@ def to_sarif(report: Report) -> str:
                 "tool": {"driver": {"name": TOOL_NAME, "version": version, "rules": rules_out}},
                 "results": [_sarif_result(f) for f in findings],
                 "properties": {
+                    "aisg_schema": SCHEMA_VERSION,
                     "disclaimer": report.disclaimer,
                     "generated_at": report.generated_at,
                     "target": _as_dict(report.target),

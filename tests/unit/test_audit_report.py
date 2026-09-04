@@ -629,10 +629,14 @@ def test_render_rejects_unknown_format():
 def test_sarif_shape_levels_and_properties():
     report = build()
     doc = json.loads(render(report, "sarif"))
-    assert list(doc)[0] == "schema" and doc["schema"] == "aisg/1"
+    # The `aisg/1` marker is the first key of every other document; the SARIF
+    # root allows no extra keys (Code Scanning rejects the upload), so it
+    # rides in the run's property bag instead.
+    assert set(doc) == {"$schema", "version", "runs"}
     assert doc["version"] == "2.1.0"
     assert doc["$schema"].endswith("sarif-2.1.0.json")
     run = doc["runs"][0]
+    assert run["properties"]["aisg_schema"] == "aisg/1"
     driver = run["tool"]["driver"]
     assert driver["name"] == "aisg-audit"
     assert driver["version"] == tool_version()
@@ -686,6 +690,29 @@ def test_sarif_measured_finding_and_zero_line_absence():
     assert reported["properties"]["report"]["age_days"] == 41
     gitignored = [r for r in doc["runs"][0]["results"] if r["properties"]["gitignored"]]
     assert len(gitignored) == 1 and gitignored[0]["ruleId"] == "AUD-501"
+
+
+def test_sarif_has_no_nulls_where_the_schema_wants_an_object_or_string():
+    """
+    What `codeql-action/upload-sarif` validates strictly: no extra root key,
+    every `region.snippet` an object, every `helpUri`/`help.text` a string.
+    An optional field is omitted, never `null`.
+    """
+    doc = json.loads(render(build(), "sarif"))
+    for run in doc["runs"]:
+        for rule in run["tool"]["driver"]["rules"]:
+            assert isinstance(rule["shortDescription"]["text"], str)
+            if "helpUri" in rule:
+                assert isinstance(rule["helpUri"], str)
+            if "help" in rule:
+                assert isinstance(rule["help"]["text"], str)
+        for result in run["results"]:
+            assert isinstance(result["message"]["text"], str)
+            for loc in result.get("locations", []) + result.get("relatedLocations", []):
+                region = loc["physicalLocation"]["region"]
+                assert region["startLine"] >= 1
+                assert isinstance(region["snippet"], dict)
+                assert isinstance(region["snippet"]["text"], str)
 
 
 # ---------------------------------------------------------------------------

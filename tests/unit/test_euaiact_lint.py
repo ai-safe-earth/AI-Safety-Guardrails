@@ -26,8 +26,10 @@ from aisg.modules.policy.code_analyzer.analyzer import (
     DEFAULT_TOOL,
     IGNORE_MARKER,
     MARKER_LINES,
+    CodeFinding,
     EUAIActCodeAnalyzer,
     ScanReport,
+    Severity,
     has_ignore_marker,
     ignore_marker,
     ignored_rules,
@@ -36,6 +38,7 @@ from aisg.modules.policy.code_analyzer.analyzer import (
 from aisg.modules.policy.code_analyzer.reporters import (
     JSONReporter,
     MarkdownReporter,
+    SARIFReporter,
     TerminalReporter,
 )
 from aisg.modules.policy.code_analyzer.rules import ALL_RULES
@@ -551,6 +554,107 @@ class TestReporters:
         TerminalReporter(out=buf, color=False).write(ScanReport(scanned_files=["a.py"]))
         assert "skipped by" not in buf.getvalue()
         assert "suppressed by" not in buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# SARIF as Code Scanning validates it
+# ---------------------------------------------------------------------------
+
+# Root keys the SARIF 2.1.0 schema defines. `additionalProperties` is false at
+# the root, and GitHub's upload step rejects the whole file on one extra key.
+SARIF_ROOT_KEYS = {"$schema", "version", "runs", "inlineExternalProperties", "properties"}
+
+
+def assert_uploadable_sarif(doc: dict) -> None:
+    """
+    The subset of the 2.1.0 schema that `codeql-action/upload-sarif` has
+    rejected our output on, plus the neighbouring fields that would fail the
+    same way. `None` is never valid where the schema wants an object or a
+    string: an optional field is omitted, not nulled.
+    """
+    assert set(doc) <= SARIF_ROOT_KEYS, sorted(set(doc) - SARIF_ROOT_KEYS)
+    assert doc["version"] == "2.1.0"
+    for run in doc["runs"]:
+        for rule in run["tool"]["driver"]["rules"]:
+            assert isinstance(rule["id"], str) and isinstance(rule["shortDescription"]["text"], str)
+            if "helpUri" in rule:
+                assert isinstance(rule["helpUri"], str) and rule["helpUri"]
+            if "help" in rule:
+                assert isinstance(rule["help"]["text"], str)
+                if "markdown" in rule["help"]:
+                    assert isinstance(rule["help"]["markdown"], str)
+            for tag in rule.get("properties", {}).get("tags", []):
+                assert isinstance(tag, str)
+        for result in run["results"]:
+            assert isinstance(result["message"]["text"], str)
+            for loc in result.get("locations", []) + result.get("relatedLocations", []):
+                region = loc["physicalLocation"].get("region", {})
+                assert region.get("startLine", 1) >= 1
+                if "snippet" in region:
+                    assert isinstance(region["snippet"], dict)
+                    assert isinstance(region["snippet"]["text"], str)
+
+
+def _finding(**overrides) -> CodeFinding:
+    base = dict(
+        rule_id="EU-AIA-011a",
+        article="Art. 13",
+        severity=Severity.WARNING,
+        title="Model without documentation",
+        description="",
+        file="src\\app.py",
+        line=3,
+    )
+    base.update(overrides)
+    return CodeFinding(**base)
+
+
+class TestSARIF:
+    def _doc(self, *findings: CodeFinding, tool: str = DEFAULT_TOOL) -> dict:
+        report = ScanReport(findings=list(findings), scanned_files=["src/app.py"], tool=tool)
+        buf = io.StringIO()
+        SARIFReporter(out=buf).write(report)
+        return json.loads(buf.getvalue())
+
+    def test_no_marker_at_the_root(self):
+        """The `aisg/1` marker is a root key everywhere else; SARIF forbids it there."""
+        doc = self._doc(_finding())
+        assert "schema" not in doc
+        assert doc["runs"][0]["properties"]["aisg_schema"] == "aisg/1"
+        assert_uploadable_sarif(doc)
+
+    def test_an_empty_snippet_is_omitted_not_null(self):
+        """Code Scanning rejected `region.snippet: null` on every snippet-less finding."""
+        doc = self._doc(_finding(snippet=""), _finding(snippet="class UserModel:", line=9))
+        regions = [
+            r["locations"][0]["physicalLocation"]["region"] for r in doc["runs"][0]["results"]
+        ]
+        assert "snippet" not in regions[0]
+        assert regions[1]["snippet"] == {"text": "class UserModel:"}
+        assert_uploadable_sarif(doc)
+
+    def test_optional_rule_fields_are_omitted_when_empty(self):
+        doc = self._doc(_finding(reference="", suggestion="", description=""))
+        rule = doc["runs"][0]["tool"]["driver"]["rules"][0]
+        assert "helpUri" not in rule
+        assert "markdown" not in rule["help"]
+        assert rule["help"]["text"]
+        assert_uploadable_sarif(doc)
+
+    def test_paths_are_posix_and_the_driver_is_the_tool_that_ran(self):
+        doc = self._doc(_finding(), tool=MISALIGN_TOOL)
+        run = doc["runs"][0]
+        assert run["tool"]["driver"]["name"] == MISALIGN_TOOL
+        uri = run["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+        assert uri == "src/app.py"
+
+    def test_a_real_scan_is_uploadable(self, tmp_path):
+        """The shape CI uploads: `aisg lint src examples --format sarif` on our own tree."""
+        out = tmp_path / "results.sarif"
+        main([str(REPO_ROOT / "src"), str(REPO_ROOT / "examples"), "-f", "sarif", "-o", str(out)])
+        doc = json.loads(out.read_text(encoding="utf-8"))
+        assert doc["runs"][0]["results"], "the self-scan has warnings; the shape check needs rows"
+        assert_uploadable_sarif(doc)
 
 
 # ---------------------------------------------------------------------------

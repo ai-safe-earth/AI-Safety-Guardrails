@@ -182,9 +182,12 @@ module-level `settings = Settings()` singleton at import time. `.env` resolves t
    the `bytes` returned by `base64.b64encode`. Examples are not covered by pytest.
 4. Console output uses `✓`/`✗`, which crashes on a cp1252 Windows terminal. Run examples with
    `PYTHONIOENCODING=utf-8`.
-5. Every machine-readable CLI document starts with `"schema": "aisg/1"`. In SARIF this is an
-   extra root property the 2.1.0 spec does not define — GitHub Code Scanning accepts it, a
-   strict schema validator may not.
+5. (Cleared: GitHub's `codeql-action@v4` upload now validates SARIF strictly and rejected
+   the root `"schema": "aisg/1"` key and `region.snippet: null`. Both SARIF emitters --
+   `code_analyzer/reporters.py` and `audit/report.py` -- now carry the marker as
+   `runs[0].properties.aisg_schema` and omit empty optional fields instead of nulling them;
+   every other machine-readable document still starts with `"schema"`. Tests pin the shape;
+   the real 2.1.0 schema validates all three CLIs' output. Kept for numbering.)
 
 ## `aisg init` and `aisg probe`
 
@@ -351,7 +354,9 @@ AUD-101 to AUD-1003, ordered by blast radius; the registry lists them all and
   Never type a number in; `bench/` will produce one when a labelled corpus
   exists (it does not yet).
 - **`"schema": "aisg/1"` is the first key** of every JSON document (report,
-  inventory, baseline), same as the other CLIs.
+  inventory, baseline), same as the other CLIs. SARIF is the one exception:
+  its root admits no extra keys and Code Scanning rejects the upload on one,
+  so there the marker is `runs[0].properties.aisg_schema`.
 - **Exit codes:** `0` no counted finding, `1` a finding at or above `--fail-on`
   or an UNKNOWN item in a `--fail-on-unknown` category, `2` fatal, `130`
   interrupted. Constants are `EXIT_OK` / `EXIT_FINDINGS` / `EXIT_FATAL` /
