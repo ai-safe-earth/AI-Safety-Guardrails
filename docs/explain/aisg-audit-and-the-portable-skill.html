@@ -1,0 +1,1258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aisg audit and the portable skill — AI Safety Guardrails</title>
+<style>
+  /* --p0/--p1 are per-unit accent pairs; add --p2 (and .b2/.d2) the same way
+     for a third unit. A one-unit doc uses --p0 only and drops the legend. */
+  :root{
+    --bg:#faf9f7; --panel:#ffffff; --fg:#1c1c22; --muted:#6b6b76; --rule:#e3e1dc;
+    --code-bg:#f2f0ec; --code-fg:#2a2a30; --comment:#8b8b95;
+    --p0:#0e7490; --p0-bg:#e3f3f7; --p0-line:#0e7490;
+    --p1:#bd2a80; --p1-bg:#fbe6f2; --p1-line:#bd2a80;
+    --p2:#7a5cd6; --p2-bg:#eee9fb; --p2-line:#7a5cd6;
+    --infra:#8f8c96; --good:#177245; --warn:#9a6a06;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#101014; --panel:#17171c; --fg:#e8e6e3; --muted:#9a97a0; --rule:#2b2b33;
+      --code-bg:#1c1c23; --code-fg:#d8d6d3; --comment:#7e7e8a;
+      --p0:#53c9dd; --p0-bg:#0d3540; --p0-line:#53c9dd;
+      --p1:#ff5cb8; --p1-bg:#3e1130; --p1-line:#ff5cb8;
+      --p2:#b49cff; --p2-bg:#241a45; --p2-line:#b49cff;
+      --infra:#77747e; --good:#5fce8d; --warn:#e3b341;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:15px/1.65 -apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  main{max-width:980px; margin:0 auto; padding:0 28px 90px}
+  header.doc{max-width:980px; margin:0 auto; padding:56px 28px 8px}
+  h1{font-size:30px; line-height:1.2; margin:0 0 6px}
+  .sub{color:var(--muted); font-size:14px; margin:0 0 4px}
+  h2{font-size:22px; margin:60px 0 12px; padding-top:18px; border-top:1px solid var(--rule)}
+  h3{font-size:16.5px; margin:30px 0 8px}
+  p{margin:10px 0}
+  a{color:var(--p0); text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{
+    font:12.8px/1.55 ui-monospace,"Cascadia Code",Consolas,Menlo,monospace;
+    background:var(--code-bg); padding:1px 5px; border-radius:4px;
+  }
+  pre{
+    background:var(--code-bg); color:var(--code-fg); border:1px solid var(--rule);
+    border-radius:0 0 8px 8px; padding:14px 16px; overflow-x:auto; margin:0 0 18px;
+  }
+  pre code{background:none; padding:0; font-size:12.8px}
+  .file{
+    display:flex; justify-content:space-between; gap:12px; align-items:baseline;
+    background:var(--panel); border:1px solid var(--rule); border-bottom:none;
+    border-radius:8px 8px 0 0; padding:7px 16px; margin-top:16px;
+    font:12px ui-monospace,Consolas,monospace; color:var(--muted);
+  }
+  .file b{color:var(--fg); font-weight:600}
+  .cm{color:var(--comment)}
+  .badge{
+    display:inline-block; font:700 10.5px/1 ui-monospace,Consolas,monospace;
+    padding:4px 7px; border-radius:99px; vertical-align:2px; letter-spacing:.05em;
+  }
+  .b0{background:var(--p0-bg); color:var(--p0)}
+  .b1{background:var(--p1-bg); color:var(--p1)}
+  .b2{background:var(--p2-bg); color:var(--p2)}
+  .fig{
+    background:var(--panel); border:1px solid var(--rule); border-radius:10px;
+    padding:18px 14px 8px; margin:20px 0 8px; overflow-x:auto;
+  }
+  .fig svg{display:block; margin:0 auto; min-width:720px}
+  .figcap{color:var(--muted); font-size:13px; margin:6px 4px 22px; text-align:center}
+  table{border-collapse:collapse; width:100%; margin:14px 0 20px; font-size:13.5px}
+  th,td{border:1px solid var(--rule); padding:7px 10px; text-align:left; vertical-align:top}
+  th{background:var(--code-bg); font-weight:600}
+  td code{font-size:12px}
+  ul,ol{padding-left:24px; margin:10px 0}
+  li{margin:5px 0}
+  .take{
+    background:var(--panel); border:1px solid var(--rule); border-left:4px solid var(--p0);
+    border-radius:8px; padding:12px 18px; margin:22px 0;
+  }
+  .take.t1{border-left-color:var(--p1)}
+  .take.t2{border-left-color:var(--p2)}
+  .take h4{margin:0 0 6px; font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted)}
+  .take ul{margin:6px 0 2px}
+  .dec b.num{
+    display:inline-block; min-width:20px; text-align:center; border-radius:99px;
+    font:700 11px/20px ui-monospace,Consolas,monospace; margin-right:6px;
+  }
+  .dec.d0 b.num{background:var(--p0-bg); color:var(--p0)}
+  .dec.d1 b.num{background:var(--p1-bg); color:var(--p1)}
+  .dec.d2 b.num{background:var(--p2-bg); color:var(--p2)}
+  nav.toc{
+    background:var(--panel); border:1px solid var(--rule); border-radius:10px;
+    padding:14px 22px; margin:22px 0 0; font-size:14px;
+  }
+  nav.toc ol{margin:6px 0; columns:2; column-gap:40px}
+  .warntag{color:var(--warn); font-weight:600}
+  .goodtag{color:var(--good); font-weight:600}
+  .svgt{font:12px -apple-system,"Segoe UI",Roboto,sans-serif; fill:var(--fg)}
+  .svgs{font:10.5px -apple-system,"Segoe UI",Roboto,sans-serif; fill:var(--muted)}
+  .svgm{font:11px ui-monospace,Consolas,monospace; fill:var(--fg)}
+  .svgmd{font:10.5px ui-monospace,Consolas,monospace; fill:var(--muted)}
+</style>
+</head>
+<body>
+<header class="doc">
+  <h1>Auditing someone else's agent — evidence with a bucket on it, and a skill that travels</h1>
+  <p class="sub">AI Safety Guardrails · branch <code>main</code> · commits <code>2ecef7f</code>…<code>cc01830</code>, renamed in <code>b6332e6</code> · written 2026-09-06</p>
+  <p class="sub">Legend: <span class="badge b0">E</span> the evidence pipeline &nbsp;·&nbsp; <span class="badge b1">R</span> rules, buckets and the gate &nbsp;·&nbsp; <span class="badge b2">S</span> the portable skill &nbsp;·&nbsp; grey = pre-existing infrastructure</p>
+  <nav class="toc">
+    <b>Contents</b>
+    <ol>
+      <li><a href="#context">Why this exists</a></li>
+      <li><a href="#system">The system, and where the work lands</a></li>
+      <li><a href="#evidence">The evidence pipeline</a></li>
+      <li><a href="#rules">Rules, buckets and the gate</a></li>
+      <li><a href="#skill">The portable skill</a></li>
+      <li><a href="#fingerprint">Cross-cutting: the fingerprint as the join key</a></li>
+      <li><a href="#next">What comes next, and recommendations</a></li>
+    </ol>
+  </nav>
+</header>
+<main>
+
+<h2 id="context">1 · Why this exists</h2>
+
+<p>The <a href="measurement-first-guardrails.html">previous document</a> priced this package's own
+guards: what each one catches, what it breaks, what it costs. That machinery only works on a tree
+that already has <code>aisg</code> guards wired into it and a corpus to run them against. Aim it at
+somebody else's repository — a LangChain agent, a Node service with three MCP servers, a notebook
+that shells out on model output — and it has nothing to say. There was no way to answer the prior
+question: <em>what can this agent already reach, and what evidence exists that anything stands
+between the model and that reach?</em></p>
+
+<p>Two constraints made that question harder than a linter.</p>
+
+<p>The first is that an audit is read by someone who will act on it, so it must never overstate.
+The tempting output — a score, a grade, a green tick — is exactly the output that gets pasted into
+a compliance deck. A tool that says "compliant" about an EU AI Act obligation is worse than no
+tool, because the classification is a legal determination the operator makes. So the report had to
+carry a vocabulary for <em>where each claim came from</em>, and had to be structurally incapable of
+producing a verdict.</p>
+
+<p>The second is that the audit only helps if it runs where the code is. That means no install
+step it can perform itself, no network call it initiates, no model in the loop — and a way to reach
+whichever agent host the reader happens to use. Hence a deterministic CLI (<code>aisg audit</code>)
+that does the finding, and a thin agent skill that does the explaining, shipped inside the wheel
+and copied into Claude Code, Codex, Cursor and Gemini skill directories by
+<code>aisg skill install</code>.</p>
+
+<p>What landed: 46 rules ordered by blast radius, a three-bucket evidence model, eight adapters for
+scanners that are <em>already installed</em>, a fingerprint baseline, four renderers, and a
+five-phase skill that never edits a permission file without showing the diff first. The audit now
+runs against this repository in CI on every push.</p>
+
+<div class="take">
+  <h4>Key takeaways</h4>
+  <ul>
+    <li>Measurement answered "is this guard worth its cost". This answers the earlier question: "what is there to guard, and what proof exists".</li>
+    <li>The hard requirement is honesty about provenance, not coverage: every claim carries where it came from.</li>
+    <li>Deterministic tool + thin skill, because the skill has to survive being copied to a host that is not Claude Code.</li>
+  </ul>
+</div>
+
+<h2 id="system">2 · The system, and where the work lands</h2>
+
+<div class="fig">
+<svg viewBox="0 0 960 520" role="img" aria-label="The aisg audit pipeline from repository files through walk, discover, pydeep, rules and adapters to a report, plus the packaged skill and its host mirrors">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L9,4 L0,8 z" fill="var(--infra)"/></marker>
+    <marker id="ar0" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L9,4 L0,8 z" fill="var(--p0-line)"/></marker>
+    <marker id="ar1" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L9,4 L0,8 z" fill="var(--p1-line)"/></marker>
+    <marker id="ar2" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L9,4 L0,8 z" fill="var(--p2-line)"/></marker>
+  </defs>
+
+  <text x="24" y="24" class="svgs">audited repository (any language)</text>
+  <rect x="20" y="34" width="150" height="118" rx="10" fill="var(--panel)" stroke="var(--infra)"/>
+  <text x="34" y="58" class="svgt" font-weight="600">target tree</text>
+  <text x="34" y="78" class="svgmd">src/**, *.yaml</text>
+  <text x="34" y="95" class="svgmd">.env*, .claude/</text>
+  <text x="34" y="112" class="svgmd">mcp.json, CI</text>
+  <text x="34" y="134" class="svgs">read-only, always</text>
+
+  <text x="205" y="24" class="svgs">E · evidence pipeline (in-process, no network)</text>
+  <rect x="200" y="34" width="140" height="118" rx="10" fill="var(--p0-bg)" stroke="var(--p0-line)"/>
+  <text x="214" y="58" class="svgt" font-weight="600">walk</text>
+  <text x="214" y="78" class="svgmd">gitignore-lite</text>
+  <text x="214" y="95" class="svgmd">size / binary / marker</text>
+  <text x="214" y="112" class="svgmd">units, languages</text>
+  <text x="214" y="134" class="svgs">.env* never ignored ①</text>
+
+  <rect x="360" y="34" width="150" height="118" rx="10" fill="var(--p0-bg)" stroke="var(--p0-line)"/>
+  <text x="374" y="58" class="svgt" font-weight="600">discover</text>
+  <text x="374" y="78" class="svgmd">regex tables → Hit[]</text>
+  <text x="374" y="95" class="svgmd">structured config parse</text>
+  <text x="374" y="112" class="svgmd">→ Inventory</text>
+  <text x="374" y="134" class="svgs">3 file classes ②</text>
+
+  <rect x="530" y="34" width="150" height="118" rx="10" fill="var(--p0-bg)" stroke="var(--p0-line)"/>
+  <text x="544" y="58" class="svgt" font-weight="600">pydeep</text>
+  <text x="544" y="78" class="svgmd">ast only, Python</text>
+  <text x="544" y="95" class="svgmd">call graph depth 3</text>
+  <text x="544" y="112" class="svgmd">taint, gates, legs</text>
+  <text x="544" y="134" class="svgs">parse failure → UNKNOWN ③</text>
+
+  <path d="M170 93 L200 93" stroke="var(--p0-line)" stroke-width="2" fill="none" marker-end="url(#ar0)"/>
+  <path d="M340 93 L360 93" stroke="var(--p0-line)" stroke-width="2" fill="none" marker-end="url(#ar0)"/>
+  <text x="336" y="86" class="svgs">FileRecord[]</text>
+  <path d="M510 93 L530 93" stroke="var(--p0-line)" stroke-width="2" fill="none" marker-end="url(#ar0)"/>
+  <text x="500" y="86" class="svgs">Inventory</text>
+
+  <rect x="700" y="34" width="240" height="118" rx="10" fill="var(--panel)" stroke="var(--fg)"/>
+  <text x="714" y="58" class="svgt" font-weight="600">AuditContext</text>
+  <text x="714" y="78" class="svgmd">inventory · hits · pyfacts</text>
+  <text x="714" y="95" class="svgmd">files · reports · unknown[]</text>
+  <text x="714" y="112" class="svgmd">config_facts · options</text>
+  <text x="714" y="134" class="svgs">one bag, passed by reference</text>
+  <path d="M680 93 L700 93" stroke="var(--p0-line)" stroke-width="2" fill="none" marker-end="url(#ar0)"/>
+
+  <text x="205" y="196" class="svgs">R · rules, buckets and the gate</text>
+  <rect x="200" y="206" width="200" height="126" rx="10" fill="var(--p1-bg)" stroke="var(--p1-line)"/>
+  <text x="214" y="230" class="svgt" font-weight="600">46 rules, AUD-1&hellip;10</text>
+  <text x="214" y="250" class="svgmd">P1 blast radius · P2 gates</text>
+  <text x="214" y="267" class="svgmd">P3 trifecta · P4 sinks</text>
+  <text x="214" y="284" class="svgmd">P5 secrets · P6 supply chain</text>
+  <text x="214" y="301" class="svgmd">P7 obs · P8 guards · P9 evals</text>
+  <text x="214" y="322" class="svgs">exception → UNKNOWN, not a crash ⓐ</text>
+
+  <rect x="430" y="206" width="200" height="126" rx="10" fill="var(--p1-bg)" stroke="var(--p1-line)"/>
+  <text x="444" y="230" class="svgt" font-weight="600">8 adapters</text>
+  <text x="444" y="250" class="svgmd">gitleaks · detect-secrets</text>
+  <text x="444" y="267" class="svgmd">pip-audit · npm · osv</text>
+  <text x="444" y="284" class="svgmd">mcp-scan · semgrep · promptfoo</text>
+  <text x="444" y="301" class="svgs">only if already on PATH ⓑ</text>
+  <text x="444" y="322" class="svgs">each records network: yes/no</text>
+
+  <path d="M820 152 L820 186 L400 186 L300 206" stroke="var(--p1-line)" stroke-width="2" fill="none" marker-end="url(#ar1)"/>
+  <path d="M820 186 L530 206" stroke="var(--p1-line)" stroke-width="2" fill="none" marker-end="url(#ar1)"/>
+  <text x="700" y="180" class="svgs">ctx</text>
+
+  <rect x="700" y="206" width="240" height="126" rx="10" fill="var(--panel)" stroke="var(--fg)"/>
+  <text x="714" y="230" class="svgt" font-weight="600">Finding[]</text>
+  <rect x="714" y="240" width="212" height="24" rx="5" fill="var(--p1-bg)"/>
+  <text x="722" y="256" class="svgm">MEASURED — a tool ran now</text>
+  <rect x="714" y="268" width="212" height="24" rx="5" fill="var(--p1-bg)"/>
+  <text x="722" y="284" class="svgm">ASSERTED — our rule, or a report</text>
+  <rect x="714" y="296" width="212" height="24" rx="5" fill="var(--p1-bg)"/>
+  <text x="722" y="312" class="svgm">UNKNOWN — nobody checked</text>
+  <path d="M400 262 L430 262" stroke="var(--p1-line)" stroke-width="2" fill="none" marker-end="url(#ar1)"/>
+  <path d="M630 262 L700 262" stroke="var(--p1-line)" stroke-width="2" fill="none" marker-end="url(#ar1)"/>
+  <text x="626" y="255" class="svgs">MEASURED replaces ASSERTED ⓒ</text>
+
+  <rect x="700" y="356" width="240" height="112" rx="10" fill="var(--panel)" stroke="var(--fg)"/>
+  <text x="714" y="380" class="svgt" font-weight="600">baseline → report</text>
+  <text x="714" y="400" class="svgmd">fingerprint diff: new/unchanged</text>
+  <text x="714" y="417" class="svgmd">json · sarif · markdown · terminal</text>
+  <text x="714" y="434" class="svgmd">exit 0 / 1 / 2 / 130</text>
+  <text x="714" y="456" class="svgs">disclaimer first, always ⓓ</text>
+  <path d="M820 332 L820 356" stroke="var(--p1-line)" stroke-width="2" fill="none" marker-end="url(#ar1)"/>
+
+  <text x="25" y="196" class="svgs">S · the portable skill</text>
+  <rect x="20" y="206" width="150" height="100" rx="10" fill="var(--p2-bg)" stroke="var(--p2-line)"/>
+  <text x="34" y="230" class="svgt" font-weight="600">wheel</text>
+  <text x="34" y="250" class="svgmd">aisg/skills/</text>
+  <text x="34" y="267" class="svgmd">ai-safety-audit/</text>
+  <text x="34" y="284" class="svgs">canonical copy ⓧ</text>
+  <text x="34" y="300" class="svgs">13 files, one digest</text>
+
+  <rect x="20" y="330" width="150" height="138" rx="10" fill="var(--panel)" stroke="var(--p2-line)"/>
+  <text x="34" y="354" class="svgt" font-weight="600">host dirs</text>
+  <text x="34" y="374" class="svgmd">.claude/skills/</text>
+  <text x="34" y="391" class="svgmd">.agents/skills/</text>
+  <text x="34" y="408" class="svgmd">.cursor/ .gemini/</text>
+  <text x="34" y="428" class="svgs">verified: true</text>
+  <text x="34" y="446" class="svgmd">.codex/ (unverified)</text>
+  <text x="34" y="462" class="svgs">says so on stderr ⓨ</text>
+  <path d="M95 306 L95 330" stroke="var(--p2-line)" stroke-width="2" fill="none" marker-end="url(#ar2)"/>
+  <text x="100" y="322" class="svgs">aisg skill install</text>
+
+  <rect x="200" y="356" width="430" height="112" rx="10" fill="var(--p2-bg)" stroke="var(--p2-line)"/>
+  <text x="214" y="380" class="svgt" font-weight="600">SKILL.md — five phases, the agent drives</text>
+  <text x="214" y="400" class="svgmd">1 discover (bootstrap script) → 2 diagnose → 3 prescribe</text>
+  <text x="214" y="417" class="svgmd">→ 4 apply, ONE diff per approval → 5 verify against baseline</text>
+  <text x="214" y="437" class="svgs">never a compliance verdict · never edits permissions unapproved</text>
+  <text x="214" y="455" class="svgs">runs `aisg audit`; the intelligence is in the CLI, not the prompt</text>
+  <path d="M170 412 L200 412" stroke="var(--p2-line)" stroke-width="2" fill="none" marker-end="url(#ar2)"/>
+  <path d="M630 412 L700 412" stroke="var(--p2-line)" stroke-width="2" fill="none" marker-end="url(#ar2)"/>
+  <text x="628" y="405" class="svgs">reads the report</text>
+</svg>
+</div>
+<p class="figcap">Fig. 1 — One <code>aisg audit</code> run, and the skill that wraps it. Deliberately omitted:
+the other five <code>aisg</code> subcommands (<code>lint</code>, <code>misalign</code>,
+<code>init</code>, <code>probe</code>, <code>measure</code>), which share only the CLI shell and the
+<code>"schema": "aisg/1"</code> convention. The eight adapters are the only place a process starts,
+and only for a binary that was already installed.</p>
+
+<div class="take">
+  <h4>Key takeaways</h4>
+  <ul>
+    <li>Seven stages, one direction, one mutable <code>AuditContext</code>: walk → discover → pydeep → rules → adapters → baseline → report.</li>
+    <li>The three buckets are the product. Everything else exists to keep a claim in the right one.</li>
+    <li>The skill is a wrapper with hard rules, not a second implementation — the same binary produces the same report on any host.</li>
+  </ul>
+</div>
+
+<h2 id="evidence">3 · <span class="badge b0">E</span> The evidence pipeline</h2>
+
+<h3>3.1 · Goal</h3>
+
+<p>Turn an arbitrary repository into a structured description of its AI surface — which files call a
+model, which tools an agent can invoke, which MCP servers are configured, where secrets sit, what CI
+runs — using only file reads, and without ever being wrong in the silent direction. Every file the
+walker declines to read, every Python file the AST layer cannot parse, every scanner that is not
+installed becomes a visible <code>UnknownItem</code>. The pipeline's contract is that it never
+returns a quiet nothing.</p>
+
+<h3>3.2 · Data flow</h3>
+
+<div class="fig">
+<svg viewBox="0 0 960 430" role="img" aria-label="One file flowing through the walker's guards, the discovery tables and the Python AST layer, with every rejection becoming an UNKNOWN item">
+  <defs>
+    <marker id="ar0b" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L9,4 L0,8 z" fill="var(--p0-line)"/></marker>
+    <marker id="arb" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L9,4 L0,8 z" fill="var(--infra)"/></marker>
+  </defs>
+
+  <text x="26" y="26" class="svgt" font-weight="600">one path on disk</text>
+  <text x="300" y="26" class="svgt" font-weight="600">walk: five guards, in order</text>
+  <text x="640" y="26" class="svgt" font-weight="600">what it becomes</text>
+
+  <rect x="20" y="44" width="170" height="60" rx="8" fill="var(--panel)" stroke="var(--fg)"/>
+  <text x="34" y="68" class="svgm">repo/src/agent.py</text>
+  <text x="34" y="88" class="svgmd">or .env, or .claude/</text>
+
+  <rect x="290" y="44" width="290" height="30" rx="6" fill="var(--panel)" stroke="var(--infra)"/>
+  <text x="302" y="64" class="svgm">SKIP_DIRS / --exclude</text>
+  <rect x="290" y="82" width="290" height="44" rx="6" fill="var(--p0-bg)" stroke="var(--p0-line)"/>
+  <text x="302" y="101" class="svgm">gitignore match()</text>
+  <text x="302" y="118" class="svgs">.env* is re-included here — the exception ①</text>
+  <rect x="290" y="134" width="290" height="30" rx="6" fill="var(--panel)" stroke="var(--infra)"/>
+  <text x="302" y="154" class="svgm">size cap / binary sniff</text>
+  <rect x="290" y="172" width="290" height="44" rx="6" fill="var(--p0-bg)" stroke="var(--p0-line)"/>
+  <text x="302" y="191" class="svgm"># aisg-audit: ignore-file (first 5 lines)</text>
+  <text x="302" y="208" class="svgs">no flag re-includes it — for our own vocabulary files</text>
+  <rect x="290" y="224" width="290" height="30" rx="6" fill="var(--panel)" stroke="var(--infra)"/>
+  <text x="302" y="244" class="svgm">lang by extension · unit by nearest manifest</text>
+
+  <path d="M190 74 L290 59" stroke="var(--infra)" stroke-width="1.6" fill="none" marker-end="url(#arb)"/>
+
+  <rect x="640" y="44" width="290" height="86" rx="8" fill="var(--p0-bg)" stroke="var(--p0-line)"/>
+  <text x="654" y="68" class="svgt" font-weight="600">discover: Hit[] → Inventory</text>
+  <text x="654" y="88" class="svgmd">code   → every table</text>
+  <text x="654" y="105" class="svgmd">config → models, secrets, over-grants, presets</text>
+  <text x="654" y="122" class="svgmd">doc    → over-grants + Annex III only ②</text>
+
+  <rect x="640" y="146" width="290" height="86" rx="8" fill="var(--p0-bg)" stroke="var(--p0-line)"/>
+  <text x="654" y="170" class="svgt" font-weight="600">pydeep: ast, Python only</text>
+  <text x="654" y="190" class="svgmd">llm call sites · loop caps · tool graph</text>
+  <text x="654" y="207" class="svgmd">gates ≠ fail_open — kept apart on purpose ④</text>
+  <text x="654" y="224" class="svgmd">trifecta legs: private · untrusted · action</text>
+
+  <rect x="640" y="248" width="290" height="66" rx="8" fill="var(--panel)" stroke="var(--warn)"/>
+  <text x="654" y="272" class="svgt" font-weight="600">UnknownItem[]</text>
+  <text x="654" y="292" class="svgmd">category: deep | tools | reports | runtime</text>
+  <text x="654" y="308" class="svgs">what · why · how_to_resolve — printed, never dropped ③</text>
+
+  <path d="M580 59 L640 74" stroke="var(--p0-line)" stroke-width="2" fill="none" marker-end="url(#ar0b)"/>
+  <path d="M580 239 L640 100" stroke="var(--p0-line)" stroke-width="2" fill="none" marker-end="url(#ar0b)"/>
+  <text x="586" y="180" class="svgs">enumerated</text>
+  <path d="M930 130 L940 138 L930 146" stroke="none" fill="none"/>
+  <path d="M785 130 L785 146" stroke="var(--p0-line)" stroke-width="2" fill="none" marker-end="url(#ar0b)"/>
+  <text x="792" y="142" class="svgs">python files only</text>
+  <path d="M785 232 L785 248" stroke="var(--warn)" stroke-width="2" fill="none" marker-end="url(#arb)"/>
+  <text x="792" y="244" class="svgs">SyntaxError, decode failure</text>
+
+  <path d="M435 254 L435 300 L200 300 L200 348" stroke="var(--infra)" stroke-width="1.6" fill="none" marker-end="url(#arb)"/>
+  <rect x="60" y="348" width="290" height="60" rx="8" fill="var(--panel)" stroke="var(--warn)"/>
+  <text x="74" y="372" class="svgm">rejected at any guard</text>
+  <text x="74" y="392" class="svgs">counted once, reported as UNKNOWN — silence is never a pass</text>
+</svg>
+</div>
+<p class="figcap">Fig. 2 — The walker's guard order, and the two analysis depths behind it. The
+<code>.env*</code> re-inclusion sits <em>inside</em> the gitignore check, not around it: it is the
+one deliberate divergence from git semantics. Deliberately omitted: the two read-only
+<code>git</code> subprocess calls (<code>git_meta</code>, <code>file_age</code>), which affect
+only report metadata.</p>
+
+<h3>3.3 · How the data moves and transforms</h3>
+
+<p>The whole pipeline is thirty lines. Everything downstream reads one context object.</p>
+
+<div class="file"><span><b>src/aisg/devtools/audit/main.py</b>:468–498 — the three stages, and where UNKNOWN accumulates</span><span class="badge b0">E</span></div>
+<pre><code>def _build_context(options: AuditOptions, root: Path) -&gt; AuditContext:
+    """walk -&gt; discover -&gt; pydeep, every UNKNOWN item folded into one context."""
+    files, units, walk_unknown = walk.walk(root, walk.WalkOptions(...))
+    inventory, hits, facts = discover.discover(root, files, units, ...)
+    unknown: list[UnknownItem] = list(walk_unknown) + list(inventory.unknown)
+    pyfacts = None
+    if options.deep == "python":
+        pyfacts = pydeep.analyse_unit([f for f in files if f.lang == "python"], inventory)
+        unknown.extend(pyfacts.unknown)      <span class="cm"># ③ a parse failure is a row, not an exception</span>
+    return AuditContext(root=root, inventory=inventory, pyfacts=pyfacts, hits=hits,
+                        options=options, unknown=unknown, files=files,
+                        reports=list(inventory.reports), config_facts=facts)</code></pre>
+
+<p>The walker's gitignore matcher carries one deliberate divergence from git. It is split into two
+methods so the divergence is visible at the call site rather than buried in a predicate.</p>
+
+<div class="file"><span><b>src/aisg/devtools/audit/walk.py</b>:284–300 — the one place the audit disagrees with git</span><span class="badge b0">E</span></div>
+<pre><code>def would_ignore(self, relpath: str, is_dir: bool = False) -&gt; bool:
+    """Raw answer: would git ignore this path? No `.env*` exception."""
+    ...
+
+def match(self, relpath: str, is_dir: bool = False) -&gt; bool:
+    """`would_ignore` with the hard exception: a `.env*` file is never ignored."""
+    rel = _norm_rel(relpath)
+    if not is_dir and _is_env_file(rel.rsplit("/", 1)[-1]):
+        return False                          <span class="cm"># ① walked anyway</span>
+    return self.would_ignore(rel, is_dir)</code></pre>
+
+<p><code>would_ignore</code> is still what sets <code>FileRecord.gitignored</code>, so a finding in
+a <code>.env</code> renders with a <code>(gitignored)</code> tag: the file was read, and the reader
+is told it is not in version control.</p>
+
+<p>Discovery runs regex tables over the files the walk enumerated. Which tables depends on what kind
+of file it is, because a README is not a config file.</p>
+
+<div class="file"><span><b>src/aisg/devtools/audit/discover.py</b>:772–789 — three file classes, three table sets</span><span class="badge b0">E</span></div>
+<pre><code>klass = _file_class(record)
+literal_rows = patterns.HOST_OVERGRANT["*"]
+if klass == "doc":
+    <span class="cm"># A mention is still a hit (the key stays "literal"); the mention flag lives on</span>
+    <span class="cm"># ConfigFacts.over_grant_literals, where parse_literals records it.</span>
+    _scan_rows(ctx, "overgrant_literal", literal_rows)
+    if _glob_hit(patterns.ANNEX_III_FILE_GLOBS, relpath):
+        _scan_rows(ctx, "annex_iii", patterns.ANNEX_III_KEYWORDS)
+    <span class="cm"># A prompt template is a doc by extension (prompts/system.md, *.txt) but PII in</span>
+    <span class="cm"># it ships to the model on every request; PII_FILE_GLOBS decides, not the class. ②</span>
+    if _glob_hit(patterns.PII_FILE_GLOBS, relpath):
+        _scan_pii(ctx)
+    return ctx.out
+_scan_secrets(ctx)
+...</code></pre>
+
+<p>The AST layer's most consequential structural decision is a negative one. A
+<code>try/except</code> that swallows a guard call looks, to a naive tool-gate join, exactly like a
+gate: there is a guard invocation on the path to the tool. It is the opposite.</p>
+
+<div class="file"><span><b>src/aisg/devtools/audit/pydeep.py</b>:1615–1630 — a swallowed guard is recorded, but not as a gate</span><span class="badge b0">E</span></div>
+<pre><code>if not any(swallows(h.body) for h in node.handlers):
+    return
+for stmt in node.body:
+    for sub in ast.walk(stmt):
+        if isinstance(sub, ast.Call) and self.mod.is_guard_call(sub, scope):
+            self.facts.fail_open.append(          <span class="cm"># ④ NOT self.facts.gates</span>
+                GateSite("fail_open", self.mod.relpath, node.lineno,
+                         scope.name, "exception swallowed")
+            )
+            return</code></pre>
+
+<p>Finally, a constraint on the rules themselves: a rule cannot read a file the walk did not
+enumerate. Every byte a rule sees has already passed the exclude list, the size cap and the ignore
+marker.</p>
+
+<div class="file"><span><b>src/aisg/devtools/audit/rules/__init__.py</b>:168–187 — the walk's decisions bind the rules too</span><span class="badge b0">E</span></div>
+<pre><code>def file_text(ctx: AuditContext, relpath: str) -&gt; str | None:
+    """
+    Only files the walk enumerated (`ctx.files`) are readable through here: a rule
+    never opens a path of its own choosing, so the walk's exclude/ignore/size rules
+    hold for every byte a rule looks at. Unknown paths and unreadable files are None.
+    """
+    key = relpath.replace("\\", "/")
+    if key in ctx.texts:
+        return ctx.texts[key]      <span class="cm"># ⑤ one read per file, shared across rules</span>
+    ...</code></pre>
+
+<h3>3.4 · Decisions, and why</h3>
+
+<ul class="dec d0">
+  <li><b class="num">①</b><strong><code>.env*</code> is walked even when <code>.gitignore</code> excludes it.</strong>
+    Rejected: follow git exactly. On a developer machine the highest-blast-radius credentials in the
+    tree live in a gitignored <code>.env</code>; obeying git would have made them invisible while
+    the report implied secrets were covered. The cost is that the audit reads a file the developer
+    deliberately kept out of version control, so <code>would_ignore</code> is preserved separately
+    and every such finding renders <code>(gitignored)</code>. Redaction is unconditional (see ⓔ),
+    which is what makes this safe rather than reckless.</li>
+  <li><b class="num">②</b><strong>Three file classes, not one.</strong> A README containing
+    <code>pip install foo</code> is not a supply-chain finding, and a docs page quoting a host's
+    permission-bypass flag is not an over-grant. The rejected alternative —
+    run every table everywhere and let precision sort it out — has no precision to sort it with
+    (see ⓖ). The escape hatch matters as much as the rule: a prompt template is a <code>.md</code>
+    file by extension, but PII in it ships to the model on every request, so
+    <code>PII_FILE_GLOBS</code> overrides the class.</li>
+  <li><b class="num">③</b><strong>Every failure is a row, not an exception.</strong> A file that
+    will not decode, a Python file that will not parse, a directory that will not open: each becomes
+    an <code>UnknownItem</code> with a <code>how_to_resolve</code> string. The ceiling is that
+    UNKNOWN is a flat list — on a large monorepo with a vendored directory it can be longer than the
+    findings, and nothing groups it. <code>--fail-on-unknown &lt;categories&gt;</code> exists so CI
+    can treat "the scanners did not run" as a failure, which is the case that matters.</li>
+  <li><b class="num">④</b><strong><code>fail_open</code> is stored apart from <code>gates</code>.</strong>
+    If a swallowed guard call landed in <code>gates</code>, it would satisfy AUD-201's tool-gate
+    join and an ungated irreversible tool would report as gated — a false clean on the single
+    highest-severity rule in the P2 band. Keeping the two lists separate makes that impossible
+    structurally rather than by ordering. The same fact then feeds AUD-802 as a finding in its own
+    right, so nothing is lost by the separation.</li>
+  <li><b class="num">⑤</b><strong>Rules read files only through <code>file_text</code>.</strong>
+    Rejected: let each rule open what it likes. That would let one rule silently escape the walk's
+    exclude list, so a repository excluded from the scan could still be quoted in the report. The
+    cache is a side benefit; the containment is the point.</li>
+</ul>
+
+<h3>3.5 · For a scalable system</h3>
+
+<p>The pipeline is single-process, single-threaded and holds the file list plus every hit in memory.
+On this repository (135 files enumerated, 70 of them Python) a full run with
+<code>--no-external</code> takes 7.4–8.0&nbsp;s in-process on a Windows laptop, three runs — an
+order of magnitude more than the file count suggests, and worth knowing before pointing it at a
+monorepo. The real ceilings, in the order they will bite:</p>
+
+<ul>
+  <li><strong>Hits are held for the whole run</strong> (<code>ctx.hits</code>), because rules query
+    them by table late in the pipeline. A monorepo with a few hundred thousand matched lines will
+    hold all of them. The fix is an index keyed by <code>(table, unit)</code> rather than a list
+    scanned by <code>hits_in</code>, which is linear per call.</li>
+  <li><strong><code>unit_of</code> and <code>file_text</code> scan <code>ctx.files</code> linearly</strong>
+    for every lookup. With 46 rules that is fine at 10<sup>2</sup> files and quadratic at
+    10<sup>5</sup>.</li>
+  <li><strong>The AST layer is Python-only.</strong> <code>--deep python|none</code> has no third
+    value. For TypeScript and Go the audit is at grep depth plus whatever <code>semgrep</code>
+    contributes if it happens to be installed — and the report says so, per language, in the UNKNOWN
+    block. That is the honest position, not a workaround, but it does mean a Node agent gets a
+    materially weaker audit than a Python one.</li>
+  <li><strong>The call graph is depth-3 and resolved by bare name.</strong> Dynamic dispatch,
+    registries and decorators are not followed. This is listed on AUD-301 as a known failure mode
+    rather than hidden.</li>
+</ul>
+
+<h3>3.6 · Security</h3>
+
+<p>The audit reads a hostile tree: the whole point is that the target may be compromised, careless,
+or both. The trust boundaries it holds:</p>
+
+<ul>
+  <li><strong>Target content is never executed and never interpolated into a command.</strong> The
+    only subprocess calls in the evidence pipeline are read-only <code>git</code> invocations, never
+    with <code>shell=True</code>, never with <code>check=True</code>, always with a timeout.</li>
+  <li><strong>Every parser is a safe parser.</strong> <code>yaml.safe_load</code>,
+    <code>json</code>, <code>tomllib</code>, <code>ast.parse</code> — nothing that evaluates.
+    <code>configs.py</code> takes the further step of never regexing a config body: patterns are
+    applied only to individual string values pulled out of a parsed structure.</li>
+  <li><strong>Secret values never enter the returned objects.</strong> Env bindings and MCP
+    <code>env</code> maps are reduced to a name plus a boolean saying whether the value was a
+    literal. The value itself is not carried, so it cannot leak through a later rendering bug.</li>
+  <li><strong>Snippets are redacted at construction.</strong> <code>Evidence.__post_init__</code>
+    calls <code>truncate_snippet</code>, which redacts <em>then</em> truncates — cutting first could
+    expose a partial secret.</li>
+  <li><strong>What is not defended:</strong> a target that plants a 2&nbsp;GB file inside the size
+    cap, or a pathological regex input, will make the run slow. There is no per-file time budget,
+    only a per-adapter one.</li>
+</ul>
+
+<div class="take">
+  <h4>Key takeaways — evidence pipeline</h4>
+  <ul>
+    <li>Read-only, safe parsers, no execution of target content, redaction at the point of construction.</li>
+    <li>Two divergences from the obvious behaviour, both deliberate and both visible in the output: <code>.env*</code> is read; a swallowed guard is not a gate.</li>
+    <li>Nothing fails silently — a rejection at any stage is a printed UNKNOWN row with a resolution hint.</li>
+    <li>The honest weakness is depth: only Python gets AST analysis, and the report says so per language.</li>
+  </ul>
+</div>
+
+<h2 id="rules">4 · <span class="badge b1">R</span> Rules, buckets and the gate</h2>
+
+<h3>4.1 · Goal</h3>
+
+<p>Turn the context into findings a human can act on in priority order, attach to each one where its
+evidence came from, and produce an exit code CI can gate on — without the tool ever being able to
+say the target is fine. Ordering is by <em>blast radius</em>, not by likelihood: AUD-101 (a host
+permission over-grant) outranks AUD-1001 (no system card) because the first one means an agent can
+already do anything on the machine.</p>
+
+<h3>4.2 · Data flow</h3>
+
+<div class="fig">
+<svg viewBox="0 0 960 400" role="img" aria-label="Rules and adapters producing findings that are folded, diffed against a baseline and rendered, with the exit code computed from severity and baseline status">
+  <defs>
+    <marker id="ar1b" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L9,4 L0,8 z" fill="var(--p1-line)"/></marker>
+    <marker id="arc" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L9,4 L0,8 z" fill="var(--infra)"/></marker>
+  </defs>
+
+  <rect x="20" y="40" width="210" height="96" rx="9" fill="var(--p1-bg)" stroke="var(--p1-line)"/>
+  <text x="34" y="64" class="svgt" font-weight="600">run_rules(rules, ctx)</text>
+  <text x="34" y="84" class="svgmd">skip if requires_ai_surface</text>
+  <text x="34" y="101" class="svgmd">and no unit has one</text>
+  <text x="34" y="120" class="svgs">raise → UnknownItem(runtime) ⓐ</text>
+
+  <rect x="20" y="160" width="210" height="110" rx="9" fill="var(--p1-bg)" stroke="var(--p1-line)"/>
+  <text x="34" y="184" class="svgt" font-weight="600">run_adapters(ctx, ...)</text>
+  <text x="34" y="204" class="svgmd">applicable? → flag given?</text>
+  <text x="34" y="221" class="svgmd">→ locate() on PATH?</text>
+  <text x="34" y="238" class="svgs">no at any step → UNKNOWN + hint</text>
+  <text x="34" y="256" class="svgs">argv[0] never a launcher ⓑ</text>
+
+  <rect x="290" y="86" width="200" height="110" rx="9" fill="var(--panel)" stroke="var(--fg)"/>
+  <text x="304" y="110" class="svgt" font-weight="600">_fold_findings</text>
+  <text x="304" y="132" class="svgmd">key = (id, file, line)</text>
+  <text x="304" y="152" class="svgs">MEASURED at that key</text>
+  <text x="304" y="169" class="svgs">drops the ASSERTED twin ⓒ</text>
+  <text x="304" y="188" class="svgs">never counted twice</text>
+
+  <path d="M230 100 L290 120" stroke="var(--p1-line)" stroke-width="2" fill="none" marker-end="url(#ar1b)"/>
+  <text x="228" y="96" class="svgs">ASSERTED</text>
+  <path d="M230 200 L290 165" stroke="var(--p1-line)" stroke-width="2" fill="none" marker-end="url(#ar1b)"/>
+  <text x="228" y="196" class="svgs">MEASURED</text>
+
+  <rect x="550" y="40" width="180" height="86" rx="9" fill="var(--panel)" stroke="var(--infra)"/>
+  <text x="564" y="64" class="svgt" font-weight="600">baseline diff</text>
+  <text x="564" y="84" class="svgmd">fingerprint ∈ known?</text>
+  <text x="564" y="101" class="svgmd">→ unchanged, else new</text>
+  <text x="564" y="119" class="svgs">both still rendered</text>
+
+  <rect x="550" y="146" width="180" height="106" rx="9" fill="var(--panel)" stroke="var(--fg)"/>
+  <text x="564" y="170" class="svgt" font-weight="600">compute_exit_code</text>
+  <text x="564" y="192" class="svgmd">severity ≥ --fail-on</text>
+  <text x="564" y="209" class="svgmd">AND status ≠ unchanged</text>
+  <text x="564" y="228" class="svgmd">or UNKNOWN in category</text>
+  <text x="564" y="246" class="svgs">→ 1 ; else 0</text>
+
+  <path d="M490 120 L550 90" stroke="var(--p1-line)" stroke-width="2" fill="none" marker-end="url(#ar1b)"/>
+  <path d="M640 126 L640 146" stroke="var(--p1-line)" stroke-width="2" fill="none" marker-end="url(#ar1b)"/>
+
+  <rect x="770" y="40" width="170" height="212" rx="9" fill="var(--p1-bg)" stroke="var(--p1-line)"/>
+  <text x="784" y="64" class="svgt" font-weight="600">render</text>
+  <text x="784" y="86" class="svgmd">disclaimer ⓓ</text>
+  <text x="784" y="104" class="svgmd">summary + buckets</text>
+  <text x="784" y="122" class="svgmd">findings, sorted</text>
+  <text x="784" y="140" class="svgmd">UNKNOWN block</text>
+  <text x="784" y="158" class="svgmd">external_tools table</text>
+  <text x="784" y="178" class="svgs">[UNMEASURED] per finding ⓖ</text>
+  <text x="784" y="196" class="svgs">[REPORTED Nd] if from disk</text>
+  <text x="784" y="216" class="svgs">json · sarif · md · terminal</text>
+  <text x="784" y="238" class="svgs">snippets already redacted ⓔ</text>
+  <path d="M730 100 L770 100" stroke="var(--p1-line)" stroke-width="2" fill="none" marker-end="url(#ar1b)"/>
+
+  <rect x="290" y="286" width="440" height="76" rx="9" fill="var(--panel)" stroke="var(--warn)"/>
+  <text x="304" y="310" class="svgt" font-weight="600">exit 0 means "nothing counted", not "safe"</text>
+  <text x="304" y="330" class="svgmd">EXIT_OK · EXIT_FINDINGS · EXIT_FATAL · EXIT_INTERRUPTED (130)</text>
+  <text x="304" y="349" class="svgs">the summary always states how many findings sit below --fail-on</text>
+  <path d="M640 252 L640 286" stroke="var(--warn)" stroke-width="2" fill="none" marker-end="url(#arc)"/>
+</svg>
+</div>
+<p class="figcap">Fig. 3 — Findings from two sources are folded, diffed and rendered. The exit code is
+computed from severity <em>and</em> baseline status, so an accepted finding still prints while no
+longer failing the build. Deliberately omitted: <code>--write-baseline</code>, which short-circuits
+after <code>build_report</code> and always exits 0.</p>
+
+<h3>4.3 · How the data moves and transforms</h3>
+
+<p>Rules are selected on every call, never snapshotted, and a rule with no measured precision runs.
+This is the same gate the lint rules use, with the same threshold constant.</p>
+
+<div class="file"><span><b>src/aisg/devtools/audit/rules/__init__.py</b>:224–227 — the whole precision gate</span><span class="badge b1">R</span></div>
+<pre><code>def is_demoted(rule: type[AuditRule]) -&gt; bool:
+    """Measured below MIN_PRECISION. `None` is unmeasured and is never demoted."""
+    precision = rule.measured_precision
+    return precision is not None and precision &lt; MIN_PRECISION   <span class="cm"># ⓖ</span></code></pre>
+
+<p>A rule that raises must not sink the run — a target with an unusual shape would otherwise silence
+45 other rules.</p>
+
+<div class="file"><span><b>src/aisg/devtools/audit/rules/__init__.py</b>:285–301 — one bad rule costs one row</span><span class="badge b1">R</span></div>
+<pre><code>for rule in rules:
+    if rule.requires_ai_surface and not ai_surface:
+        continue
+    rule_id = getattr(rule, "id", rule.__name__)
+    try:
+        instance = rule()
+        findings.extend(instance.evaluate(ctx))
+        unknown.extend(instance.unknown)
+    except Exception as exc:  <span class="cm"># broad on purpose: one bad rule must not sink the run</span>
+        unknown.append(UnknownItem(category="runtime", what=f"rule {rule_id}",
+                                   why=f"{type(exc).__name__}: {exc}", rule_ids=(rule_id,)))  <span class="cm"># ⓐ</span></code></pre>
+
+<p>The strongest constraint in the file is a four-line table. An audit that can install software is
+an audit that can be told what to install by the tree it is auditing.</p>
+
+<div class="file"><span><b>src/aisg/devtools/audit/adapters.py</b>:96–97, 786–793 — never install, never fetch</span><span class="badge b1">R</span></div>
+<pre><code><span class="cm"># Launchers that would install or fetch something. argv[0] is never one of these.</span>
+FORBIDDEN_LAUNCHERS = frozenset({"pip", "pip3", "uv", "uvx", "npx", "pipx"})   <span class="cm"># ⓑ</span>
+
+def locate(self, ctx: AuditContext | None = None) -&gt; list[str] | None:
+    """PATH first, then `python -m &lt;module&gt;` for an importable tool. Never installs."""
+    found = shutil.which(self.binary)
+    if found:
+        return [found]
+    if self.module and _module_available(self.module):
+        return [sys.executable, "-m", self.module]
+    return None                       <span class="cm"># → NOT_ON_PATH → UnknownItem with a text hint</span></code></pre>
+
+<p>It is pinned by a test that enumerates every adapter rather than checking the ones someone
+remembered:</p>
+
+<div class="file"><span><b>tests/unit/test_audit_adapters.py</b>:521–531 — the invariant, enumerated</span><span class="badge b1">R</span></div>
+<pre><code>def test_no_adapter_installs_anything(self, py_agent, audit_context, isolate):
+    ctx = audit_context(multi_tool_tree(py_agent), options=ALL_OPTIONS)
+    isolate()  <span class="cm"># build_argv is pure: any process start fails the test</span>
+    for adapter in ADAPTERS.values():
+        argv = adapter.build_argv(ctx, timeout=120)
+        assert Path(argv[0]).stem.lower() not in FORBIDDEN_LAUNCHERS, adapter.name
+        assert "install" not in [token.lower() for token in argv], adapter.name
+        assert not any(token.lower().startswith("install") for token in argv), adapter.name
+        <span class="cm"># The hint is text the report prints, never something the audit runs.</span></code></pre>
+
+<p>When a scanner does run, its output is the stronger claim and must replace ours rather than sit
+next to it.</p>
+
+<div class="file"><span><b>src/aisg/devtools/audit/main.py</b>:517–540 — MEASURED beats ASSERTED at the same location</span><span class="badge b1">R</span></div>
+<pre><code>measured_at: set[tuple[str, str, int]] = set()
+for finding in tool_findings:
+    if Bucket(finding.bucket) is Bucket.MEASURED:
+        file, line = finding.location
+        measured_at.add((finding.id, file, int(line)))
+kept: list[Finding] = []
+for finding in rule_findings:
+    file, line = finding.location
+    if Bucket(finding.bucket) is Bucket.ASSERTED and (finding.id, file, int(line)) in measured_at:
+        continue                       <span class="cm"># ⓒ the pair must not count twice</span>
+    kept.append(finding)
+kept.extend(tool_findings)</code></pre>
+
+<p>Two refusals close the loop. The first cannot be argued with on the command line:</p>
+
+<div class="file"><span><b>src/aisg/devtools/audit/main.py</b>:75–78, 574–576 — there is no flag that prints secrets</span><span class="badge b1">R</span></div>
+<pre><code>_REDACT_REFUSED = (
+    "--no-redact is refused: redaction is not optional. Secret-shaped snippets are "
+    "always redacted in every format; there is no flag that prints them."
+)
+...
+if not options.redact:
+    _note(_REDACT_REFUSED)
+    return EXIT_FATAL                  <span class="cm"># ⓔ the flag parses, then refuses</span></code></pre>
+
+<p>The second is a self-check on the renderers' own vocabulary. The banned phrases are assembled
+from word tuples so that the module which forbids them does not contain them as literals:</p>
+
+<div class="file"><span><b>src/aisg/devtools/audit/report.py</b>:100–111, 244–252 — the tool cannot learn to say it</span><span class="badge b1">R</span></div>
+<pre><code>BANNED_PHRASES: tuple[str, ...] = tuple(
+    " ".join(words)
+    for words in (("is", "compliant"), ("compliance", "verified"), ("certi" + "fied",),
+                  ("meets", "the", "requirements"), ("fully", "compliant"),
+                  ("passes", "the", "eu"), ("nist", "compliant"))
+)
+
+def check_templates() -&gt; list[str]:
+    """Banned phrases present in the renderer's own fixed strings. Never scans findings."""
+    ...                                <span class="cm"># ⓓ --debug turns a hit into exit 2</span></code></pre>
+
+<h3>4.4 · Decisions, and why</h3>
+
+<ul class="dec d1">
+  <li><b class="num">ⓐ</b><strong>A rule exception is a row, not a crash.</strong> Rejected: let it
+    propagate so bugs are loud. On a tool whose job is to audit unfamiliar trees, the loud version
+    means one malformed <code>package.json</code> in a monorepo produces no report at all. The cost
+    is that a systematically broken rule looks like a quiet UNKNOWN row rather than a test failure —
+    which is why the rule registry does the opposite for imports: a rule <em>module</em> that exists
+    but fails to import raises, because a silently vanished rule set is not partial, it is wrong.</li>
+  <li><b class="num">ⓑ</b><strong>Never install, never fetch.</strong> Rejected: <code>uvx</code>
+    the missing scanner, which is what makes for a good demo. An audit that installs software is a
+    supply-chain vector aimed at whoever runs it, and the audited tree gets a say in what is
+    installed. The cost is that a fresh CI runner measures nothing — every scanner row is UNKNOWN
+    (see recommendation 5). <code>install_hint</code> is text the report prints; nothing executes
+    it.</li>
+  <li><b class="num">ⓒ</b><strong>MEASURED replaces ASSERTED at the same key.</strong> The
+    alternative — keep both — inflates the count and lets a reader believe two independent sources
+    agree when one is a strict upgrade of the other. Key is <code>(rule id, file, line)</code>, so
+    the replacement is conservative: an adapter finding one line away from ours produces two rows,
+    which is the safe direction to be wrong in.</li>
+  <li><b class="num">ⓓ</b><strong>The renderers are checked against their own banned vocabulary.</strong>
+    Rejected: a review convention. Conventions do not survive a copy-edit six months later. The
+    check scans only the renderers' fixed strings, never the target's text, so a comment in the
+    audited repo cannot trip it — otherwise auditing a compliance library would fail the audit
+    tool.</li>
+  <li><b class="num">ⓔ</b><strong><code>--no-redact</code> parses and then refuses.</strong>
+    Rejected: omit the flag entirely. Someone who wants unredacted output will look for the flag;
+    finding it, and being told <em>why</em> it will not work, is a better outcome than finding
+    nothing and reaching for the JSON. Exit 2, so a script cannot ignore it.</li>
+  <li><b class="num">ⓕ</b><strong>Exit 0 is named <code>EXIT_OK</code>, and a whole test bans the
+    word one would rather use.</strong> Nothing under the audit directory may contain the obvious
+    name for a zero exit, because that word in a report is a verdict. It reads as pedantry until
+    you notice that every renderer, every docstring and every constant had to be written by someone
+    who did not reach for it.</li>
+  <li><b class="num">ⓖ</b><strong>Unmeasured rules fire.</strong> All 46 are
+    <code>measured_precision = None</code>, rendered <code>[UNMEASURED]</code>. Gating on unmeasured
+    would mute the entire tool; assuming precision would be a fabricated number in a document whose
+    entire premise is provenance. So: fire, and label. This is the same contract
+    <code>Profile</code> carries for guards — see the
+    <a href="measurement-first-guardrails.html#profile">previous document's cross-cutting
+    section</a>.</li>
+</ul>
+
+<h3>4.5 · For a scalable system</h3>
+
+<ul>
+  <li><strong>The exit code is one bit for 46 rules.</strong> <code>--fail-on</code> is a single
+    severity threshold across every priority band, so a repository cannot say "fail on any P1, warn
+    on everything else". On this tree that shows up as <code>--fail-on high</code> leaving 21 of 23
+    findings uncounted — correct for a library, wrong for a deployed agent. Per-band thresholds are
+    the obvious next knob.</li>
+  <li><strong>Adapter timeouts are per tool, not per run.</strong> Eight adapters at the default
+    120&nbsp;s is a 16-minute worst case before anything is rendered, and there is no partial
+    output.</li>
+  <li><strong>The baseline is a flat fingerprint list.</strong> It does not record the rule set or
+    the tool version that produced it, so a rule change that alters a snippet silently converts
+    accepted findings into new ones. That is the safe direction, but it makes an upgrade noisy in a
+    way nothing explains at the time.</li>
+  <li><strong>Four renderers duplicate the same ordering and tagging logic.</strong> Adding a fifth
+    means re-deriving <code>[UNMEASURED]</code> / <code>[REPORTED]</code> / <code>(gitignored)</code>
+    placement a fifth time.</li>
+</ul>
+
+<h3>4.6 · Security</h3>
+
+<ul>
+  <li><strong>The adapter layer is the only place a process starts</strong>, and
+    <code>build_argv</code> is pure — it is exercised in tests with process creation disabled, so a
+    regression that shells out during argument construction fails immediately.</li>
+  <li><strong>Argument construction never interpolates target content into a shell.</strong>
+    Adapters build an argv list; there is no <code>shell=True</code> anywhere in the audit.</li>
+  <li><strong>A scanner's raw secret value never reaches a finding.</strong> Adapter findings carry
+    the file, the line and the scanner's rule name — not the matched token. This matters more than
+    it sounds: <code>gitleaks</code> output contains the secret it found.</li>
+  <li><strong><code>network</code> is declared per adapter and copied into the result row</strong>,
+    so a reader can see exactly which findings depended on a tool that talked to a remote service.
+    <code>pip-audit</code>, <code>npm audit</code>, <code>osv-scanner</code> and
+    <code>promptfoo</code> are <code>true</code>; the rest are <code>false</code>. The audit process
+    itself opens no socket in any configuration.</li>
+  <li><strong><code>promptfoo</code> needs <code>--run-evals</code></strong> because it may call
+    model providers and spend money. Without the flag it is <code>skipped_needs_flag</code> and
+    lands in UNKNOWN, not silently absent.</li>
+  <li><strong>What is not defended:</strong> the scanners themselves. If <code>semgrep</code> on
+    <code>PATH</code> is malicious, the audit runs it. The mitigation is that the audit never put it
+    there.</li>
+</ul>
+
+<div class="take t1">
+  <h4>Key takeaways — rules, buckets and the gate</h4>
+  <ul>
+    <li>Blast radius orders the rules; severity is never adjusted by confidence.</li>
+    <li>Three buckets and two labels (<code>[UNMEASURED]</code>, <code>[REPORTED Nd]</code>) carry every provenance claim the report makes.</li>
+    <li>Two refusals are structural, not conventional: no unredacted output, and a renderer self-check against verdict language.</li>
+    <li>The no-install rule costs real coverage on a clean runner, and the report shows exactly what it cost.</li>
+  </ul>
+</div>
+
+<h2 id="skill">5 · <span class="badge b2">S</span> The portable skill</h2>
+
+<h3>5.1 · Goal</h3>
+
+<p>Put the audit in front of someone whose repository it is, on whichever agent host they use, with
+an agent that reads the report competently and changes code only with per-item consent. The skill
+must be the same artifact everywhere — a fork per host would drift, and the drift would be in the
+safety rules.</p>
+
+<h3>5.2 · Data flow</h3>
+
+<div class="fig">
+<svg viewBox="0 0 960 380" role="img" aria-label="The canonical skill in the wheel, synced to two repo mirrors and installed into host directories, and the five phases the agent runs">
+  <defs>
+    <marker id="ar2b" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L9,4 L0,8 z" fill="var(--p2-line)"/></marker>
+    <marker id="ard" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L9,4 L0,8 z" fill="var(--infra)"/></marker>
+  </defs>
+
+  <rect x="20" y="40" width="200" height="100" rx="9" fill="var(--p2-bg)" stroke="var(--p2-line)"/>
+  <text x="34" y="64" class="svgt" font-weight="600">canonical</text>
+  <text x="34" y="84" class="svgmd">src/aisg/skills/</text>
+  <text x="34" y="101" class="svgmd">  ai-safety-audit/</text>
+  <text x="34" y="120" class="svgs">package data → ships in the wheel</text>
+
+  <rect x="290" y="24" width="230" height="64" rx="9" fill="var(--panel)" stroke="var(--infra)"/>
+  <text x="304" y="48" class="svgm">.claude/skills/ai-safety-audit/</text>
+  <text x="304" y="68" class="svgs">byte-identical mirror</text>
+  <rect x="290" y="98" width="230" height="64" rx="9" fill="var(--panel)" stroke="var(--infra)"/>
+  <text x="304" y="122" class="svgm">.agents/skills/ai-safety-audit/</text>
+  <text x="304" y="142" class="svgs">byte-identical mirror</text>
+
+  <path d="M220 76 L290 56" stroke="var(--p2-line)" stroke-width="2" fill="none" marker-end="url(#ar2b)"/>
+  <path d="M220 104 L290 130" stroke="var(--p2-line)" stroke-width="2" fill="none" marker-end="url(#ar2b)"/>
+  <text x="222" y="98" class="svgs">scripts/sync_skill.py ⓧ</text>
+
+  <rect x="590" y="24" width="350" height="138" rx="9" fill="var(--p2-bg)" stroke="var(--p2-line)"/>
+  <text x="604" y="48" class="svgt" font-weight="600">aisg skill install --host all</text>
+  <text x="604" y="70" class="svgmd">claude  .claude/skills      verified</text>
+  <text x="604" y="87" class="svgmd">agents  .agents/skills      verified</text>
+  <text x="604" y="104" class="svgmd">cursor  .cursor/skills      verified</text>
+  <text x="604" y="121" class="svgmd">gemini  .gemini/skills      verified</text>
+  <text x="604" y="138" class="svgmd">codex / antigravity         UNVERIFIED → stderr ⓨ</text>
+  <text x="604" y="156" class="svgs">writes only &lt;dir&gt;/ai-safety-audit/ — never host settings</text>
+  <path d="M520 93 L590 93" stroke="var(--p2-line)" stroke-width="2" fill="none" marker-end="url(#ar2b)"/>
+
+  <rect x="20" y="200" width="920" height="90" rx="9" fill="var(--panel)" stroke="var(--fg)"/>
+  <text x="34" y="224" class="svgt" font-weight="600">the five phases, run by the agent in the user's repo</text>
+  <text x="34" y="248" class="svgm">1 discover</text><text x="120" y="248" class="svgmd">audit.sh → aisg | uvx | pipx  ⓩ  → audit-report.json + audit-baseline.json → --inventory-only</text>
+  <text x="34" y="266" class="svgm">2 diagnose</text><text x="120" y="266" class="svgmd">report order, AUD-301 first · say [UNMEASURED] · read UNKNOWN aloud · list scanners that did not run</text>
+  <text x="34" y="284" class="svgm">3 prescribe</text><text x="120" y="284" class="svgmd">recommendation + alternatives (incl. other projects) · never a detector alone for a blast-radius finding</text>
+
+  <rect x="20" y="300" width="920" height="62" rx="9" fill="var(--p2-bg)" stroke="var(--p2-line)"/>
+  <text x="34" y="322" class="svgm">4 apply</text><text x="120" y="322" class="svgmd">ONE diff → wait → apply → ask again.  permissions / CI / .env need a restated, specific approval</text>
+  <text x="34" y="342" class="svgm">5 verify</text><text x="120" y="342" class="svgmd">re-audit into a NEW file vs the phase-1 baseline → new / fixed / unchanged; tests + measure only on approval</text>
+  <path d="M480 290 L480 300" stroke="var(--p2-line)" stroke-width="2" fill="none" marker-end="url(#ar2b)"/>
+</svg>
+</div>
+<p class="figcap">Fig. 4 — One source of truth, two committed mirrors, six host destinations. Phases 4
+and 5 are the gated ones: nothing is written without a shown diff, and nothing that costs money runs
+without a separate yes. Deliberately omitted: <code>aisg skill path|list|diff</code>, which are
+read-only.</p>
+
+<h3>5.3 · How the data moves and transforms</h3>
+
+<p>Three copies of a skill in a repository is a drift problem waiting to happen, so the equality is
+mechanised rather than reviewed. The digest is over the sorted <code>(relpath, content)</code>
+stream with length prefixes, so a rename or a deletion changes it, not just an edit:</p>
+
+<div class="file"><span><b>src/aisg/skills/__init__.py</b>:76–86 — one number for the whole tree</span><span class="badge b2">S</span></div>
+<pre><code>def skill_digest() -&gt; str:
+    """
+    sha256 hex over the sorted `(relpath, content)` stream, so any changed,
+    added, renamed or removed file changes the digest. Each entry is
+    length-prefixed, so the stream has one unambiguous encoding.
+    """
+    digest = hashlib.sha256()
+    for relpath, content in iter_skill_files():
+        digest.update(f"{relpath}\0{len(content)}\0".encode("utf-8"))
+        digest.update(content)
+    return digest.hexdigest()</code></pre>
+
+<p>The bootstrap script is the piece that has to work on a machine with no <code>aisg</code>, and
+possibly no Python. It is also the piece the audit itself would flag if it were unpinned — AUD-602
+is exactly "unpinned MCP server / bootstrap":</p>
+
+<div class="file"><span><b>src/aisg/skills/ai-safety-audit/scripts/audit.sh</b>:4–13 — pinned, and told to stay pinned</span><span class="badge b2">S</span></div>
+<pre><code>AISG_VERSION="0.1.0"   <span class="cm"># pinned; test_skill_package.py asserts this equals pyproject.toml [project].version</span>
+...
+elif command -v uvx  &gt;/dev/null 2&gt;&amp;1; then exec uvx  --from "aisguard==$AISG_VERSION" aisg audit "$@"
+elif command -v pipx &gt;/dev/null 2&gt;&amp;1; then exec pipx run --spec "aisguard==$AISG_VERSION" aisg audit "$@"
+...
+  echo "  uv tool install 'aisguard==$AISG_VERSION'   (uv works without a pre-installed Python)" &gt;&amp;2</code></pre>
+
+<p>Host locations were checked against vendor documentation at build time, and the ones that could
+not be are marked — with the reason, not just a boolean:</p>
+
+<div class="file"><span><b>src/aisg/devtools/skill.py</b>:95–109 — an unverified location says what was actually found</span><span class="badge b2">S</span></div>
+<pre><code>"codex": Host(
+    name="codex",
+    project_dir=".agents/skills",
+    global_dir=".codex/skills",
+    verified=False,
+    source="https://learn.chatgpt.com/docs/build-skills",
+    alias_of="agents",
+    note=("could not be re-verified at build time: the vendor page "
+          "(developers.openai.com/codex/skills redirects to it) names "
+          ".agents/skills in the repo and $HOME/.agents/skills for user-level "
+          "skills and does not mention ~/.codex/skills; check the printed "
+          "destination against your Codex layout"),
+),</code></pre>
+
+<p>And the rules the agent itself operates under. These are the load-bearing lines of the whole
+skill: everything else is presentation.</p>
+
+<div class="file"><span><b>src/aisg/skills/ai-safety-audit/SKILL.md</b>:21–26 — consent, one item at a time</span><span class="badge b2">S</span></div>
+<pre><code>4. Do not edit host permission files (`.claude/settings*.json`, `.codex/config.toml`,
+   `.cursor/*`, `.gemini/*`), CI workflows, secrets, or `.env*` files unless the user approves
+   that specific edit after seeing the diff.
+5. One change per approval. Show the diff, wait, apply, then move to the next item.
+6. Do not run the project's tests, `aisg measure`, `aisg probe`, or any eval tool until the
+   user has approved it in phase 5 -- they may call model providers and cost money.</code></pre>
+
+<h3>5.4 · Decisions, and why</h3>
+
+<ul class="dec d2">
+  <li><b class="num">ⓧ</b><strong>One canonical copy in the wheel, two committed mirrors.</strong>
+    Rejected: keep the skill only under <code>.claude/skills/</code> and package it from there —
+    which inverts the dependency, making the wheel's contents a function of a Claude-specific
+    directory. Rejected too: generate the mirrors at build time, since they would then not be
+    reviewable in a diff. The cost is a sync step that is easy to forget, so
+    <code>sync_skill.py --check</code> runs in the test suite and
+    <code>aisg skill diff --host all</code> runs in CI. Every version bump must be followed by a
+    sync, because the bootstrap pin lives inside the mirrored files.</li>
+  <li><b class="num">ⓨ</b><strong>An unverified host location says so on stderr, every time.</strong>
+    Rejected: drop the unverified hosts. A user on Codex would then have nothing, and would copy the
+    directory by hand to a guessed path with no warning at all. Rejected also: mark them verified
+    and move on — <code>Host.__post_init__</code> makes that impossible without a source URL. The
+    note names what the vendor page actually said, so the user can check rather than trust.</li>
+  <li><b class="num">ⓩ</b><strong>The bootstrap tries three package runners and then stops.</strong>
+    <code>aisg</code> on PATH, then <code>uvx</code> (which provisions Python itself, so it works on
+    a machine with none), then <code>pipx</code>. If all three are missing it prints install options
+    and exits rather than attempting anything clever. All three specs are pinned to the exact
+    version — the tool that flags unpinned bootstraps in other people's repositories cannot ship one.
+    Today those specs resolve to a 404, because nothing is published yet; that is the safe failure,
+    and it is the reason the PyPI name had to be settled first (see
+    <a href="../STATUS.md">STATUS.md</a>).</li>
+  <li><b class="num">ⓦ</b><strong>The skill is thin on purpose.</strong> The 93 lines of
+    <code>SKILL.md</code> contain no detection logic; they say which command to run and how to
+    behave around the result. Rejected: an agent that reads the code and reasons about safety
+    directly, which is non-deterministic, unauditable, and produces a different answer on every
+    host. A deterministic CLI plus a short procedure means the finding set does not depend on which
+    model is driving.</li>
+</ul>
+
+<h3>5.5 · For a scalable system</h3>
+
+<ul>
+  <li><strong>Host locations are a hardcoded table with a build-time verification date.</strong>
+    Six hosts today, checked 2026-09-02. Vendors move these directories; there is no mechanism that
+    re-checks, only a <code>verified</code> flag that goes stale silently.</li>
+  <li><strong>The version pin is duplicated across four scripts</strong> (<code>audit.sh</code>,
+    <code>audit.ps1</code>, <code>verify.sh</code>, <code>verify.ps1</code>) and rewritten by
+    <code>sync_skill.py</code>. A test asserts it matches <code>pyproject.toml</code>, so the
+    duplication is caught rather than avoided.</li>
+  <li><strong>Every skill file lives in the wheel</strong>, so the reference guides
+    (<code>apply/python.md</code>, <code>apply/go.md</code>, …) grow the distribution. At 13 files
+    that is nothing; a per-framework guide set would want a different packaging story.</li>
+</ul>
+
+<h3>5.6 · Security</h3>
+
+<ul>
+  <li><strong><code>aisg skill install</code> writes exactly one directory</strong> —
+    <code>&lt;host dir&gt;/ai-safety-audit/</code>. Host settings and permission files are never
+    touched by the installer. A destination that exists and differs is refused (exit 1) unless
+    <code>--force</code> is passed.</li>
+  <li><strong><code>--host all</code> only creates directories for hosts already present</strong>,
+    apart from <code>claude</code> and <code>agents</code>. Installing into <code>.cursor/</code> on
+    a machine that never ran Cursor litters the repository and, worse, creates a plausible-looking
+    path that nothing reads.</li>
+  <li><strong>The skill's rule 4 is the real control.</strong> An agent with write access to
+    <code>.claude/settings.json</code> can grant itself permissions; the rule requires a shown diff
+    and a specific approval for exactly those files, restated as a permission change before the
+    ask.</li>
+  <li><strong>The report is data, not instructions.</strong> Findings quote the audited repository,
+    which may contain text designed to be read by an agent — the audit's own corpus is full of such
+    text. The skill's procedure treats report content as evidence to present, and every action it
+    takes needs a human yes.</li>
+</ul>
+
+<div class="take t2">
+  <h4>Key takeaways — the portable skill</h4>
+  <ul>
+    <li>One artifact, digest-pinned, mirrored into the repo so drift shows up in a diff and in CI.</li>
+    <li>Unverified host paths ship <em>with</em> their uncertainty rather than being dropped or laundered.</li>
+    <li>The intelligence stays in the CLI; the skill contributes consent rules and an order of operations.</li>
+    <li>Nothing that writes, and nothing that costs money, happens without a separate approval.</li>
+  </ul>
+</div>
+
+<h2 id="fingerprint">6 · Cross-cutting: the fingerprint as the join key</h2>
+
+<p>Three separate mechanisms need to agree on when two findings are "the same one": the baseline
+diff, the CI gate, and a human writing down why a finding is acceptable. A line number cannot be
+that key — adding an import above a finding would resurrect every acceptance below it. So identity
+is content-shaped, and deliberately blurry in one direction:</p>
+
+<div class="file"><span><b>src/aisg/devtools/audit/model.py</b>:336–349 — identity that survives renumbering and renaming</span><span class="badge b0">E</span><span class="badge b1">R</span></div>
+<pre><code>def _norm(snippet: str) -&gt; str:
+    """Collapse whitespace and strip digits from identifiers of three or more characters.
+
+    `foo1` and `foo2` normalise to `foo`, so a renamed local or a renumbered line does
+    not create a "new" finding. Pure numbers such as `4096` are not identifiers and
+    survive intact.
+    """
+    return _IDENT_RE.sub(_strip_ident_digits, _normalise_ws(snippet))
+
+def fingerprint(rule_id: str, relpath: str, snippet: str) -&gt; str:
+    """Stable 16-hex-char identity of a finding across runs and line renumbering."""
+    payload = f"{rule_id}|{_posix(relpath)}|{_norm(snippet)}"
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:16]</code></pre>
+
+<p>Note what is <em>in</em> the key: the rule's display id (so <code>AUD-107/inert</code> never
+collides with <code>AUD-107</code>) and the POSIX relative path. Move the file and the finding is
+new again — correct, because a finding accepted in a test fixture is not accepted in production
+code. Note what is out: the line, and digits inside identifiers.</p>
+
+<p>The acceptance list is where this gets its point. A baseline may carry an <code>accepted</code>
+array alongside <code>fingerprints</code>, and a reason is mandatory:</p>
+
+<div class="file"><span><b>src/aisg/devtools/audit/baseline.py</b>:65–96 — a fingerprint without a reason is a suppression</span><span class="badge b1">R</span></div>
+<pre><code>def _validate_accepted(doc: dict[str, Any], fingerprints: set[str], path: Path) -&gt; dict[str, str]:
+    """
+    Every entry needs a non-empty `reason` and a `fingerprint` that is also listed under
+    `fingerprints`; the error names the offending fingerprint so it can be found in the file.
+    An absent `accepted` key is fine (a `--write-baseline` document has none).
+    """
+    ...
+        reason = entry.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise BaselineError(f"baseline {path.as_posix()}: accepted entry {fingerprint} has no reason")</code></pre>
+
+<p>This is what a live entry looks like in the committed baseline — and it is the shape the whole
+mechanism was built to enable:</p>
+
+<div class="file"><span><b>audit-baseline.json</b> — one of 23 accepted entries, all with reasons</span><span class="badge b1">R</span></div>
+<pre><code>{
+  "fingerprint": "4a967929f06e5b9e",
+  "rule": "AUD-107",
+  "file": ".:0",
+  "reason": "the disable-all flag is declared in Settings and .env.example but nothing in
+             aisg.core or aisg.modules reads it; CLAUDE.md documents it as inert. This
+             repository is a guardrails library, not a deployed AI system, so no runtime
+             kill switch is wired"
+}</code></pre>
+
+<p>There is a recursive twist worth stating, because it is not obvious and it constrains how these
+reasons are written: <strong>the baseline file is itself scanned by the audit.</strong> It is not on
+the exclude list, and <code>read_report</code> skips it only in its capacity as a report. So a reason
+that quotes the literal which produced the finding reproduces that finding, in the file that accepts
+it. A test — <code>test_committed_baseline_does_not_reproduce_the_findings_it_accepts</code> — pins
+this. Every reason above describes its evidence without quoting it.</p>
+
+<p>Put together, the gate this repository runs on every push is one line, and every piece of it has
+a reason to be there:</p>
+
+<div class="file"><span><b>.github/workflows/tests.yml</b>:136–151 — the self-audit gate</span><span class="badge b1">R</span></div>
+<pre><code>rc=0; aisg audit . --no-external --fail-on high --baseline audit-baseline.json || rc=$?
+test "$rc" -eq 0
+
+<span class="cm"># --no-external  : a fresh runner has no scanners, and the audit will not install any</span>
+<span class="cm"># --fail-on high : from [tool.aisg-audit], resolved from the CWD, not the audited path</span>
+<span class="cm"># --baseline     : 23 accepted fingerprints; only a NEW high+ finding fails the build</span></code></pre>
+
+<p>Which today prints, against this tree:</p>
+
+<div class="file"><span><b>aisg audit . --no-external --fail-on high --baseline audit-baseline.json</b> — 2026-09-06, <code>b6332e6</code></span><span class="badge b1">R</span></div>
+<pre><code>23 findings (21 below --fail-on high, not counted in exit code); 9 unknown items
+baseline: 0 new, 23 unchanged, 0 fixed (audit-baseline.json)
+severity: critical 0, high 2, medium 17, low 4, info 0
+buckets: MEASURED 0 | ASSERTED 23 (of which REPORTED 0) | UNKNOWN 9</code></pre>
+
+<p>Read the last line as the document it is. <strong>Nothing in this repository has been
+measured by an external tool</strong>, because CI passes <code>--no-external</code> and installs
+none. Twenty-three claims are our own rules asserting things. Nine questions are open. That is a
+far more useful summary than a grade, and it is the one line the three buckets exist to be able to
+print.</p>
+
+<div class="take">
+  <h4>Key takeaways — the join key</h4>
+  <ul>
+    <li>Identity is <code>sha1(display id | posix path | digit-stripped snippet)</code>: stable across renumbering, unstable across moving a file, which is the correct pair of behaviours.</li>
+    <li>An acceptance without a reason is rejected at load time — the file cannot be used as a silent suppression list.</li>
+    <li>The baseline is audited too, so a reason must describe its evidence without quoting it.</li>
+    <li>The summary line is the product: counts per bucket, and how many findings the threshold did not count.</li>
+  </ul>
+</div>
+
+<h2 id="next">7 · What comes next, and recommendations</h2>
+
+<table>
+  <tr><th>Item</th><th>State</th></tr>
+  <tr><td>Audit engine: walk → discover → pydeep → rules → adapters → baseline → report</td><td class="goodtag">done — 46 rules, 4 formats</td></tr>
+  <tr><td>Three-bucket evidence model, no verdict possible</td><td class="goodtag">done — pinned by <code>check_templates</code> and a banned-word test</td></tr>
+  <tr><td>Self-audit in CI against a reasoned baseline</td><td class="goodtag">done — exit 0 on <code>b6332e6</code></td></tr>
+  <tr><td>Portable skill, one canonical copy + two mirrors, six hosts</td><td class="goodtag">done — <code>aisg skill diff --host all</code> in CI</td></tr>
+  <tr><td>Distribution name settled (<code>aisguard</code>)</td><td class="goodtag">done — <code>b6332e6</code>, 2026-09-05</td></tr>
+  <tr><td><code>v0.1.0</code> tag and a published <code>aisguard</code></td><td class="warntag">open — the bootstrap's pinned spec 404s until then</td></tr>
+  <tr><td>Rule precision from a labelled corpus</td><td class="warntag">open — all 46 rules <code>None</code>; <code>bench/</code> exists, unlabelled</td></tr>
+  <tr><td>Guard <code>Profile</code>s pasted onto the classes</td><td class="warntag">open — carried over; the audit now reports it as AUD-801, ten times</td></tr>
+  <tr><td>Non-Python AST depth</td><td class="warntag">open — grep + semgrep only, declared per language</td></tr>
+</table>
+
+<p>Discovered while writing this document:</p>
+
+<ol>
+  <li><strong>AUD-801's anchor lands on re-exports, not on wiring.</strong> It fires ten times here,
+    and its evidence lines are <code>src/aisg/modules/input/__init__.py:1</code>,
+    <code>src/aisg/integrations/__init__.py:6</code>, <code>src/aisg/__init__.py:57</code> — import
+    statements. The rule's own known-failure-mode text predicts this ("anchored on the first by
+    path, so the anchor may be a re-export"), which is honest, but a reader opening
+    <code>__init__.py:1</code> learns nothing about the guard. When <code>pydeep</code> resolved a
+    class definition for the guard, anchor there and demote the imports to <code>also</code>
+    evidence. Cheap, and it makes ten of this repository's twenty-three findings actionable.</li>
+  <li><strong>The audit independently re-derived the previous document's open recommendation.</strong>
+    Recommendation 1 there was "the measured profiles are not written down". AUD-801 now says the
+    same thing from the other direction, ten times, without knowing about the document — no
+    <code>Profile(...)</code> exists anywhere under <code>src/aisg/modules/</code>. Two independent
+    mechanisms agreeing raises this from a note to a task: run <code>aisg measure</code>, paste the
+    blocks, and watch ten findings become <code>fixed</code> in the baseline diff. It is also the
+    cleanest available end-to-end test of the <code>fixed</code> path, which nothing currently
+    exercises on a real change.</li>
+  <li><strong>Prose citations of this codebase have drifted, and this is the one place fingerprints
+    do not help.</strong> The swallowed judge failure is cited three ways: CLAUDE.md says
+    <code>prompt_injection.py:123</code> (now a comment about mention-vs-use), the previous document
+    says <code>:381</code> (correct — the <code>except Exception: pass</code>), and AUD-802 anchors
+    <code>:353</code> (the <code>try:</code> opening the block). Fix the CLAUDE.md line, and prefer
+    <code>PromptInjectionGuard._llm_judge_check</code> over a number in prose that no test pins.</li>
+  <li><strong>Every external-tool row is UNKNOWN on every CI run, permanently.</strong> The gate
+    passes <code>--no-external</code> because the runner has no scanners and the audit will not
+    install any (ⓑ) — so eight of nine UNKNOWN items are "skipped by <code>--no-external</code>",
+    every time, and the <code>MEASURED</code> bucket has never been non-zero in CI. Two honest
+    options: add a step that installs <code>gitleaks</code> and <code>pip-audit</code> on the runner
+    (the runner installing them is not the audit installing them, and the boundary is exactly the
+    one ⓑ draws), or state in the workflow comment that the gate is regex-only by design. The
+    current state reads as an oversight and is not one.</li>
+  <li><strong>The project that ships <code>aisg init</code> has no system card.</strong> AUD-1001
+    fires on this tree. Either run <code>aisg init --defaults</code> — which also gives the audit's
+    own system-card reader a real input to exercise — or accept it with the reason that a library is
+    not a deployed AI system, which is already the reasoning behind the AUD-107 acceptance.</li>
+  <li><strong>The audit has no rule for unbounded buffering of untrusted input.</strong> The previous
+    document's recommendation 5 (<code>_read_body</code> in the FastAPI middleware reads the whole
+    request with no ceiling) is still true, and the audit cannot see it: no AUD rule covers resource
+    exhaustion on the ingress path. Either add one to the P1 band — an ingress read with no size cap
+    is blast radius, not hygiene — or record availability as an explicit non-goal in the rule
+    registry, so the gap is a decision rather than an omission. Right now a reader could reasonably
+    infer from a clean P1 band that ingress was examined.</li>
+  <li><strong>HTML documentation is classified as code, so the doc demotion never applies to it.</strong>
+    <code>_DOC_EXTS</code> (<code>discover.py:124</code>) is
+    <code>{.md, .markdown, .mdx, .rst, .txt}</code>; anything else that is not a config language
+    falls through to <code>code</code> and gets every table. Controlled test — the same sentence,
+    quoting a host permission-bypass flag, written twice:
+    <code>docs/a.md</code> → <code>AUD-101/docs low</code>, <code>docs/a.html</code> →
+    <code>AUD-101 critical</code>. Writing <em>this</em> document is what surfaced it: the paragraph
+    explaining decision ② quoted the flag it was describing, and the audit reported it at CRITICAL
+    against a file in <code>docs/explain/</code> (the sentence has since been rephrased, so the
+    tree is clean). This is the same self-reference the baseline's reason field already guards
+    against, one directory over. Add <code>.html</code> and <code>.htm</code> to
+    <code>_DOC_EXTS</code> — a rendered HTML page is prose by every criterion the class already
+    uses, and the <code>PII_FILE_GLOBS</code> override still catches an HTML prompt template.</li>
+  <li><strong>Accepted, because:</strong> the baseline accepts all 23 findings, which means the gate
+    can only ever catch <em>new</em> ones. That looks like a rubber stamp and is not: each entry
+    carries a reason, the reasons are load-bearing enough that a test checks they do not reproduce
+    their own findings, and the summary line prints <code>23 unchanged</code> on every run where the
+    count is visible. Lowering <code>--fail-on</code> would produce a red build that says exactly
+    what the current green build already says.</li>
+</ol>
+
+<div class="take t1">
+  <h4>Key takeaways — next</h4>
+  <ul>
+    <li>The engine and the skill are complete and gated; what is missing is <em>numbers</em> — rule precision and guard profiles, both waiting on labelling rather than on code.</li>
+    <li>Two findings here come from the audit auditing itself: an anchor that points at imports, and a system card the tool can generate and does not have.</li>
+    <li>One gap is in the rule set rather than in a target: nothing covers unbounded ingress, and a clean P1 band currently implies otherwise.</li>
+    <li>Writing this document tripped the audit at CRITICAL, which is how the <code>.html</code>-is-code classification was found. The self-reference hazard is not confined to the baseline file.</li>
+    <li>The <code>MEASURED</code> bucket has been empty in CI since the gate landed. That is a defensible choice, but it should be stated where the choice is made.</li>
+  </ul>
+</div>
+
+<p class="sub" style="margin-top:48px">Sources: <code>src/aisg/devtools/audit/</code>
+(<code>main.py</code>, <code>model.py</code>, <code>walk.py</code>, <code>discover.py</code>,
+<code>pydeep.py</code>, <code>configs.py</code>, <code>adapters.py</code>, <code>baseline.py</code>,
+<code>report.py</code>, <code>rules/</code>), <code>src/aisg/devtools/skill.py</code>,
+<code>src/aisg/skills/</code>, <code>src/aisg/cli.py</code>, <code>scripts/sync_skill.py</code>,
+<code>audit-baseline.json</code>, <code>tests/unit/test_audit_adapters.py</code>,
+<code>.github/workflows/tests.yml</code>. Counts and the summary block are from
+<code>aisg audit . --no-external --fail-on high --baseline audit-baseline.json</code> run on this
+machine, 2026-09-06, as is the 7.4–8.0&nbsp;s figure (three in-process runs). Line numbers as of
+<code>main</code> @ <code>b6332e6</code>; working tree clean for every file quoted here. Prior context: <a href="measurement-first-guardrails.html">Measurement-first
+guardrails</a> and <a href="../STATUS.md">docs/STATUS.md</a>.</p>
+
+</main>
+</body>
+</html>
