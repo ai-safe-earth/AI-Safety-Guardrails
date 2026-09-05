@@ -11,7 +11,7 @@ only channel, and it is where you will hear back.
 
 ## Scope
 
-- The `ai-safety-guardrails` package (`aisg.core`, `aisg.modules`,
+- The `aisguard` distribution, imported as `aisg` (`aisg.core`, `aisg.modules`,
   `aisg.integrations`, `aisg.config`).
 - The `aisg` command line: `lint`, `misalign`, `measure`, `probe`, `init`,
   `audit`, `skill`.
@@ -24,7 +24,7 @@ those as ordinary issues with the payload, or add a case to the probe corpus.
 
 ## What to include
 
-- The affected version (`pip show ai-safety-guardrails`) or commit.
+- The affected version (`pip show aisguard`) or commit.
 - The command, config or input that triggers the problem, minimised.
 - What happens and what you expected; a stack trace or report excerpt if any.
 - Which external scanners were on `PATH`, if `aisg audit` is involved.

@@ -1,6 +1,6 @@
 # Applying controls in Python
 
-Idioms per tier, using this package (`pip install ai-safety-guardrails`) where it fits and
+Idioms per tier, using this package (`pip install aisguard`, imported as `aisg`) where it fits and
 framework gates where they exist. Every symbol below exists at the import path shown, with
 its real keyword names. For frameworks other than this package, check the current docs
 before quoting an API: their names move.

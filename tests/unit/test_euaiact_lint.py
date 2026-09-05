@@ -762,22 +762,29 @@ class TestCITemplates:
 
     def test_gitlab_template_pins_the_package_to_pyproject(self):
         """The template installs from this project's own repository at a tag
-        that tracks pyproject.toml, never from PyPI by name: that name belongs
-        to an unrelated package, so a PyPI spec would install someone else's
-        code."""
+        that tracks pyproject.toml, never from PyPI by name: the distribution
+        (`aisguard`) is not published, and the importable name `aisg` belongs
+        on PyPI to an unrelated project, so a PyPI spec by either name would
+        fail to resolve or install someone else's code.
+
+        The name in the install spec must also be the distribution name, not
+        the importable one -- pip rejects a `name @ url` whose name does not
+        match the metadata of what it downloaded."""
         import re
 
         doc = self._load(self.GITLAB)
         pin = doc["variables"]["AISG_VERSION"]
         m = re.search(r'^version\s*=\s*"([^"]+)"', (REPO_ROOT / "pyproject.toml").read_text(), re.M)
         assert m and pin == m.group(1), (pin, m and m.group(1))
+        name = re.search(r'^name\s*=\s*"([^"]+)"', (REPO_ROOT / "pyproject.toml").read_text(), re.M)
+        assert name and name.group(1) == "aisguard", name and name.group(1)
         assert doc["variables"]["AISG_SOURCE"].startswith("git+https://github.com/ai-safe-earth/")
         install = " ".join(doc[".eu-ai-act-base"]["before_script"])
-        assert "ai-safety-guardrails[devtools] @ ${AISG_SOURCE}@v${AISG_VERSION}" in install, (
+        assert f"{name.group(1)}[devtools] @ " + "${AISG_SOURCE}@v${AISG_VERSION}" in install, (
             install
         )
         text = self.GITLAB.read_text(encoding="utf-8")
-        assert not re.search(r"ai-safety-guardrails(\[[^\]]*\])?==", text), "PyPI spec by name"
+        assert not re.search(r"\b(aisguard|aisg)(\[[^\]]*\])?==", text), "PyPI spec by name"
         assert "pip install pyyaml" not in text
 
     @pytest.mark.parametrize("path", [GITHUB, GITLAB], ids=["github", "gitlab"])

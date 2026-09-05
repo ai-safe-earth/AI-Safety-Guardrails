@@ -77,7 +77,7 @@ __all__ = [
     "tool_version",
 ]
 
-DISTRIBUTION = "ai-safety-guardrails"
+DISTRIBUTION = "aisguard"
 TOOL_NAME = "aisg-audit"
 FORMATS: tuple[str, ...] = ("terminal", "json", "sarif", "markdown")
 FAIL_ON_CHOICES: tuple[str, ...] = ("critical", "high", "medium", "low", "info", "never")

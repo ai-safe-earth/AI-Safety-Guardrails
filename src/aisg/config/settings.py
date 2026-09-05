@@ -11,7 +11,7 @@ features that call external services.
 Install:
     pip install pydantic-settings
     # or
-    pip install "ai-safety-guardrails[settings]"
+    pip install "aisguard[settings]"
 
 Usage:
     from aisg.config.settings import settings
@@ -45,7 +45,7 @@ except ImportError as _e:
     raise ImportError(
         "pydantic-settings is required for config.settings.\n"
         "Install with:  pip install pydantic-settings\n"
-        "or:            pip install 'ai-safety-guardrails[settings]'"
+        "or:            pip install 'aisguard[settings]'"
     ) from _e
 
 

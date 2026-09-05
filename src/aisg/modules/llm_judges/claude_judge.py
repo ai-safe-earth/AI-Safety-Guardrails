@@ -30,7 +30,7 @@ Usage:
     verdict = await judge.judge(llm_response, role="agent")
 
 Requirements:
-    pip install anthropic   (or: pip install ai-safety-guardrails[anthropic])
+    pip install anthropic   (or: pip install aisguard[anthropic])
 """
 
 from __future__ import annotations
@@ -144,8 +144,7 @@ class ClaudeJudge(LLMJudgeBase):
             import anthropic
         except ImportError as exc:
             raise ImportError(
-                "ClaudeJudge requires: pip install anthropic  "
-                "(or: pip install ai-safety-guardrails[anthropic])"
+                "ClaudeJudge requires: pip install anthropic  (or: pip install aisguard[anthropic])"
             ) from exc
 
         prompt = self._build_prompt(content, role, conversation_history)

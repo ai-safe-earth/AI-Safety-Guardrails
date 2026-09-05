@@ -12,7 +12,7 @@ pipeline:
   request_timeout: 30.0        # Max seconds for the LLM call in run_full() (0 = no timeout)
 
 # ⑤ OBSERVABILITY (OpenTelemetry)
-# Install:  pip install "ai-safety-guardrails[otel]"
+# Install:  pip install "aisguard[otel]"
 # Pass a TelemetryProvider instance to GuardrailPipeline(telemetry_provider=...).
 # Backends: set exporter to "otlp" and point otlp_endpoint at any OTLP collector
 # (Jaeger, Zipkin, Datadog, Honeycomb, Grafana Tempo, AWS X-Ray via ADOT, etc.)

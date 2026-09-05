@@ -25,9 +25,9 @@ variables:
   SCAN_PATH: "src"                    # space-separated; e.g. "src examples"
   FAIL_ON_WARNINGS: "false"
   AISG_VERSION: "0.1.0"               # a release tag of the project below; pinned
-  # Installed from the project's own repository at that tag. The PyPI name
-  # `ai-safety-guardrails` belongs to an unrelated package, so a PyPI spec
-  # would install someone else's code.
+  # Installed from the project's own repository at that tag, because the
+  # distribution (`aisguard`) is not on PyPI yet. Do not shorten this to a
+  # PyPI spec by the importable name: `aisg` on PyPI is an unrelated project.
   AISG_SOURCE: "git+https://github.com/ai-safe-earth/AI-Safety-Guardrails.git"
 
 .eu-ai-act-base:
@@ -35,7 +35,7 @@ variables:
   image: python:3.11-slim
   before_script:
     - apt-get update -qq && apt-get install -y -qq git >/dev/null
-    - pip install --quiet "ai-safety-guardrails[devtools] @ ${AISG_SOURCE}@v${AISG_VERSION}"
+    - pip install --quiet "aisguard[devtools] @ ${AISG_SOURCE}@v${AISG_VERSION}"
 
 # ── Full scan (all pushes to main/develop) ───────────────────────────────
 

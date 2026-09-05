@@ -54,26 +54,33 @@ exit 0, `scripts/sync_skill.py --check` in sync (version 0.1.0, 13 files, 2 mirr
    `"schema"`. Validated against the real SARIF 2.1.0 JSON schema: 0 errors for
    `lint`, `misalign` and `audit` output.
 
-## Open — needs your decision, nothing is blocked on code
+## Settled — the distribution is `aisguard`
 
-**The PyPI name `ai-safety-guardrails` belongs to an unrelated package** (v1.0.0,
-a NeMo Guardrails wrapper by another author). Two places assume that name
-resolves to this project:
+**Decided 2026-09-05.** Both obvious names are taken on PyPI by unrelated
+projects: `ai-safety-guardrails` (v1.0.0, a NeMo Guardrails wrapper) and `aisg`
+itself (v0.1.1, uploaded 2026-08-07, the Occludra "AI Security Gateway" SDK,
+which also imports as `aisg` and is in the same problem domain). So:
 
-- The skill bootstrap scripts (`src/aisg/skills/ai-safety-audit/` and its two
-  mirrors) run `uvx --from "ai-safety-guardrails==$AISG_VERSION"`. Today that
-  cannot resolve, so `aisg skill install` fails cleanly on a fresh host — but if
-  the foreign package ever publishes a `0.1.0`, the bootstrap would fetch someone
-  else's code.
-- `.gitlab-ci-euaiact.yml` installs from
-  `git+https://github.com/ai-safe-earth/AI-Safety-Guardrails.git@v0.1.0`, and no
-  `v0.1.0` tag exists on the remote.
+- **Distribution: `aisguard`** (free on PyPI, unclaimed as of this date).
+- **Import name and console script: `aisg`**, unchanged. No code moved.
 
-Two ways out: rename the distribution (`aisg`, `aisg-guardrails`, …) and publish
-under that, or drop the PyPI path entirely, install from the git URL everywhere,
-and tag `v0.1.0`. Either choice touches the skill scripts, so it must be followed
-by `python scripts/sync_skill.py` (a test pins `AISG_VERSION` to the pyproject
-version and the mirrors byte-identical).
+Every install spec now names `aisguard`: `pyproject.toml`, the extras'
+self-references, `audit/report.py:DISTRIBUTION` (and `pip show`), the skill
+bootstrap scripts, `.gitlab-ci-euaiact.yml`, README and SECURITY.md.
+
+The `aisg`/`aisguard` split is a real hazard worth remembering: installing the
+PyPI `aisg` alongside this package puts two different top-level `aisg` modules
+in one environment. CLAUDE.md "Layout" carries the rule.
+
+Still open, and unblocked by the rename:
+
+- Nothing is published yet, so the skill bootstrap's
+  `uvx --from "aisguard==0.1.0"` still cannot resolve — it now fails with a 404
+  instead of risking someone else's code, which is the safe failure.
+  `.gitlab-ci-euaiact.yml` keeps the `git+https://…@v${AISG_VERSION}` install
+  for the same reason, and **no `v0.1.0` tag exists on the remote yet.**
+- To finish: tag `v0.1.0`, then either publish `aisguard` to PyPI or leave the
+  git install as the only path.
 
 ## Known-broken, deliberately left
 

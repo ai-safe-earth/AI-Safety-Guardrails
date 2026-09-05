@@ -192,22 +192,27 @@ pip install pyyaml aiohttp pydantic-settings
 **Install optional extras as needed:**
 ```bash
 # LLM judge providers
-pip install "ai-safety-guardrails[settings]"      # .env file support (pydantic-settings)
-pip install "ai-safety-guardrails[anthropic]"     # Claude judge
-pip install "ai-safety-guardrails[llamaguard]"    # LlamaGuard local (HuggingFace)
+pip install "aisguard[settings]"      # .env file support (pydantic-settings)
+pip install "aisguard[anthropic]"     # Claude judge
+pip install "aisguard[llamaguard]"    # LlamaGuard local (HuggingFace)
 
 # Integrations
-pip install "ai-safety-guardrails[fastapi]"       # FastAPI middleware
-pip install "ai-safety-guardrails[langchain]"     # LangChain callback
-pip install "ai-safety-guardrails[nemo]"          # NVIDIA NeMo Guardrails
+pip install "aisguard[fastapi]"       # FastAPI middleware
+pip install "aisguard[langchain]"     # LangChain callback
+pip install "aisguard[nemo]"          # NVIDIA NeMo Guardrails
 
 # Observability
-pip install "ai-safety-guardrails[otel]"          # OpenTelemetry
-pip install "ai-safety-guardrails[metrics]"       # Prometheus
+pip install "aisguard[otel]"          # OpenTelemetry
+pip install "aisguard[metrics]"       # Prometheus
 
 # Everything
-pip install "ai-safety-guardrails[all]"
+pip install "aisguard[all]"
 ```
+
+> **Name:** the distribution is `aisguard`; the import and the CLI are `aisg`
+> (`pip install aisguard`, then `from aisg import GuardrailPipeline` and
+> `aisg audit .`). `aisg` on PyPI is an unrelated project — do not install it
+> expecting this one.
 
 > **Note:** LlamaGuard via Groq or Together AI only needs `aiohttp` (already a core dep) — no extra package required. Only local HuggingFace inference needs the `llamaguard` extra.
 
@@ -1051,7 +1056,7 @@ Each pipeline run writes a structured JSON record with stage, latency, findings,
 ### OpenTelemetry traces + metrics
 
 ```bash
-pip install "ai-safety-guardrails[otel]"
+pip install "aisguard[otel]"
 # OTLP gRPC backend: pip install opentelemetry-exporter-otlp-proto-grpc
 # OTLP HTTP backend: pip install opentelemetry-exporter-otlp-proto-http
 ```

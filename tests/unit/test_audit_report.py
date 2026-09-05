@@ -47,6 +47,7 @@ from aisg.devtools.audit.model import (
 from aisg.devtools.audit.report import (
     _TEMPLATES,
     BANNED_PHRASES,
+    DISTRIBUTION,
     SARIF_LEVEL,
     build_report,
     catalogue,
@@ -345,8 +346,10 @@ def test_templates_carry_no_banned_phrase_and_no_clean():
 
 
 def test_tool_version_comes_from_package_metadata():
+    # DISTRIBUTION, not a literal: the wheel publishes as `aisguard` while the
+    # importable name stays `aisg`, and the two must not drift apart again.
     try:
-        expected = metadata.version("ai-safety-guardrails")
+        expected = metadata.version(DISTRIBUTION)
     except metadata.PackageNotFoundError:
         expected = "unknown"
     assert tool_version() == expected

@@ -37,7 +37,7 @@ working directory and `<skill>` standing for that absolute folder:
     sh <skill>/scripts/audit.sh . --format json -o audit-report.json --write-baseline audit-baseline.json
     powershell -ExecutionPolicy Bypass -File <skill>/scripts/audit.ps1 . --format json -o audit-report.json --write-baseline audit-baseline.json
 
-The script uses `aisg` if installed, otherwise `uvx --from 'ai-safety-guardrails==<pinned
+The script uses `aisg` if installed, otherwise `uvx --from 'aisguard==<pinned
 version>' aisg` (uv provisions Python itself, so this works on a machine with no Python),
 otherwise `pipx run`. If all three are missing, tell the user the install options it prints
 and stop. Exit 0 = no findings at the fail threshold, 1 = findings, 2 = fatal (read stderr,

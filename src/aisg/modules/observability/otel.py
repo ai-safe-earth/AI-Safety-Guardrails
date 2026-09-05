@@ -19,7 +19,7 @@ Exporters:
     "none"     → no-op
 
 Install:
-    pip install "ai-safety-guardrails[otel]"
+    pip install "aisguard[otel]"
     # OTLP gRPC:  pip install opentelemetry-exporter-otlp-proto-grpc
     # OTLP HTTP:  pip install opentelemetry-exporter-otlp-proto-http
 

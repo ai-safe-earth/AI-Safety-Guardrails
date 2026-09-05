@@ -46,9 +46,9 @@ run_aisg() {
   if command -v aisg >/dev/null 2>&1; then
     aisg "$@"
   elif command -v uvx >/dev/null 2>&1; then
-    uvx --from "ai-safety-guardrails==$AISG_VERSION" aisg "$@"
+    uvx --from "aisguard==$AISG_VERSION" aisg "$@"
   elif command -v pipx >/dev/null 2>&1; then
-    pipx run --spec "ai-safety-guardrails==$AISG_VERSION" aisg "$@"
+    pipx run --spec "aisguard==$AISG_VERSION" aisg "$@"
   else
     return 127
   fi

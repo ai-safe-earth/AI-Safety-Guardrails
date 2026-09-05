@@ -366,6 +366,6 @@ Planned features:
 ## Support
 
 For issues or questions:
-- File a bug report: [GitHub Issues](https://github.com/YOUR_ORG/ai-safety-guardrails/issues)
+- File a bug report: [GitHub Issues](https://github.com/ai-safe-earth/AI-Safety-Guardrails/issues)
 - Check examples: `/examples/test_advanced_detectors.py`
 - Review tests: `/tests/test_advanced_injection.py`

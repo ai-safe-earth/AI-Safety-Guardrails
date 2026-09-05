@@ -1522,7 +1522,7 @@ class SemgrepAdapter(Adapter):
         if SEMGREP_RULES_PATH.is_file():
             return None
         why = f"packaged rules file missing: {SEMGREP_RULES_PATH.name}"
-        return Status.FAILED, None, why, "reinstall ai-safety-guardrails, then aisg audit ."
+        return Status.FAILED, None, why, "reinstall aisguard, then aisg audit ."
 
     def arguments(self, ctx: AuditContext, *, timeout: float, report_path: str | None) -> list[str]:
         return [

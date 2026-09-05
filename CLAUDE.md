@@ -10,6 +10,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 and it must stay that way: those names would collide with users' own modules
 once published to PyPI.
 
+**The distribution name is `aisguard`; the import name and the console script
+are `aisg`.** `pip install "aisguard[devtools]"`, then `import aisg` and
+`aisg audit .`. They differ because both `ai-safety-guardrails` and `aisg` are
+taken on PyPI by unrelated projects — `aisg` there is an AI-gateway SDK that
+also imports as `aisg`, so an environment with both installed is broken. Any
+install spec, `importlib.metadata` lookup or `pip show` must say `aisguard`
+(`audit/report.py:DISTRIBUTION` is the constant); anything a user types or
+imports says `aisg`. The prose name of the project stays "AI Safety
+Guardrails", and so does the repo, `github.com/ai-safe-earth/AI-Safety-Guardrails`.
+
 `tests/conftest.py` puts `src/` on `sys.path`, so the suite runs without an
 install; `examples/*.py` still self-bootstrap with `sys.path.insert(..., "src")`.
 Run commands from the repo root.

@@ -13,7 +13,10 @@ euaiact-lint = "aisg.devtools.euaiact_lint:main"
 misalignment-check = "aisg.devtools.misalignment_check:main"
 
 [project]
-name = "ai-safety-guardrails"
+# Distribution name. The importable name stays `aisg` (see CLAUDE.md "Layout"),
+# but `aisg` is taken on PyPI by an unrelated AI-gateway SDK, so the wheel
+# publishes as `aisguard`: pip install "aisguard[devtools]", import aisg.
+name = "aisguard"
 version = "0.1.0"
 description = "Production-ready, modular AI safety guardrails for any LLM pipeline"
 readme = "README.md"
@@ -97,7 +100,7 @@ claude-judge = [
 
 # All LLM judges
 llm-judges = [
-    "ai-safety-guardrails[anthropic]",
+    "aisguard[anthropic]",
 ]
 
 # NVIDIA NeMo Guardrails integration
@@ -127,7 +130,7 @@ devtools = [
 
 # Deprecated alias for `devtools`.
 lint = [
-    "ai-safety-guardrails[devtools]",
+    "aisguard[devtools]",
 ]
 
 # Pre-commit companion tools
@@ -138,7 +141,7 @@ precommit = [
 
 # Full install (everything)
 all = [
-    "ai-safety-guardrails[presidio,langchain,fastapi,anthropic,otel,metrics,devtools,precommit,llm-judges,settings,nemo]",
+    "aisguard[presidio,langchain,fastapi,anthropic,otel,metrics,devtools,precommit,llm-judges,settings,nemo]",
 ]
 
 # Development

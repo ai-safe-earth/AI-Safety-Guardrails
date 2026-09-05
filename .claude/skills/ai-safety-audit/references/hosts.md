@@ -44,8 +44,8 @@ Global (writes under the home directory):
 Without `aisg` on PATH, through a pinned bootstrap (`<version>` is the `AISG_VERSION`
 pinned in `scripts/audit.sh`; never leave it off):
 
-    uvx --from 'ai-safety-guardrails==<version>' aisg skill install --host all
-    pipx run --spec 'ai-safety-guardrails==<version>' aisg skill install --host all
+    uvx --from 'aisguard==<version>' aisg skill install --host all
+    pipx run --spec 'aisguard==<version>' aisg skill install --host all
 
 Other verbs: `aisg skill path` prints the packaged directory; `aisg skill list` prints the
 host table; `aisg skill diff --host <x>` compares the installed copy with the packaged one
@@ -61,8 +61,10 @@ That is the intersection of what the hosts above accept; host-specific metadata 
 ## Bootstrap scripts
 
 `scripts/audit.sh`, `audit.ps1`, `verify.sh` and `verify.ps1` resolve `aisg` in this order:
-`aisg` on PATH, else `uvx --from 'ai-safety-guardrails==<version>'`, else
-`pipx run --spec 'ai-safety-guardrails==<version>'`. The version is pinned to the package
+`aisg` on PATH, else `uvx --from 'aisguard==<version>'`, else
+`pipx run --spec 'aisguard==<version>'`. `aisguard` is the distribution name; `aisg` is the
+importable name and the console script, and on PyPI it belongs to an unrelated project, so a
+bootstrap must never install by it. The version is pinned to the package
 that shipped the scripts and a test asserts it equals `pyproject.toml`; an unpinned bootstrap
 is what AUD-602 flags in targets, and the skill does not get an exception. When none of the
 three is available, `audit.sh` exits 2 with install hints and `verify.sh` prints

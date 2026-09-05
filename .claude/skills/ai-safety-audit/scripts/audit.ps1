@@ -4,15 +4,15 @@ $AISG_VERSION = "0.1.0"   # pinned; test_skill_package.py asserts this equals py
 if (Get-Command aisg -ErrorAction SilentlyContinue) {
     & aisg audit @args
 } elseif (Get-Command uvx -ErrorAction SilentlyContinue) {
-    & uvx --from "ai-safety-guardrails==$AISG_VERSION" aisg audit @args
+    & uvx --from "aisguard==$AISG_VERSION" aisg audit @args
 } elseif (Get-Command pipx -ErrorAction SilentlyContinue) {
-    & pipx run --spec "ai-safety-guardrails==$AISG_VERSION" aisg audit @args
+    & pipx run --spec "aisguard==$AISG_VERSION" aisg audit @args
 } else {
     [Console]::Error.WriteLine("aisg not found. Install one of:")
-    [Console]::Error.WriteLine("  uv tool install 'ai-safety-guardrails==$AISG_VERSION'   (uv works without a pre-installed Python)")
+    [Console]::Error.WriteLine("  uv tool install 'aisguard==$AISG_VERSION'   (uv works without a pre-installed Python)")
     if ((Get-Command python3 -ErrorAction SilentlyContinue) -or (Get-Command python -ErrorAction SilentlyContinue)) {
-        [Console]::Error.WriteLine("  pipx install 'ai-safety-guardrails==$AISG_VERSION'")
-        [Console]::Error.WriteLine("  pip install 'ai-safety-guardrails==$AISG_VERSION'")
+        [Console]::Error.WriteLine("  pipx install 'aisguard==$AISG_VERSION'")
+        [Console]::Error.WriteLine("  pip install 'aisguard==$AISG_VERSION'")
     } else {
         [Console]::Error.WriteLine("  (no python3/python on PATH: install uv first, e.g. https://docs.astral.sh/uv/getting-started/installation/)")
     }
