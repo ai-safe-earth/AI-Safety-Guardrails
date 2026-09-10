@@ -123,15 +123,16 @@ Left open by the review, on purpose and small:
 
 ## Head
 
-`main` is the two-document round, one commit on top of `0acc0db`
-("docs(explain): aisg audit and the portable skill"), pushed to `origin`
-(`github.com/ai-safe-earth/AI-Safety-Guardrails`).
+`main` at `c06d810`, the two-document round in one commit on top of
+`0acc0db`. **Not pushed yet**: `origin`
+(`github.com/ai-safe-earth/AI-Safety-Guardrails`) is still at `0acc0db`, so
+CI has not seen the round; push, then `gh run list --limit 4`.
 
 Recent history, newest first:
 
 | commit | what |
 | --- | --- |
-| (this commit) | The two-document audit flow: html documents, baseline as a record, the five-phase skill, two review rounds |
+| `c06d810` | The two-document audit flow: html documents, baseline as a record, the five-phase skill, two review rounds |
 | `0acc0db` | docs: the audit and the portable skill explained |
 | `de78fd3` | The `explain-doc` project skill |
 | `b6332e6` | Distribution renamed to `aisguard`; the import stays `aisg` |
