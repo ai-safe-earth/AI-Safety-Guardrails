@@ -309,18 +309,237 @@ def test_inert_gates(tmp_path):
         b = g.compile(interrupt_before=["tools"], checkpointer=saver)
         agent = Agent(require_approval=True)
         runner = Runner(auto_approve=True)
+        listed = ToolPolicyGuard(require_approval=["send_email"])
+        wired = ToolPolicyGuard(require_approval=["send_email"], approval_callback=ask)
+        empty = ToolPolicyGuard(require_approval=[])
         """,
     )
     reasons = {(g.line, g.symbol): g.inert_reason for g in facts.gates}
     assert reasons[(3, "interrupt_before")] == "interrupt_before without checkpointer"
     assert reasons[(4, "interrupt_before")] is None
-    assert reasons[(5, "require_approval")] == "require_approval=True without approval_callback"
+    assert reasons[(5, "require_approval")] == "require_approval without approval_callback"
+    # The list form the guard's signature takes is inert for the same reason; only the
+    # wired one is live. An empty list gates nothing, so it is an inert gate, not a live
+    # one that happens to cover no tool.
+    assert reasons[(7, "ToolPolicyGuard")] == "require_approval without approval_callback"
+    assert reasons[(8, "ToolPolicyGuard")] is None
+    assert reasons[(9, "ToolPolicyGuard")] == "require_approval is empty"
     assert any(
         line == 6 and reason and reason.startswith("bypass:")
         for (line, _s), reason in reasons.items()
     )
     # One record per line: the Assign and the Call it wraps must not both land.
     assert len(facts.gates) == len({(g.file, g.line) for g in facts.gates})
+    assert facts.unknown == []
+
+
+@pytest.mark.parametrize("literal", ["[]", "()", "{}", "set()", "None", "list()", "dict()"])
+def test_empty_require_approval_is_an_inert_gate(tmp_path, literal):
+    facts = _facts(tmp_path, f"guard = ToolPolicyGuard(require_approval={literal})\n")
+    assert [(g.line, g.inert_reason) for g in facts.gates] == [(1, "require_approval is empty")]
+    assert facts.unknown == []
+
+
+def test_explicit_none_callback_is_no_callback(tmp_path):
+    facts = _facts(
+        tmp_path,
+        """
+        a = ToolPolicyGuard(require_approval=["send_email"], approval_callback=None)
+        b = ToolPolicyGuard(require_approval=["send_email"], approval_callback=ask)
+        """,
+    )
+    reasons = {g.line: g.inert_reason for g in facts.gates}
+    assert reasons[1] is not None
+    assert reasons[2] is None
+
+
+def test_star_kwargs_gate_is_unknown_not_a_gate(tmp_path):
+    facts = _facts(
+        tmp_path,
+        """
+        cfg = load_config()
+        guard = ToolPolicyGuard(**cfg)
+        """,
+    )
+    assert [g for g in facts.gates if g.line == 2] == []
+    assert len(facts.unknown) == 1
+    item = facts.unknown[0]
+    assert item.category is UnknownCategory.DEEP
+    assert item.file == "m.py"
+    assert "m.py:2" in item.what and "ToolPolicyGuard" in item.what
+    assert "**cfg" in item.why
+    assert item.how_to_resolve
+    # The tool-gate rules own this UNKNOWN; without the ids the html figure draws it
+    # on the "not attributed" box instead of the tools-and-actions box.
+    assert item.rule_ids == ("AUD-201", "AUD-202")
+
+
+_MULTI_LINE_GATE_SHAPES = {
+    "assign_star": (
+        """
+        from aisg import GuardrailPipeline, ToolPolicyGuard
+        pipeline = GuardrailPipeline(
+            processing_guards=[
+                ToolPolicyGuard(**cfg),
+            ],
+        )
+        """,
+        4,
+        None,
+    ),
+    "assign_empty": (
+        """
+        from aisg import GuardrailPipeline, ToolPolicyGuard
+        pipeline = GuardrailPipeline(
+            processing_guards=[
+                ToolPolicyGuard(require_approval=[]),
+            ],
+        )
+        """,
+        4,
+        "require_approval is empty",
+    ),
+    "outer_call_star": (
+        """
+        from aisg import GuardrailPipeline, ToolPolicyGuard
+        run(
+            GuardrailPipeline(
+                processing_guards=[
+                    ToolPolicyGuard(**cfg),
+                ],
+            )
+        )
+        """,
+        5,
+        None,
+    ),
+    "outer_call_empty": (
+        """
+        from aisg import GuardrailPipeline, ToolPolicyGuard
+        run(
+            GuardrailPipeline(
+                processing_guards=[
+                    ToolPolicyGuard(require_approval=[]),
+                ],
+            )
+        )
+        """,
+        5,
+        "require_approval is empty",
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "shape", sorted(_MULTI_LINE_GATE_SHAPES), ids=sorted(_MULTI_LINE_GATE_SHAPES)
+)
+def test_gate_on_a_later_line_of_a_multi_line_statement_leaves_no_phantom(tmp_path, shape):
+    # The Assign pass and the outer Call pass used to render the nested call's text
+    # and record a reason-less (live) gate at the statement's or outer call's line;
+    # `_record_gate` reconciles records on the same line only, so the phantom
+    # survived and `join_gates` took it for a real approval gate. A nested call is
+    # opaque to every visit but its own, so the only record is at the call's line.
+    source, line, reason = _MULTI_LINE_GATE_SHAPES[shape]
+    facts = _facts(tmp_path, source)
+    assert all(g.line == line for g in facts.gates), facts.gates
+    if reason is None:
+        assert facts.gates == []
+        assert [u.category for u in facts.unknown] == [UnknownCategory.DEEP]
+        assert f"m.py:{line}" in facts.unknown[0].what
+    else:
+        assert [(g.line, g.symbol, g.inert_reason) for g in facts.gates] == [
+            (line, "ToolPolicyGuard", reason)
+        ]
+        assert facts.unknown == []
+
+
+def test_multi_line_phantom_gate_does_not_satisfy_the_join(tmp_path):
+    # End to end through `join_gates`: the tool reaches the pipeline builder, and the
+    # only gate in it is `ToolPolicyGuard(**cfg)` on a later line. The join must find
+    # nothing, not the outer statement's line.
+    facts = _facts(
+        tmp_path,
+        """
+        from langchain_core.tools import tool
+        from aisg import GuardrailPipeline, ToolPolicyGuard
+
+        def build():
+            return GuardrailPipeline(
+                processing_guards=[
+                    ToolPolicyGuard(**cfg),
+                ],
+            )
+
+        @tool
+        def send_email(to: str, body: str):
+            build().run_processing({"name": "send_email"})
+        """,
+    )
+    assert facts.gates == []
+    assert facts.tool_gate_join == {"send_email": None}
+    assert len(facts.unknown) == 1 and "m.py:7" in facts.unknown[0].what
+
+
+def test_assign_pass_still_reads_literals_outside_any_call(tmp_path):
+    # The Assign pass renders the statement with its calls opaque; a bypass literal
+    # that sits in no call (`auto_approve = True`, a dict literal) is still its to see,
+    # and a statement that only wraps a call contributes nothing beyond the call's own
+    # record. (`ast.unparse` needs a statement's lineno; the collapsed copy keeps it.)
+    facts = _facts(
+        tmp_path,
+        """
+        auto_approve = True
+        cfg = {"require_approval": False}
+        guard = ToolPolicyGuard(require_approval=True)
+        """,
+    )
+    reasons = {g.line: g.inert_reason for g in facts.gates}
+    assert reasons[1] == "bypass: auto_approve = True"
+    assert reasons[2] == "bypass: require_approval': False"
+    assert reasons[3] == "require_approval without approval_callback"
+    assert len(facts.gates) == 3
+
+
+def test_gate_literal_in_a_chained_callee_is_owned_by_the_inner_call(tmp_path):
+    # The callee is collapsed with the arguments: the outer `.check(...)` on line 2
+    # reads `....check(...)` and records nothing; the inner call is the unresolved one.
+    facts = _facts(
+        tmp_path,
+        """
+        ok = ToolPolicyGuard(
+            **cfg
+        ).check(
+            call
+        )
+        """,
+    )
+    assert facts.gates == []
+    assert len(facts.unknown) == 1 and "m.py:1" in facts.unknown[0].what
+
+
+def test_star_kwargs_beside_a_literal_list_is_still_a_gate(tmp_path):
+    # A literal `require_approval` is something to read; the `**cfg` beside it may or
+    # may not carry the callback, and the site keeps the inert reading it would have
+    # without the star.
+    facts = _facts(tmp_path, 'g = ToolPolicyGuard(require_approval=["send_email"], **cfg)\n')
+    assert [(g.line, g.inert_reason) for g in facts.gates] == [
+        (1, "require_approval without approval_callback")
+    ]
+    assert facts.unknown == []
+
+
+def test_live_gate_call_with_star_kwargs_is_not_unknown(tmp_path):
+    # Only the configured guard is unresolvable through `**name`; a call whose name IS
+    # the gate (`confirm(...)`) stays a live gate however its arguments arrive.
+    facts = _facts(
+        tmp_path,
+        """
+        def go(**kw):
+            confirm(**kw)
+        """,
+    )
+    assert [g.symbol for g in facts.gates] == ["confirm"]
+    assert facts.unknown == []
 
 
 def test_inert_gate_is_not_reported_live_through_the_join(tmp_path):
@@ -341,10 +560,10 @@ def test_inert_gate_is_not_reported_live_through_the_join(tmp_path):
     )
     at_line = [g for g in facts.gates if g.line == 5]
     assert len(at_line) == 1
-    assert at_line[0].inert_reason == "require_approval=True without approval_callback"
+    assert at_line[0].inert_reason == "require_approval without approval_callback"
     joined = facts.tool_gate_join["send_email"]
     assert isinstance(joined, GateSite)
-    assert joined.inert_reason == "require_approval=True without approval_callback"
+    assert joined.inert_reason == "require_approval without approval_callback"
 
 
 # --------------------------------------------------------------------------- #

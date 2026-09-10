@@ -20,7 +20,7 @@ installed -- ``tomllib`` is stdlib only from 3.11.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 try:  # Python 3.11+
     import tomllib
@@ -74,13 +74,24 @@ def load_tool_config(section: str, start: Path | None = None) -> dict[str, Any]:
     return resolved
 
 
-def apply_tool_config(parser, section: str, start: Path | None = None) -> dict[str, Any]:
+def apply_tool_config(
+    parser,
+    section: str,
+    start: Path | None = None,
+    *,
+    exclude: Iterable[str] = (),
+) -> dict[str, Any]:
     """
     Apply ``[tool.<section>]`` defaults to `parser`, ignoring any key that is
     not an option on this parser. Returns what was actually applied.
+
+    `exclude` names parser dests that are per-invocation actions rather than
+    defaults (an edit to a file, say) and must never come from pyproject; a
+    key for one of them is ignored the same way an unknown key is.
     """
     config = load_tool_config(section, start)
-    known = {action.dest for action in parser._actions}
+    barred = {str(name).replace("-", "_") for name in exclude}
+    known = {action.dest for action in parser._actions} - barred
     applied = {key: value for key, value in config.items() if key in known}
     if applied:
         parser.set_defaults(**applied)

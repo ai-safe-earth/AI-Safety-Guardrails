@@ -80,6 +80,13 @@ def _globs_by_key(pairs: Iterable[tuple[str, str]]) -> Table:
 # ---------------------------------------------------------------------------
 
 IGNORE_MARKER = "# aisg-audit: ignore-file"
+# Line 1 of the audit's own html report, exactly: the marker inside an html comment. The
+# walker lists a file that starts with it under `own_output_skipped`, next to the JSON.
+OWN_HTML_MARKER_LINE = "<!-- " + IGNORE_MARKER + " -->"
+# Where the skill keeps every artefact (reports, baselines, measure and probe output). Not
+# a `SKIP_DIRS` entry, and never pruned by `.gitignore` either: a report under it is
+# evidence and must be discovered whether or not the directory is committed.
+AUDIT_DIR = ".aisg-audit"
 
 SKIP_DIRS = frozenset(
     {
@@ -1234,6 +1241,38 @@ HOST_CONFIG_FILES: Table = _globs_by_key(
         ("gemini", ".gemini/settings.json"),
     ]
 )
+
+# Files the skill never edits without the user approving that specific diff (skill hard
+# rule 4): host permission files, CI workflows, secrets and `.env*`. The system map marks
+# a finding anchored on one of these, and such a row never enters the "package can
+# implement" list. POSIX relative paths, matched from the repo root or any subdirectory.
+PROTECTED_PATH_RE = re.compile(
+    r"(?:^|/)(?:"
+    r"\.claude/settings(?:\.local)?\.json"
+    r"|\.codex/config\.toml"
+    r"|\.cursor/[^/]+(?:/.*)?"
+    r"|\.gemini/[^/]+(?:/.*)?"
+    r"|\.mcp\.json"
+    r"|\.vscode/mcp\.json"
+    r"|claude_desktop_config\.json"
+    r"|\.github/workflows/[^/]+"
+    r"|\.gitlab-ci[^/]*\.yml"
+    r"|\.circleci/config\.yml"
+    r"|Jenkinsfile"
+    r"|azure-pipelines\.ya?ml"
+    r"|bitbucket-pipelines\.ya?ml"
+    r"|\.travis\.yml"
+    r"|\.env(?:\.[^/]+)?"
+    r"|\.secrets(?:\.[^/]+)?"
+    r"|\.pre-commit-config\.yaml"
+    r")$"
+)
+
+
+def is_protected_path(relpath: str) -> bool:
+    """True when `relpath` is a file the skill must not edit without an approved diff."""
+    return bool(PROTECTED_PATH_RE.search(relpath.replace("\\", "/")))
+
 
 # ---------------------------------------------------------------------------
 # Mention vs use (AUD-101/docs). Independent of prompt_injection.is_mention and

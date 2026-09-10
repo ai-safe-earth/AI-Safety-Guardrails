@@ -8,6 +8,12 @@ The `accepted` list: `write_baseline(..., reasons=...)` fills it from the findin
 `load_baseline` validates it (a reason per entry, every entry also in `fingerprints`), and
 the committed `audit-baseline.json` is held to that shape -- plus one more: scanning the
 baseline file itself must not reproduce the findings it accepts.
+
+The `index` block names every fingerprint (rule, file, title) so a later diff can say what
+a fingerprint that is no longer reported was, and `amend_baseline` records a reason without
+a re-scan; it refuses a reason that is empty, non-ASCII, not a single printable line,
+verdict-shaped or secret-shaped, and never writes on a refusal. `read_baseline` applies the same reason check, so a
+hand-edited file cannot carry what `--accept` would have refused.
 """
 
 from __future__ import annotations
@@ -21,9 +27,14 @@ import pytest
 from aisg.devtools.audit.baseline import (
     BaselineDiff,
     BaselineError,
+    amend_baseline,
     diff,
     load_accepted,
     load_baseline,
+    load_generated_at,
+    load_index,
+    parse_accept,
+    read_baseline,
     write_baseline,
 )
 from aisg.devtools.audit.model import (
@@ -109,12 +120,74 @@ def test_write_then_load_round_trip(tmp_path: Path):
     path = tmp_path / "audit-baseline.json"
     write_baseline(findings, path)
     doc = json.loads(path.read_text(encoding="utf-8"))
-    assert list(doc) == ["schema", "kind", "generated_at", "tool", "fingerprints"]
+    assert list(doc) == ["schema", "kind", "generated_at", "tool", "fingerprints", "index"]
     assert doc["schema"] == "aisg/1" and doc["kind"] == "audit-baseline"
     assert doc["tool"] == {"name": "aisg-audit", "version": tool_version()}
     assert doc["fingerprints"] == sorted(doc["fingerprints"])
     assert len(doc["fingerprints"]) == len(set(doc["fingerprints"])) == 3
     assert load_baseline(path) == {f.fingerprint for f in findings}
+
+
+def test_write_baseline_index_names_every_fingerprint(tmp_path: Path):
+    findings = three()
+    findings[1] = make_finding("AUD-402", "b.py", "eval(reply)", sub="eval")
+    path = tmp_path / "audit-baseline.json"
+    write_baseline(findings, path)
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    # Same order as `fingerprints`; rule is the display id, file the first evidence.
+    assert list(doc["index"]) == doc["fingerprints"]
+    assert doc["index"][findings[1].fingerprint] == {
+        "rule": "AUD-402/eval",
+        "file": "b.py:3",
+        "title": "title for AUD-402",
+    }
+    assert load_index(path) == doc["index"]
+    assert load_generated_at(path) == doc["generated_at"]
+    assert path.read_text(encoding="utf-8").isascii()
+
+
+def test_write_baseline_index_uses_the_scope_name_for_an_absence_finding(tmp_path: Path):
+    absent = make_absence_finding("AUD-1001", ".")
+    path = tmp_path / "b.json"
+    write_baseline([absent], path)
+    assert load_index(path)[absent.fingerprint]["file"] == "."
+
+
+def test_load_index_and_generated_at_tolerate_an_old_baseline_and_a_report(tmp_path: Path):
+    fp = three()[0].fingerprint
+    old = tmp_path / "old.json"
+    old.write_text(json.dumps({"schema": "aisg/1", "kind": "audit-baseline", "fingerprints": [fp]}))
+    assert load_baseline(old) == {fp}
+    assert load_index(old) == {}
+    assert load_generated_at(old) is None
+    report_path = tmp_path / "audit-report.json"
+    report_path.write_text(render(make_report(three()), "json"), encoding="utf-8")
+    assert load_index(report_path) == {}
+    assert isinstance(load_generated_at(report_path), str)
+    document = read_baseline(report_path)
+    assert document.kind == "audit" and len(document.fingerprints) == 3
+    assert document.accepted == {} and document.index == {}
+
+
+@pytest.mark.parametrize(
+    ("index", "reason"),
+    [
+        (["not", "a", "dict"], "not an object"),
+        ({"abc": "not an object"}, "not an object"),
+        ({"": {"rule": "AUD-401"}}, "not a fingerprint"),
+    ],
+)
+def test_load_baseline_rejects_a_malformed_index(tmp_path: Path, index: object, reason: str):
+    fp = three()[0].fingerprint
+    path = tmp_path / "b.json"
+    path.write_text(
+        json.dumps(
+            {"schema": "aisg/1", "kind": "audit-baseline", "fingerprints": [fp], "index": index}
+        )
+    )
+    with pytest.raises(BaselineError) as info:
+        load_baseline(path)
+    assert reason in str(info.value) and "b.json" in str(info.value)
 
 
 def test_write_baseline_dedups_and_accepts_a_report(tmp_path: Path):
@@ -173,6 +246,45 @@ def test_load_baseline_missing_file(tmp_path: Path):
     assert "absent.json" in str(info.value)
 
 
+def test_load_baseline_on_a_non_utf8_file_is_a_baseline_error(tmp_path: Path):
+    """A file in another encoding is refused by name, not as a raw UnicodeDecodeError."""
+    path = tmp_path / "utf16.json"
+    fp = three()[0].fingerprint
+    text = json.dumps({"schema": "aisg/1", "kind": "audit-baseline", "fingerprints": [fp]})
+    path.write_bytes(text.encode("utf-16"))
+    with pytest.raises(BaselineError) as info:
+        load_baseline(path)
+    message = str(info.value)
+    assert "utf16.json" in message and "UTF-8" in message
+    assert "\n" not in message
+
+
+def test_write_baseline_uses_lf_on_every_platform(tmp_path: Path):
+    """A baseline is committed; a Windows write must not carry CRLF."""
+    path = tmp_path / "b.json"
+    findings = three()
+    write_baseline(findings, path, reasons={findings[0].fingerprint: "constant argv"})
+    raw = path.read_bytes()
+    assert b"\r" not in raw
+    assert raw.endswith(b"}\n")
+    amend_baseline(path, {findings[1].fingerprint: "eval on a literal"})
+    assert b"\r" not in path.read_bytes()
+
+
+def test_write_baseline_creates_the_parent_directory(tmp_path: Path):
+    """
+    `.aisg-audit/` usually does not exist on the first `--write-baseline`, and the write
+    comes after the scan and the render: the parent is created, like `-o` does.
+    """
+    path = tmp_path / "sub" / "dir" / "b.json"
+    assert not path.parent.exists()
+    findings = three()
+    write_baseline(findings, path, reasons={findings[0].fingerprint: "constant argv"})
+    assert path.parent.is_dir()
+    assert load_baseline(path) == {f.fingerprint for f in findings}
+    assert load_accepted(path) == {findings[0].fingerprint: "constant argv"}
+
+
 # ---------------------------------------------------------------------------
 # accepted: reasons per fingerprint
 # ---------------------------------------------------------------------------
@@ -199,7 +311,15 @@ def test_write_baseline_with_reasons_fills_accepted_from_the_findings(tmp_path: 
     path = tmp_path / "audit-baseline.json"
     write_baseline(findings, path, reasons=reasons)
     doc = json.loads(path.read_text(encoding="utf-8"))
-    assert list(doc) == ["schema", "kind", "generated_at", "tool", "fingerprints", "accepted"]
+    assert list(doc) == [
+        "schema",
+        "kind",
+        "generated_at",
+        "tool",
+        "fingerprints",
+        "accepted",
+        "index",
+    ]
     assert len(doc["fingerprints"]) == 3
     # Entries follow the findings' order, not the reasons' order; `rule` is the display id
     # (id + sub) and `file` the first evidence location.
@@ -338,6 +458,44 @@ def test_load_baseline_tolerates_an_absent_or_empty_accepted_list(tmp_path: Path
     assert load_accepted(path) == {}
 
 
+def _unrecordable_reasons() -> list[tuple[str, str]]:
+    """Reasons `amend_baseline` refuses; a hand-edited file is held to the same bar."""
+    from aisg.devtools.audit.report import BANNED_PHRASES
+
+    banned_word = "cl" + "ean"
+    secret = "sk-ant-" + "a1b2c3d4e5f6g7h8i9j0k1l2m3n4"
+    cases = [
+        ("caf" + chr(0xE9) + " fixture, not a live key", "ASCII"),
+        # ASCII, but not one printable line: JSON carries these as escapes, so a hand
+        # edit can put them in a file, and the renderers print the reason as one line.
+        ("fixture key\nassembled at runtime", "single line"),
+        ("fixture key\r\nassembled at runtime", "single line"),
+        ("fixture key\tassembled at runtime", "single line"),
+        ("fixture key \x00 assembled at runtime", "single line"),
+        ("fixture key \x7f assembled at runtime", "single line"),
+        (f"reviewed; the target is {banned_word}", "verdict"),
+        (f"the token {secret} is a fixture", "secret"),
+    ]
+    cases.extend((f"reviewed and it {phrase} now", "verdict") for phrase in BANNED_PHRASES)
+    return cases
+
+
+@pytest.mark.parametrize(("reason", "why"), _unrecordable_reasons())
+def test_load_baseline_rejects_an_accepted_reason_amend_would_refuse(
+    tmp_path: Path, reason: str, why: str
+):
+    fp = three()[0].fingerprint
+    path = tmp_path / "b.json"
+    path.write_text(_baseline_doc([fp], [{"fingerprint": fp, "reason": reason}]), encoding="utf-8")
+    with pytest.raises(BaselineError) as info:
+        load_baseline(path)
+    message = str(info.value)
+    assert why in message and fp in message and "b.json" in message
+    assert "\n" not in message
+    # The refusal names the fingerprint, never the text it refused.
+    assert reason not in message
+
+
 def test_load_accepted_on_a_full_report_is_empty(tmp_path: Path):
     report_path = tmp_path / "audit-report.json"
     report_path.write_text(render(make_report(three()), "json"), encoding="utf-8")
@@ -353,7 +511,15 @@ def test_fingerprints_are_line_ending_independent(tmp_path: Path):
     path = tmp_path / "b.json"
     write_baseline([crlf], path, reasons={crlf.fingerprint: "constant argv"})
     result = diff([lf], load_baseline(path), file=path.name)
-    assert result.to_dict() == {"file": "b.json", "new": 0, "fixed": 0, "unchanged": 1}
+    assert result.to_dict() == {
+        "file": "b.json",
+        "kind": None,
+        "new": 0,
+        "unchanged": 1,
+        "accepted": [],
+        "generated_at": None,
+        "no_longer_reported": [],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -361,7 +527,8 @@ def test_fingerprints_are_line_ending_independent(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 
-def test_diff_marks_new_and_unchanged_in_place_and_counts_fixed():
+def test_diff_marks_new_and_unchanged_in_place_and_lists_gone():
+    """A gone fingerprint is listed under `no_longer_reported`; the block carries no count."""
     old = three()
     baseline = {old[0].fingerprint, old[1].fingerprint, "ffffffffffffffff"}
     current = three()
@@ -369,19 +536,117 @@ def test_diff_marks_new_and_unchanged_in_place_and_counts_fixed():
     assert isinstance(result, BaselineDiff)
     assert [f.id for f in result.unchanged] == ["AUD-401", "AUD-402"]
     assert [f.id for f in result.new] == ["AUD-501"]
-    assert result.fixed == ["ffffffffffffffff"]
+    assert result.gone == ["ffffffffffffffff"]
     assert result.file == "audit-baseline.json"
     assert [f.baseline_status for f in current] == ["unchanged", "unchanged", "new"]
+    assert [f.accepted_reason for f in current] == [None, None, None]
     assert result.to_dict() == {
         "file": "audit-baseline.json",
+        "kind": None,
         "new": 1,
-        "fixed": 1,
         "unchanged": 2,
+        "accepted": [],
+        "generated_at": None,
+        "no_longer_reported": [{"fingerprint": "ffffffffffffffff"}],
     }
+    assert list(result.to_dict()) == [
+        "file",
+        "kind",
+        "new",
+        "unchanged",
+        "accepted",
+        "generated_at",
+        "no_longer_reported",
+    ]
+    assert "fixed" not in result.to_dict()
 
 
 def test_diff_normalises_windows_paths_in_file():
     assert diff([], set(), file="out\\audit-baseline.json").file == "out/audit-baseline.json"
+
+
+def test_diff_stamps_accepted_reason_and_lists_the_accepted_entries(tmp_path: Path):
+    old = three()
+    old[1] = make_finding("AUD-402", "b.py", "eval(reply)", sub="eval")
+    path = tmp_path / "audit-baseline.json"
+    write_baseline(old, path, reasons={old[1].fingerprint: "eval on a literal, never on output"})
+    document = read_baseline(path)
+    current = three()
+    current[1] = make_finding("AUD-402", "b.py", "eval(reply)", sub="eval")
+    current[1].evidence = [Evidence(role="match", file="b.py", line=30, snippet="eval(reply)")]
+    # Same fingerprint at a new line: the finding is unchanged, the reason still applies,
+    # and the accepted entry keeps the location the baseline recorded so a renderer can
+    # say where it moved from.
+    assert current[1].fingerprint == old[1].fingerprint
+    assert current[1].location == ("b.py", 30)
+    result = diff(
+        current,
+        document.fingerprints,
+        file=path.name,
+        accepted=document.accepted,
+        index=document.index,
+        generated_at=document.generated_at,
+        kind=document.kind,
+    )
+    assert [f.accepted_reason for f in current] == [
+        None,
+        "eval on a literal, never on output",
+        None,
+    ]
+    assert [f.baseline_status for f in current] == ["unchanged", "unchanged", "unchanged"]
+    block = result.to_dict()
+    assert block["kind"] == "audit-baseline"
+    assert block["accepted"] == [
+        {
+            "fingerprint": old[1].fingerprint,
+            "rule": "AUD-402/eval",
+            "file": "b.py:3",
+            "reason": "eval on a literal, never on output",
+        }
+    ]
+    assert block["generated_at"] == document.generated_at
+    assert block["no_longer_reported"] == []
+
+
+def test_diff_accepted_entry_falls_back_to_the_finding_without_an_index():
+    findings = three()
+    reasons = {findings[0].fingerprint: "constant argv, no user input reaches it"}
+    result = diff(findings, {findings[0].fingerprint}, file="b.json", accepted=reasons)
+    assert result.to_dict()["accepted"] == [
+        {
+            "fingerprint": findings[0].fingerprint,
+            "rule": "AUD-401",
+            "file": "a.py:3",
+            "reason": "constant argv, no user input reaches it",
+        }
+    ]
+    assert findings[0].accepted_reason == reasons[findings[0].fingerprint]
+
+
+def test_diff_names_no_longer_reported_from_the_index(tmp_path: Path):
+    old = three()
+    path = tmp_path / "audit-baseline.json"
+    write_baseline(old, path)
+    document = read_baseline(path)
+    current = three()[:2]  # AUD-501 is gone
+    result = diff(
+        current,
+        document.fingerprints,
+        file=path.name,
+        index=document.index,
+        generated_at=document.generated_at,
+    )
+    assert result.gone == [old[2].fingerprint]
+    assert result.to_dict()["no_longer_reported"] == [
+        {
+            "fingerprint": old[2].fingerprint,
+            "rule": "AUD-501",
+            "file": "c.py:3",
+            "title": "title for AUD-501",
+        }
+    ]
+    # A finding with a reason is accepted; one without stays a bare unchanged finding.
+    assert result.to_dict()["accepted"] == []
 
 
 def test_exit_code_counts_only_new_after_diff(tmp_path: Path):
@@ -412,11 +677,235 @@ def test_report_carries_the_diff(tmp_path: Path):
         ctx, findings, [], [], [], result, rules=[], fail_on="low", exit_code=code
     )
     doc = json.loads(render(report, "json"))
-    assert doc["baseline"] == {"file": "audit-baseline.json", "new": 2, "fixed": 0, "unchanged": 1}
+    assert doc["baseline"] == {
+        "file": "audit-baseline.json",
+        "kind": None,
+        "new": 2,
+        "unchanged": 1,
+        "accepted": [],
+        "generated_at": None,
+        "no_longer_reported": [],
+    }
     assert doc["summary"]["baseline_new"] == 2
     assert doc["summary"]["exit_code"] == 1
     statuses = {f["id"]: f["baseline_status"] for f in doc["findings"]}
     assert statuses == {"AUD-401": "unchanged", "AUD-402": "new", "AUD-501": "new"}
+
+
+# ---------------------------------------------------------------------------
+# amend: record a reason without a re-scan
+# ---------------------------------------------------------------------------
+
+BASELINE_KEYS = ["schema", "kind", "generated_at", "tool", "fingerprints", "accepted", "index"]
+
+
+def _written(tmp_path: Path, reasons: dict[int, str] | None = None) -> tuple[Path, list[Finding]]:
+    """A three-finding baseline on disk; `reasons` is keyed by finding index."""
+    findings = three()
+    findings[1] = make_finding("AUD-402", "b.py", "eval(reply)", sub="eval")
+    path = tmp_path / "audit-baseline.json"
+    by_fingerprint = None
+    if reasons is not None:
+        by_fingerprint = {findings[i].fingerprint: reason for i, reason in reasons.items()}
+    write_baseline(findings, path, reasons=by_fingerprint)
+    return path, findings
+
+
+def test_parse_accept_splits_on_the_first_equals():
+    assert parse_accept("abc=a reason") == ("abc", "a reason")
+    assert parse_accept(" abc = x=y=z ") == ("abc", "x=y=z")
+    for bad in ("abc", "=reason", " =reason", ""):
+        with pytest.raises(BaselineError) as info:
+            parse_accept(bad)
+        assert "FINGERPRINT=REASON" in str(info.value)
+
+
+def test_amend_baseline_records_a_reason_with_rule_and_file_from_the_index(tmp_path: Path):
+    path, findings = _written(tmp_path)
+    before = json.loads(path.read_text(encoding="utf-8"))
+    count = amend_baseline(
+        path, {findings[1].fingerprint: "eval on a literal the model never sees"}
+    )
+    assert count == 1
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    assert list(doc) == BASELINE_KEYS
+    assert doc["accepted"] == [
+        {
+            "fingerprint": findings[1].fingerprint,
+            "rule": "AUD-402/eval",
+            "file": "b.py:3",
+            "reason": "eval on a literal the model never sees",
+        }
+    ]
+    # Nothing else moved: the fingerprints, the scan time, the tool and the index stay.
+    for key in ("generated_at", "tool", "fingerprints", "index"):
+        assert doc[key] == before[key]
+    assert load_accepted(path) == {
+        findings[1].fingerprint: "eval on a literal the model never sees"
+    }
+    assert path.read_text(encoding="utf-8").endswith("}\n")
+
+
+def test_amend_baseline_replaces_the_reason_for_a_repeated_fingerprint(tmp_path: Path):
+    path, findings = _written(tmp_path, reasons={0: "first look, argv is constant"})
+    amend_baseline(path, {findings[0].fingerprint: "second look, argv is a tuple literal"})
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    assert [e["reason"] for e in doc["accepted"]] == ["second look, argv is a tuple literal"]
+    assert doc["accepted"][0]["rule"] == "AUD-401" and doc["accepted"][0]["file"] == "a.py:3"
+    # Appended entries follow the ones already on file, in the order given.
+    amend_baseline(
+        path,
+        {
+            findings[2].fingerprint: "fixture token assembled at runtime",
+            findings[1].fingerprint: "eval on a literal the model never sees",
+        },
+    )
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    assert [e["fingerprint"] for e in doc["accepted"]] == [
+        findings[0].fingerprint,
+        findings[2].fingerprint,
+        findings[1].fingerprint,
+    ]
+    assert list(doc) == BASELINE_KEYS
+
+
+def test_amend_baseline_on_an_old_file_without_an_index_leaves_rule_and_file_null(
+    tmp_path: Path,
+):
+    fp = three()[0].fingerprint
+    path = tmp_path / "old.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "aisg/1",
+                "kind": "audit-baseline",
+                "generated_at": "2026-01-01T00:00:00+00:00",
+                "tool": {"name": "aisg-audit", "version": "0.0.0"},
+                "fingerprints": [fp],
+            }
+        )
+    )
+    amend_baseline(path, {fp: "constant argv, nothing user-controlled reaches it"})
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    assert list(doc) == BASELINE_KEYS[:-1]
+    assert doc["accepted"] == [
+        {
+            "fingerprint": fp,
+            "rule": None,
+            "file": None,
+            "reason": "constant argv, nothing user-controlled reaches it",
+        }
+    ]
+    assert doc["generated_at"] == "2026-01-01T00:00:00+00:00"
+    assert load_accepted(path) == {fp: "constant argv, nothing user-controlled reaches it"}
+
+
+def _banned_word() -> str:
+    return "cl" + "ean"
+
+
+def _secret_shaped() -> str:
+    return "sk-ant-" + "a1b2c3d4e5f6g7h8i9j0k1l2m3n4"
+
+
+def _refusals() -> list[tuple[str, str]]:
+    from aisg.devtools.audit.report import BANNED_PHRASES
+
+    cases = [
+        ("", "empty"),
+        ("   ", "empty"),
+        ("caf" + chr(0xE9) + " fixture, not a live key", "ASCII"),
+        ("constant argv\nsee the ticket", "single line"),
+        ("constant argv\rsee the ticket", "single line"),
+        ("constant argv\tsee the ticket", "single line"),
+        ("constant argv \x1b[0m see the ticket", "single line"),
+        ("constant argv \x7f see the ticket", "single line"),
+        (f"this path is {_banned_word()} after review", "verdict"),
+        (f"reviewed; {_banned_word().upper()}", "verdict"),
+        (f"the token is {_secret_shaped()} and it is a fixture", "secret"),
+        ("api_key = 'abcdefghijklmnop' is a fixture", "secret"),
+    ]
+    cases.extend((f"reviewed and it {phrase} now", "verdict") for phrase in BANNED_PHRASES)
+    cases.extend((f"reviewed: {phrase.upper()}", "verdict") for phrase in BANNED_PHRASES)
+    return cases
+
+
+@pytest.mark.parametrize(("reason", "why"), _refusals())
+def test_amend_baseline_refuses_a_reason_it_cannot_record(tmp_path: Path, reason: str, why: str):
+    path, findings = _written(tmp_path)
+    before = path.read_text(encoding="utf-8")
+    with pytest.raises(BaselineError) as info:
+        amend_baseline(path, {findings[0].fingerprint: reason})
+    message = str(info.value)
+    assert why in message and findings[0].fingerprint in message
+    assert "\n" not in message
+    # The refusal names the fingerprint, never the text it refused.
+    if reason.strip():
+        assert reason.strip() not in message
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_amend_baseline_refuses_a_fingerprint_the_file_does_not_list(tmp_path: Path):
+    path, _findings = _written(tmp_path)
+    before = path.read_text(encoding="utf-8")
+    with pytest.raises(BaselineError) as info:
+        amend_baseline(path, {"ffffffffffffffff": "never scanned, so never listed"})
+    assert "ffffffffffffffff" in str(info.value) and "fingerprints" in str(info.value)
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_amend_baseline_checks_every_accept_before_writing_any(tmp_path: Path):
+    path, findings = _written(tmp_path)
+    before = path.read_text(encoding="utf-8")
+    with pytest.raises(BaselineError):
+        amend_baseline(
+            path,
+            {
+                findings[0].fingerprint: "constant argv, a fine reason",
+                findings[1].fingerprint: "",
+            },
+        )
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_amend_baseline_refuses_a_report_and_an_empty_accept_map(tmp_path: Path):
+    findings = three()
+    report_path = tmp_path / "audit-report.json"
+    report_path.write_text(render(make_report(findings), "json"), encoding="utf-8")
+    before = report_path.read_text(encoding="utf-8")
+    with pytest.raises(BaselineError) as info:
+        amend_baseline(report_path, {findings[0].fingerprint: "a report is not a baseline"})
+    assert "audit-baseline" in str(info.value) and "audit-report.json" in str(info.value)
+    assert report_path.read_text(encoding="utf-8") == before
+    path, _ = _written(tmp_path)
+    with pytest.raises(BaselineError) as info:
+        amend_baseline(path, {})
+    assert "nothing to accept" in str(info.value)
+
+
+def test_amended_baseline_diffs_with_the_reason_stamped(tmp_path: Path):
+    path, findings = _written(tmp_path)
+    amend_baseline(path, {findings[2].fingerprint: "fixture token assembled at runtime"})
+    document = read_baseline(path)
+    current = three()
+    current[1] = make_finding("AUD-402", "b.py", "eval(reply)", sub="eval")
+    result = diff(
+        current,
+        document.fingerprints,
+        file=path.name,
+        accepted=document.accepted,
+        index=document.index,
+        generated_at=document.generated_at,
+    )
+    assert current[2].accepted_reason == "fixture token assembled at runtime"
+    assert result.to_dict()["accepted"][0]["rule"] == "AUD-501"
+    report = make_report(current)
+    doc = json.loads(render(report, "json"))
+    stamped = [f for f in doc["findings"] if f.get("accepted_reason")]
+    assert [f["id"] for f in stamped] == ["AUD-501"]
+    assert (
+        list(stamped[0]).index("accepted_reason") == list(stamped[0]).index("baseline_status") + 1
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -435,7 +924,9 @@ def test_committed_baseline_has_a_reason_for_every_fingerprint():
     assert fingerprints, "the self-audit has findings; an empty baseline is a stale one"
     assert set(reasons) == fingerprints
     doc = json.loads(COMMITTED_BASELINE.read_text(encoding="utf-8"))
-    assert list(doc) == ["schema", "kind", "generated_at", "tool", "fingerprints", "accepted"]
+    # A file regenerated by this version also carries the trailing `index`; one written
+    # before it does not. Either way the order in front of it is pinned.
+    assert list(doc) in (BASELINE_KEYS, BASELINE_KEYS[:-1])
     for entry in doc["accepted"]:
         assert entry["rule"].startswith("AUD-"), entry
         assert entry["file"], entry

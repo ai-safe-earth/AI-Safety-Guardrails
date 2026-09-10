@@ -28,7 +28,9 @@ from aisg.devtools.audit.discover import (
     unit_ai_surface,
 )
 from aisg.devtools.audit.model import INVENTORY_KEYS, Hit, Inventory, UnknownCategory
+from aisg.devtools.audit.rules.observability import contact_named
 from aisg.devtools.audit.walk import FileRecord
+from aisg.devtools.system_card import DEFAULT_CARD, _yaml_scalar
 
 BASELINE_FIXTURE = "clean_py"  # the fixture with no AI surface at all
 
@@ -513,11 +515,12 @@ def test_invalid_json_report(tmp_path: Path) -> None:
     assert item is not None and item.category is UnknownCategory.REPORTS
 
 
-@pytest.mark.parametrize("kind", ["audit", "audit-baseline"])
+@pytest.mark.parametrize("kind", ["audit", "audit-baseline", "inventory"])
 def test_own_output_is_neither_a_report_nor_an_unknown(tmp_path: Path, kind: str) -> None:
-    # A committed audit-baseline.json (or a saved audit report) carries `schema: aisg/1`
-    # and matches the report file glob. It is the audit's own output, not measurement
-    # evidence about the system: no ReportRecord, and no "unknown report" noise either.
+    # A committed audit-baseline.json (or a saved audit report or inventory) carries
+    # `schema: aisg/1` and matches the report file glob. It is the audit's own output, not
+    # measurement evidence about the system: no ReportRecord, and no "unknown report"
+    # noise either.
     path = tmp_path / "audit-report.json"
     body = {"schema": "aisg/1", "kind": kind, "generated_at": "2026-08-20T10:15:00Z"}
     if kind == "audit-baseline":
@@ -534,12 +537,113 @@ def test_own_output_is_neither_a_report_nor_an_unknown(tmp_path: Path, kind: str
     ]
 
 
+def test_gitignored_audit_dir_report_is_still_evidence(reports_root: Path) -> None:
+    # The skill writes its measure and probe reports under `.aisg-audit/` and proposes
+    # that directory for `.gitignore`. Once the line lands the reports must still be
+    # discovered, flagged as gitignored, and read with an age -- not silently pruned.
+    audit_dir = reports_root / patterns.AUDIT_DIR
+    audit_dir.mkdir()
+    shutil.move(str(reports_root / "measure-report-new.json"), str(audit_dir / "measure.json"))
+    (reports_root / ".gitignore").write_text(f"{patterns.AUDIT_DIR}/\n", encoding="utf-8")
+
+    records, _units, _unknown = walk.walk(reports_root)
+    rel = f"{patterns.AUDIT_DIR}/measure.json"
+    record = next(r for r in records if r.relpath == rel)
+    assert record.gitignored is True
+
+    inv, _hits, _facts = run(reports_root)
+    reports = {r.file: r for r in inv.reports}
+    assert rel in reports
+    assert reports[rel].kind == "measure"
+    assert reports[rel].age_source == "generated_at"
+
+
 def test_read_system_card(tmp_path: Path, audit_fixture) -> None:
     card = read_system_card(audit_fixture("py_agent") / "ai-system-card.yaml")
     assert isinstance(card, dict)
     bad = tmp_path / "ai-system-card.yaml"
     bad.write_text("- just\n- a list\n", encoding="utf-8")
     assert read_system_card(bad) is None
+
+
+@pytest.mark.parametrize(
+    "value,recorded",
+    [
+        ('""', ""),
+        ("'   '", "   "),
+        ("TODO", "TODO"),
+        ("todo - fill in", "todo - fill in"),
+        ("TODO(security) who is on call?", "TODO(security) who is on call?"),
+        ("none", "none"),
+        ("n/a", "n/a"),
+        ("tbd", "tbd"),
+        ("~", None),
+        ("[]", None),
+        ("{}", None),
+    ],
+)
+def test_incident_contact_placeholder_counts_as_absent(
+    tmp_path: Path, value: str, recorded: str | None
+) -> None:
+    # `aisg init` writes a TODO placeholder for `incident_contact`; an unfilled one must
+    # not satisfy the contact rule the way a real contact does. The inventory records
+    # the placeholder string as written (so AUD-703 can say the key is unfilled, not
+    # missing), and `contact_named` reads it as absent; a YAML null or an empty
+    # collection carries no text and stays None.
+    root = project(
+        tmp_path, {"ai-system-card.yaml": f"risk_tier: TODO\nincident_contact: {value}\n"}
+    )
+    inv, _hits, _facts = run(root)
+    assert inv.system_card is not None
+    assert inv.system_card["incident_contact"] == recorded
+    assert contact_named(inv.system_card["incident_contact"]) is False
+
+
+def test_incident_contact_from_aisg_init_defaults_is_recorded_as_written(
+    tmp_path: Path, audit_fixture
+) -> None:
+    # The line `aisg init --defaults` writes: the key is present, the value is the
+    # placeholder. The card must carry that string, and the string must not be a contact.
+    root = tmp_path / "card"
+    shutil.copytree(audit_fixture("py_agent"), root)
+    card = root / "ai-system-card.yaml"
+    line = f"incident_contact: {_yaml_scalar(DEFAULT_CARD['incident_contact'])}\n"
+    card.write_text(card.read_text(encoding="utf-8") + line, encoding="utf-8")
+    inv, _hits, _facts = run(root)
+    assert inv.system_card is not None
+    assert inv.system_card["incident_contact"] == DEFAULT_CARD["incident_contact"]
+    assert inv.system_card["incident_contact"].startswith("TODO")
+    assert contact_named(inv.system_card["incident_contact"]) is False
+
+
+@pytest.mark.parametrize(
+    "card,expected,named",
+    [
+        (
+            "incident_contact: TODO\nsecurity_contact: oncall@example.com\n",
+            "oncall@example.com",
+            True,
+        ),
+        ("incident:\n  contact: '  '\n", "  ", False),
+        ("incident:\n  contact: sec@example.com\n", "sec@example.com", True),
+        ("contact: sec@example.com\n", "sec@example.com", True),
+        ("incident_contact: todo-list@example.com\n", "todo-list@example.com", False),
+        ("incident_contact: TODO\nincident:\n  contact: n/a\n", "TODO", False),
+        ("incident_contact: ~\nincident:\n  contact: tbd\n", "tbd", False),
+    ],
+)
+def test_incident_contact_placeholder_falls_through(
+    tmp_path: Path, card: str, expected: str, named: bool
+) -> None:
+    # A placeholder behaves as if the key were absent: the next key still counts. When
+    # no key names anyone, the first placeholder string is what the card records. The
+    # `todo-list@` row is the cost of the prefix rule, pinned so it is a choice, not a
+    # surprise: it is recorded, and read as unfilled.
+    root = project(tmp_path, {"ai-system-card.yaml": card})
+    inv, _hits, _facts = run(root)
+    assert inv.system_card is not None
+    assert inv.system_card["incident_contact"] == expected
+    assert contact_named(inv.system_card["incident_contact"]) is named
 
 
 # ---------------------------------------------------------------------------

@@ -26,6 +26,7 @@ from aisg.devtools.audit.model import (
     Finding,
     Hit,
     MatchKind,
+    Package,
     Recommendation,
     Scope,
     Severity,
@@ -292,10 +293,21 @@ class ShellSink(_SinkRule):
             "step for anything that writes or sends."
         ),
         alternatives=(
-            "aisg ToolPolicyGuard with shell_command in the approval-required set",
+            "aisg ToolPolicyGuard with shell_command in the approval-required set, and "
+            "LLMToolFilter with shell_command kept in high_risk_fail_closed",
             "Argv lists with shlex.quote and shell=False; no string interpolation into a command",
             "Run tool code in a container or gVisor/Firecracker sandbox with no network by default",
             "NeMo Guardrails output rail that refuses executable text",
+        ),
+        package=Package(
+            mechanism="gate",
+            symbols=("ToolPolicyGuard", "LLMToolFilter"),
+            same_control=False,
+            leaves_open=(
+                "Argv lists, `shell=False` and a sandbox are changes at the sink. The gate "
+                "decides whether the call is dispatched; the string still reaches a shell "
+                "when it is."
+            ),
         ),
     )
 
@@ -319,6 +331,15 @@ class EvalSink(_SinkRule):
             "a timeout and no filesystem",
             "E2B / Modal style remote sandboxes for agent-written code",
         ),
+        package=Package(
+            mechanism="gate",
+            symbols=("ToolPolicyGuard",),
+            same_control=False,
+            leaves_open=(
+                "Removing eval/exec from the path is the control. A gate on the tool that "
+                "wraps it decides whether the tool runs, not what the interpreter evaluates."
+            ),
+        ),
     )
 
 
@@ -335,10 +356,20 @@ class SqlSink(_SinkRule):
             "of prepared statements, and run text-to-SQL against a read-only replica."
         ),
         alternatives=(
-            "aisg ToolPolicyGuard with database_write in the high-risk fail-closed set",
+            "aisg ToolPolicyGuard approval on the write tool, and LLMToolFilter with "
+            "database_write kept in high_risk_fail_closed so a judge outage blocks",
             "Parameterised queries / prepared statements; model output only in bind values",
             "A read-only database role for any connection the agent can reach",
             "SQL allowlist or parser (sqlglot) that rejects DDL/DML before execution",
+        ),
+        package=Package(
+            mechanism="gate",
+            symbols=("ToolPolicyGuard", "LLMToolFilter"),
+            same_control=False,
+            leaves_open=(
+                "Parameterised queries are the control. A gate and a fail-closed judge decide "
+                "whether the call is made; the text is still a query once it is."
+            ),
         ),
     )
 
@@ -357,11 +388,15 @@ class HtmlSink(_SinkRule):
             "with an element allowlist, and ship a Content-Security-Policy."
         ),
         alternatives=(
-            "aisg OutputSanitizer on the output stage before rendering",
             "textContent / autoescaping templates instead of innerHTML, Markup or mark_safe",
             "DOMPurify or bleach with an explicit tag allowlist",
             "A strict Content-Security-Policy so injected markup cannot run script",
+            "aisg: nothing here applies. The output stage ships a judge (llm_output_filter) "
+            "and a pattern list (toxicity_output); neither escapes or sanitises markup. The "
+            "control is escaping, a sanitiser or a CSP at the sink.",
         ),
+        # No guard in this package rewrites markup; the sink has to escape.
+        package=Package("none"),
     )
 
 
@@ -378,10 +413,21 @@ class UrlSink(_SinkRule):
             "allowlist, block private ranges, and never attach credentials to it."
         ),
         alternatives=(
-            "aisg ToolPolicyGuard with an allowlist on fetch/browse tools",
+            "aisg ToolPolicyGuard with a ToolPolicy whose `argument_rules` glob the URL "
+            "argument of fetch/browse tools",
             "Host allowlist plus a resolver check that rejects loopback, link-local and RFC1918",
             "An egress proxy that strips credentials and logs every outbound request",
             "Pre-registered URL templates the model fills with validated parameters only",
+        ),
+        package=Package(
+            mechanism="gate",
+            symbols=("ToolPolicyGuard", "ToolPolicy"),
+            same_control=False,
+            leaves_open=(
+                "The glob matches the argument text before dispatch. Resolving the host, "
+                "rejecting private ranges and stripping credentials from the request happen "
+                "at the resolver and stay open."
+            ),
         ),
     )
 
@@ -403,6 +449,15 @@ class FsSink(_SinkRule):
             "Path.resolve() + is_relative_to(allowed_root) before every open(..., 'w')",
             "Run the agent in a container with a single writable mount",
             "A versioned scratch store (git worktree, object store) so writes are reviewable",
+        ),
+        package=Package(
+            mechanism="gate",
+            symbols=("ToolPolicyGuard",),
+            same_control=False,
+            leaves_open=(
+                "Path confinement (resolve, then check the root) is the control. The gate "
+                "asks before a write tool runs; it does not check where the path points."
+            ),
         ),
     )
 

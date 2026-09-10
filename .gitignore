@@ -58,3 +58,8 @@ bench/.cache/
 # to live in git history. Drop these two lines if you want them committed.
 bench/results/*.json
 bench/results/*.sarif
+
+# aisg audit artefacts written by the skill flow (before/after documents,
+# baseline drafts). The walk still reads them: measure and probe reports there
+# count as evidence, and the audit's own documents are skipped by content.
+.aisg-audit/

@@ -27,7 +27,8 @@ Usage:
 from __future__ import annotations
 
 import fnmatch
-from dataclasses import dataclass, field
+import inspect
+from dataclasses import dataclass, field, fields
 from typing import Awaitable, Callable
 
 from aisg.core.base import Action, CheckResult, Finding, GuardrailBase, GuardrailStage, Severity
@@ -55,6 +56,9 @@ class ToolPolicy:
     allow: list[str] = field(default_factory=lambda: [])
     deny: list[str] = field(default_factory=lambda: ["*"])
     argument_rules: dict[str, dict[str, str]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _check_shape(self.allow, self.deny, self.argument_rules, where="Tool policy")
 
     def is_allowed(self, tool_name: str) -> bool:
         # Deny takes precedence
@@ -89,6 +93,80 @@ class ToolPolicy:
         return True, ""
 
 
+def _is_pattern_list(value: object) -> bool:
+    return isinstance(value, (list, tuple)) and all(isinstance(p, str) for p in value)
+
+
+def _check_shape(allow: object, deny: object, argument_rules: object, *, where: str) -> None:
+    """
+    Reject a policy whose fields have the wrong shape.
+
+    `is_allowed` iterates `allow` and `deny`, so a YAML scalar where a list was
+    meant (`allow: "read_*"`) used to load without complaint and then iterate
+    character by character -- and the `*` in it matched every tool. The message
+    names the field and the type it got, never the value: a policy mapping can
+    carry secrets (an argument rule for an API key, say).
+    """
+    problems: list[str] = []
+    for name, value in (("allow", allow), ("deny", deny)):
+        if not _is_pattern_list(value):
+            problems.append(f"'{name}' must be a list of patterns, got {type(value).__name__}")
+    if not isinstance(argument_rules, dict):
+        problems.append(
+            "'argument_rules' must be a mapping of tool name to {argument: pattern}, "
+            f"got {type(argument_rules).__name__}"
+        )
+    else:
+        for tool, rules in argument_rules.items():
+            if not isinstance(tool, str):
+                problems.append(
+                    f"'argument_rules' keys must be tool names, got {type(tool).__name__}"
+                )
+                continue
+            if not isinstance(rules, dict) or not all(
+                isinstance(k, str) and isinstance(v, str) for k, v in rules.items()
+            ):
+                problems.append(
+                    "'argument_rules' entries must be mappings of argument name to a glob "
+                    f"pattern string, got {type(rules).__name__} for one tool"
+                )
+    if problems:
+        raise ValueError(f"{where}: {'; '.join(problems)}.")
+
+
+def _coerce_policy(role: str, value: ToolPolicy | dict) -> ToolPolicy:
+    """
+    A YAML config (`GuardrailPipeline.from_config`) hands over plain dicts,
+    while `check` reads ToolPolicy attributes. Coerce here rather than at use,
+    so a typo in the config fails at load time with the role and key named,
+    not mid-request with a bare TypeError from the dataclass constructor.
+
+    Shapes are checked here as well as in `ToolPolicy.__post_init__`, so the
+    error names the role, and so a ToolPolicy whose fields were reassigned
+    after construction is caught when the guard is built.
+    """
+    where = f"Tool policy for role '{role}'"
+    if isinstance(value, ToolPolicy):
+        _check_shape(value.allow, value.deny, value.argument_rules, where=where)
+        return value
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"Tool policy for role '{role}' must be a ToolPolicy or a mapping, "
+            f"got {type(value).__name__}."
+        )
+    known = {f.name for f in fields(ToolPolicy)}
+    unknown = sorted(set(value) - known)
+    if unknown:
+        raise ValueError(
+            f"Tool policy for role '{role}' has unknown key(s) {', '.join(map(repr, unknown))}; "
+            f"expected one of: {', '.join(sorted(known))}."
+        )
+    defaults = {f.name: f.default_factory() for f in fields(ToolPolicy)}  # type: ignore[misc]
+    merged = {**defaults, **value}
+    _check_shape(merged["allow"], merged["deny"], merged["argument_rules"], where=where)
+    return ToolPolicy(**value)
+
+
 # Built-in risk tiers for common tool categories
 TOOL_RISK_TIERS: dict[str, str] = {
     # Low risk — read-only, no side effects
@@ -118,7 +196,8 @@ class ToolPolicyGuard(GuardrailBase):
     Enforces tool access policies for agentic AI systems.
 
     Config:
-        policies:          Dict[role_name, ToolPolicy]
+        policies:          Dict[role_name, ToolPolicy]. A mapping with ToolPolicy's
+                           field names (the YAML form) is accepted and converted.
         require_approval:  List of tool name patterns that need human approval
         default_deny:      If True (recommended), block unmatched tools (default: True)
         approval_callback: async callable(tool_name, args, context) -> bool
@@ -132,7 +211,7 @@ class ToolPolicyGuard(GuardrailBase):
 
     def setup(
         self,
-        policies: dict[str, ToolPolicy] | None = None,
+        policies: dict[str, ToolPolicy | dict] | None = None,
         require_approval: list[str] | None = None,
         default_deny: bool = True,
         approval_callback: Callable[[str, dict, dict], Awaitable[bool]] | None = None,
@@ -142,7 +221,27 @@ class ToolPolicyGuard(GuardrailBase):
         max_calls_per_tool: int = 0,
         **kwargs,
     ):
-        self.policies = policies or {}
+        """
+        Every keyword is a control; an unknown one is a typo that would switch a
+        control off (`require_aproval:` loads as no approval list). So unknown
+        keywords are an error, not ignored. `GuardrailBase.__init__` consumes
+        `enabled` and `GuardrailPipeline.from_config` strips nothing else, so
+        there is no key every guard must tolerate here.
+        """
+        if kwargs:
+            accepted = [
+                p.name
+                for p in inspect.signature(self.setup).parameters.values()
+                if p.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+            ]
+            raise ValueError(
+                f"{type(self).__name__} got unknown option(s) "
+                f"{', '.join(map(repr, sorted(kwargs)))}; "
+                f"accepted options: {', '.join(accepted)}."
+            )
+        self.policies: dict[str, ToolPolicy] = {
+            role: _coerce_policy(role, policy) for role, policy in (policies or {}).items()
+        }
         self.require_approval = require_approval or []
         self.default_deny = default_deny
         self.approval_callback = approval_callback

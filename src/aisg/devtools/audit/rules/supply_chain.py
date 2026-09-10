@@ -27,6 +27,7 @@ from aisg.devtools.audit.model import (
     EvidenceKind,
     Finding,
     MatchKind,
+    Package,
     Recommendation,
     Severity,
     Tier,
@@ -182,10 +183,19 @@ class UnpinnedModel(AuditRule):
             "and bump it deliberately with an eval run."
         ),
         alternatives=(
-            "aisg measure with the pinned id recorded in measure-report.json",
+            "aisg measure with the pinned id recorded in .aisg-audit/measure-report.json",
             "promptfoo evals gating the model bump in CI",
             "a config-level model registry with one id per environment",
             "vendor model-version aliases resolved once at deploy time and logged",
+        ),
+        package=Package(
+            mechanism="measurement",
+            symbols=("aisg measure",),
+            same_control=False,
+            leaves_open=(
+                "Pinning the id is an edit to the call site. `aisg measure` records the id it "
+                "saw in its report, so a later drift is visible; it does not pin anything."
+            ),
         ),
     )
 
@@ -264,6 +274,15 @@ class UnpinnedMcp(AuditRule):
             "Docker digests (`@sha256:`) for MCP images and CI base images",
             "aisg audit in CI with --fail-on high",
             "Renovate / Dependabot to bump the pins under review",
+        ),
+        package=Package(
+            mechanism="detector",
+            symbols=("aisg audit",),
+            same_control=False,
+            leaves_open=(
+                "Pinning the MCP command and keeping a lockfile is the control. The audit in "
+                "CI reports an unpinned entry; it does not pin it."
+            ),
         ),
     )
 
@@ -349,6 +368,9 @@ class RemoteMcp(AuditRule):
             "aisg audit --trusted-mcp-hosts <host> after a documented review",
             "network policy (egress allowlist) around the host process",
         ),
+        # `--trusted-mcp-hosts` is an audit input recorded after a review, not a control
+        # on the connection; nothing in the package sits between the host and the server.
+        package=Package("none"),
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
@@ -436,6 +458,15 @@ class McpDescriptionPoisoning(AuditRule):
             "aisg PromptInjectionGuard over tool descriptions at registration time",
             "a host-side tool allowlist with pinned description hashes",
             "Invariant Labs / Lakera tool-description scanning",
+        ),
+        package=Package(
+            mechanism="detector",
+            symbols=("PromptInjectionGuard",),
+            same_control=False,
+            leaves_open=(
+                "Running the guard over tool descriptions at registration screens the text "
+                "once. Removing the server, or pinning a reviewed version, is the control."
+            ),
         ),
     )
 
@@ -543,6 +574,15 @@ class UnpinnedWeights(AuditRule):
             "aisg audit in CI with --fail-on high",
             "picklescan / modelscan over artefacts before they are loaded",
         ),
+        package=Package(
+            mechanism="detector",
+            symbols=("aisg audit",),
+            same_control=False,
+            leaves_open=(
+                "Verified, pinned weights are the control. The audit in CI reports the "
+                "unpinned load; it never opens or checks the artefact."
+            ),
+        ),
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
@@ -605,6 +645,15 @@ class DependencyVulns(AuditRule):
             "Dependabot or Renovate security updates",
             "aisg audit in CI, which folds those scanners in when present",
             "an SBOM (CycloneDX) matched against OSV on a schedule",
+        ),
+        package=Package(
+            mechanism="detector",
+            symbols=("aisg audit",),
+            same_control=False,
+            leaves_open=(
+                "The audit folds in the output of a scanner that is already installed; it "
+                "installs nothing and queries no advisory feed itself. Upgrading is the control."
+            ),
         ),
     )
 

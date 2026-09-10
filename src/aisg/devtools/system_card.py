@@ -50,6 +50,9 @@ DEFAULT_CARD = {
     "annex_iii_category": None,
     "affected_persons": "TODO: who is affected by this system's outputs?",
     "deployment": "unknown",
+    # `aisg audit` (AUD-703, AUD-1001) reads this key; a value still starting
+    # with "TODO" counts as no contact, so the placeholder cannot satisfy it.
+    "incident_contact": "TODO: who to reach when this system misbehaves (mailbox, pager, queue)",
 }
 
 
@@ -131,6 +134,9 @@ def render_card(card: dict) -> str:
         "# Where the system is placed on the market or put into service.",
         f"deployment: {_yaml_scalar(card['deployment'])}",
         "",
+        "# Who to reach when the system misbehaves: a mailbox, pager or ticket queue.",
+        f"incident_contact: {_yaml_scalar(card['incident_contact'])}",
+        "",
     ]
     return "\n".join(lines)
 
@@ -156,6 +162,9 @@ def collect_interactive() -> dict:
 
     card["affected_persons"] = _prompt("Affected persons", DEFAULT_CARD["affected_persons"])
     card["deployment"] = _prompt("Deployment", "unknown", DEPLOYMENTS)
+    card["incident_contact"] = _prompt(
+        "Incident contact (who to reach when it misbehaves)", DEFAULT_CARD["incident_contact"]
+    )
     return card
 
 
@@ -225,7 +234,10 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Wrote {dest}")
     if args.defaults:
-        print("Placeholder values written. Fill in purpose, affected_persons and risk_tier.")
+        print(
+            "Placeholder values written. Fill in purpose, affected_persons, risk_tier "
+            "and incident_contact."
+        )
     print("risk_tier is a legal determination -- aisg recorded your answer, it did not classify.")
     return 0
 

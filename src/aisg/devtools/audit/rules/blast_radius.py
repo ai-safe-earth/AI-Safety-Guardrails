@@ -14,6 +14,7 @@ location; nothing is emitted twice for one line.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Iterable
 
@@ -25,6 +26,7 @@ from aisg.devtools.audit.model import (
     EvidenceKind,
     Finding,
     MatchKind,
+    Package,
     Recommendation,
     Scope,
     Severity,
@@ -279,6 +281,48 @@ def _symbol_present(hits: list[Any], symbols: tuple[str, ...], body: Iterable[st
     return False
 
 
+def _unit_python_texts(ctx: AuditContext, unit_id: str | None) -> list[tuple[str, str]]:
+    """(relpath, text) for every Python file the walk enumerated in `unit_id`, sorted."""
+    out: list[tuple[str, str]] = []
+    for record in ctx.files or []:
+        relpath = getattr(record, "relpath", None)
+        if not relpath or getattr(record, "unit", None) != unit_id:
+            continue
+        if not str(relpath).endswith((".py", ".pyi")):
+            continue
+        text = file_text(ctx, str(relpath))
+        if text:
+            out.append((str(relpath).replace("\\", "/"), text))
+    return sorted(out)
+
+
+# The package's own controls for AUD-103 and AUD-105 are keyword arguments, not the
+# generic vocabulary the grep tables carry: `ToolPolicy(argument_rules={...})` is an
+# allowlist on the tool's arguments, and `ToolPolicyGuard(max_tool_calls_per_session=...)`
+# / `max_calls_per_tool=...` is a per-session budget. The vocabulary rows match whole
+# words, so `max_tool_calls` does not match `max_tool_calls_per_session`; these are
+# looked for by name so a rule can see the control it recommends.
+_ARGUMENT_RULES_RE = re.compile(r"\bargument_rules\s*=")
+_TOOL_BUDGET_KWARG_RE = re.compile(
+    r"\b(?:max_tool_calls_per_session|max_calls_per_tool)\s*=\s*[1-9]"
+)
+
+
+def _argument_rules_name_tool(ctx: AuditContext, tool: ToolRef) -> bool:
+    """A file in the tool's unit passes `argument_rules=` and names the tool."""
+    for _relpath, text in _unit_python_texts(ctx, tool.unit):
+        if _ARGUMENT_RULES_RE.search(text) and re.search(rf"\b{re.escape(tool.name)}\b", text):
+            return True
+    return False
+
+
+def _tool_budget_kwarg_in_unit(ctx: AuditContext, unit_id: str | None) -> bool:
+    """A file in the unit sets a non-zero `max_tool_calls_per_session` or `max_calls_per_tool`."""
+    return any(
+        _TOOL_BUDGET_KWARG_RE.search(text) for _relpath, text in _unit_python_texts(ctx, unit_id)
+    )
+
+
 def _sorted(findings: list[Finding]) -> list[Finding]:
     return sorted(findings, key=lambda f: (f.location[0], f.location[1], f.sub or ""))
 
@@ -321,9 +365,12 @@ class HostOverGrant(AuditRule):
             "keep the sandbox on.",
             "Run the host inside a throwaway container or VM when a broad grant is unavoidable, "
             "so the blast radius is the container.",
-            "aisg: put a ToolPolicyGuard with an approval_callback in front of the tool layer so "
-            "the host grant is not the only gate.",
+            "aisg: nothing here applies. ToolPolicyGuard only sees tools dispatched through "
+            "`run_processing`; a host grant is read by the agent host before any pipeline runs, "
+            "so the grant itself has to be narrowed.",
         ),
+        # The host reads its own settings file; no guard in this package sits on that path.
+        package=Package("none"),
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
@@ -441,8 +488,18 @@ class UncappedLoop(AuditRule):
             "`max_turns` on Runner.run.",
             "Wrap the loop in an asyncio timeout or a deadline check so a stuck model cannot "
             "spend unbounded tokens.",
-            "aisg: add a RateLimiter guard on the pipeline context so repeated calls in one "
-            "session hit a budget.",
+            "aisg: RateLimiter (aisg.modules.input.rate_limiter) keeps a per-identity sliding "
+            "window over requests and words, keyed by `key_field` on the shared context, so "
+            "repeated calls in one session hit a budget; it does not count loop iterations.",
+        ),
+        package=Package(
+            mechanism="budget",
+            symbols=("RateLimiter",),
+            same_control=False,
+            leaves_open=(
+                "RateLimiter is a per-identity sliding window on requests and words; it does "
+                "not cap loop iterations. The loop cap is `max_iterations` in your loop."
+            ),
         ),
     )
 
@@ -548,7 +605,19 @@ class FetchNoAllowlist(AuditRule):
             "refuse anything else; block private ranges and loopback.",
             "Route tool traffic through an egress proxy that only resolves the allowed hosts.",
             "Use the provider's hosted web tool with its domain filter instead of raw requests.",
-            "aisg: register the tool with a ToolPolicyGuard policy that carries the domain list.",
+            "aisg: give ToolPolicyGuard a ToolPolicy whose `argument_rules` maps the tool's "
+            "URL argument to a glob such as `https://api.example.com/*`; a call whose argument "
+            "does not match is blocked before dispatch.",
+        ),
+        package=Package(
+            mechanism="gate",
+            symbols=("ToolPolicyGuard", "ToolPolicy"),
+            same_control=True,
+            leaves_open=(
+                "`argument_rules` apply only to calls dispatched through `run_processing`. The "
+                "glob matches the argument text; it does not resolve hosts or block private "
+                "address ranges."
+            ),
         ),
     )
 
@@ -559,6 +628,8 @@ class FetchNoAllowlist(AuditRule):
                 continue
             hits = hits_in(ctx, "allowlist", unit=tool.unit)
             if _symbol_present(hits, vocab.ALLOWLIST_SYMBOLS, tool.body_symbols):
+                continue
+            if _argument_rules_name_tool(ctx, tool):
                 continue
             findings.append(
                 self.finding(
@@ -603,8 +674,18 @@ class ExecNoSandbox(AuditRule):
             "Use a hosted code sandbox (e2b, modal) so the host never runs the command.",
             "Allowlist the exact binaries and argument shapes; refuse shell=True and any "
             "interpreter.",
-            "aisg: gate the tool with ToolPolicyGuard and keep `shell_command` on the "
-            "high_risk_fail_closed list so a judge outage blocks rather than allows.",
+            "aisg: gate the tool with ToolPolicyGuard and keep `shell_command` on "
+            "LLMToolFilter's high_risk_fail_closed list so a judge outage blocks rather than "
+            "allows; neither replaces the sandbox.",
+        ),
+        package=Package(
+            mechanism="gate",
+            symbols=("ToolPolicyGuard", "LLMToolFilter"),
+            same_control=False,
+            leaves_open=(
+                "A sandbox is structural. A gate in front of the tool and a fail-closed judge "
+                "decide whether a command runs; neither confines what it can reach once it does."
+            ),
         ),
     )
 
@@ -659,8 +740,19 @@ class NoToolBudget(AuditRule):
             "OpenAI Agents SDK / LangGraph: set `max_turns` or `recursion_limit` per run.",
             "Put a token or cost budget on the session at the gateway (a per-key rate limit) so "
             "the cap holds even when the loop is bypassed.",
-            "aisg: enable the tool session budget (`_tool_session_counters` on the shared "
-            "context) via ToolPolicyGuard.",
+            "aisg: set `max_tool_calls_per_session` and `max_calls_per_tool` on "
+            "ToolPolicyGuard; the counters live on the shared context dict, so one dict per "
+            "request is required for the cap to hold.",
+        ),
+        package=Package(
+            mechanism="budget",
+            symbols=("ToolPolicyGuard",),
+            same_control=True,
+            leaves_open=(
+                "`max_tool_calls_per_session` and `max_calls_per_tool` count only calls "
+                "dispatched through `run_processing` with the shared context dict. A tool "
+                "called directly is not counted."
+            ),
         ),
     )
 
@@ -674,6 +766,8 @@ class NoToolBudget(AuditRule):
             if len(names) < 3:
                 continue
             if hits_in(ctx, "budget", unit=unit_id):
+                continue
+            if _tool_budget_kwarg_in_unit(ctx, unit_id):
                 continue
             first = tools[0]
             snippet = f"{len(names)} tools registered: {', '.join(names)}"
@@ -733,9 +827,12 @@ class BroadCredentials(AuditRule):
             "Move the credential to a secret manager and inject it only into the service that "
             "needs it, not the compose-wide or job-wide environment.",
             "Split the agent into its own compose service / CI job with a minimal env block.",
-            "aisg: run the PIIDetector and secret guards on tool output so a leaked value is "
-            "redacted before it reaches the model.",
+            "aisg: nothing here applies. PIIDetector has no credential entity type, and this "
+            "package ships no guard that reads or scopes a token; the control is the scoped "
+            "credential itself.",
         ),
+        # Scope is a property of the credential, not of anything on the request path.
+        package=Package("none"),
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
@@ -848,9 +945,12 @@ class NoKillSwitch(AuditRule):
             "`kill_switch` / `circuit_breaker` name that the request path reads live.",
             "Put the switch at the edge: a gateway rule that returns 503 for the agent route so "
             "the process itself need not be trusted to stop.",
-            "aisg: gate the pipeline on a kill-switch guard rather than GUARDRAILS_DISABLE_ALL, "
-            "which this package declares but does not read.",
+            "aisg: nothing here applies. This package ships no kill-switch guard, and "
+            "`GUARDRAILS_DISABLE_ALL` is declared in Settings but read by nothing; the control "
+            "is a disable path your own request handler checks.",
         ),
+        # A switch nobody reads is not a switch; the package has none that is read.
+        package=Package("none"),
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
@@ -937,6 +1037,15 @@ class UnsafeHooksCi(AuditRule):
             "in the next, so the transcript shows what ran.",
             "aisg: keep the hook, but run `aisg audit` in CI so a change to the hook command "
             "shows up as a new finding.",
+        ),
+        package=Package(
+            mechanism="detector",
+            symbols=("aisg audit",),
+            same_control=False,
+            leaves_open=(
+                "The audit in CI reports a regression after the fact. Pinning the hook and "
+                "dropping the network step is the control; the audit changes neither."
+            ),
         ),
     )
 

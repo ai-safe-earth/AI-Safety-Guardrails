@@ -207,7 +207,7 @@ _AISG_GUARD_RE = re.compile(
 )
 
 # ``kind`` values the audit itself emits; its own output is never evidence.
-_OWN_OUTPUT_KINDS = frozenset({"audit", "audit-baseline"})
+_OWN_OUTPUT_KINDS = frozenset({"audit", "audit-baseline", "inventory"})
 
 _IDENT_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]{3,}\b")
 _IDENT_STOP = frozenset(
@@ -1225,14 +1225,41 @@ def _risk_tier(value: Any) -> str:
     return text
 
 
+def _is_card_placeholder(value: Any) -> bool:
+    """`aisg init` writes `TODO` placeholders; an unfilled one is not a contact.
+
+    `vocab.is_unset` is the reading: blank, `TODO...`, the placeholder words and YAML
+    null. The rules that read the card (AUD-703, AUD-1002, AUD-1003) share it.
+    """
+    return vocab.is_unset(value)
+
+
 def _incident_contact(card: dict[str, Any]) -> Any:
-    for key in ("incident_contact", "contact", "security_contact"):
-        if key in card:
-            return _card_value(card, key)
+    """The card's contact: the first key that names one, else what the card says.
+
+    A placeholder under one key falls through to the next (`incident_contact: TODO`
+    beside `security_contact: oncall@...` names the second). When no key names a
+    contact and a placeholder *string* was present, the card records that raw string
+    rather than None, so the inventory says what the file says and AUD-703 can tell
+    an unfilled key from a missing one; `contact_named()` reads the string as absent
+    either way. A YAML null or an empty collection carries no text and stays None.
+    """
+    placeholder: str | None = None
+    candidates: list[tuple[dict[str, Any], str]] = [
+        (card, key) for key in ("incident_contact", "contact", "security_contact")
+    ]
     incident = card.get("incident")
     if isinstance(incident, dict):
-        return _card_value(incident, "contact")
-    return None
+        candidates.append((incident, "contact"))
+    for mapping, key in candidates:
+        if key not in mapping:
+            continue
+        value = mapping.get(key)
+        if not _is_card_placeholder(value):
+            return _card_value(mapping, key)
+        if placeholder is None and isinstance(value, str):
+            placeholder = value
+    return placeholder
 
 
 # ---------------------------------------------------------------------------

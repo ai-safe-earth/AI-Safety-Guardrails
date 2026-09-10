@@ -34,7 +34,7 @@ local-dev copy. Keep the two in sync when editing either.
 No Makefile, no script runner — everything is ad-hoc.
 
 ```bash
-pytest                                                    # ~2700 tests, ~2 min, no API keys (all LLM calls mocked)
+pytest                                                    # ~3600 tests, ~3.5 min, no API keys (all LLM calls mocked)
 python -m pytest tests/unit/test_pii_tokenization.py::TestPIIRestorer -q   # single test
 python -m pytest tests/unit/test_pii_tokenization.py -k "roundtrip" -q
 
@@ -426,6 +426,139 @@ AUD-101 to AUD-1003, ordered by blast radius; the registry lists them all and
   `test_committed_baseline_does_not_reproduce_the_findings_it_accepts` pins
   this. Fingerprints ignore line numbers, but the `file` field on an accepted
   entry does not: regenerate it when an anchor moves.
+- **`--write-baseline` renders first.** It writes the `-o` report in the
+  requested format, then the baseline, then exits 0. The baseline carries an
+  `index` (`{fingerprint: {rule, file, title}}`) so a later `--baseline` run can
+  name what is `no_longer_reported` -- that is the phrase; a rename or a move
+  produces it too, so no renderer calls it anything stronger. Reasons are
+  carried over, not retyped: from the `--baseline` document the run compared
+  against (when it is an audit-baseline) and from the file being refreshed; a
+  reason whose fingerprint is no longer reported is dropped and the stderr
+  note says how many. It refuses (exit 2) to overwrite a file that is not an
+  audit-baseline. `read_baseline` rejects a reason carrying verdict language
+  or a secret shape, the same check as `--accept`. `diff()` also fills the
+  baseline block's `kind` (`audit-baseline`, or `audit` when a full report was
+  the baseline -- a report carries no reasons, so `accepted` is empty and the
+  html says "the baseline was a report"), `accepted` (only reasons whose
+  finding was reported this run; the rest go under `no_longer_reported`),
+  `generated_at` (the compared document's own timestamp) and sets `Finding.
+  accepted_reason` from the baseline's reasons. The block is `{file, kind,
+  new, unchanged, accepted, generated_at, no_longer_reported}`: no count key
+  for the gone fingerprints, the list's length is the count, and every
+  renderer's line reads `baseline: N new, N unchanged, N no longer reported
+  (file)` (`report._T_BASELINE`). Terminal and markdown print `accepted:
+  <reason>` under an accepted finding, so the reason is in every format.
+  `report.target` carries the resolved `exclude` list so two documents
+  produced from different working directories show the mismatch.
+- **`--amend-baseline PATH --accept FP="reason"`** edits a baseline in place:
+  no scan, no render. It refuses (exit 2) a file whose `kind` is not
+  `audit-baseline`, a fingerprint the file does not hold, an empty, non-ASCII
+  or secret-shaped reason, one containing a `BANNED_PHRASES` entry, and
+  `--accept` without `--amend-baseline`; a second `--accept` for the same
+  fingerprint replaces the reason. A reason is what turns a suppression into
+  an acceptance, which is why the flag cannot be given without one.
+- **`recommendation.package`** (`model.Package`) is on every finding:
+  `mechanism` from `PACKAGE_MECHANISMS`, `symbols`, `same_control`,
+  `leaves_open`. `same_control` is a bool, never a score, and `True` (eleven
+  rules) means wiring the symbol IS the control the rule asks for -- not that
+  the finding goes away; the re-audit decides that. `leaves_open` is required
+  text whenever the mechanism is not `none` and is rendered every time the
+  symbol is offered. `none` carries no symbols and no `leaves_open`. A
+  detector is never `same_control` on a P1-P4 rule. The plan's "who" column
+  derives from it: `package` only when `same_control`, the finding's language
+  is Python (by the file's extension; else its unit's language; else, for a
+  repo-scoped finding, the root unit's) and `patterns.is_protected_path()` is
+  false; `you, approval needed` when the path is protected; `you` otherwise.
+  Protected paths are the host permission and MCP files (`.claude/settings*.
+  json`, `.codex/config.toml`, `.cursor/*`, `.gemini/*`, `.mcp.json`,
+  `.vscode/mcp.json`, `claude_desktop_config.json`), CI workflows and pipeline
+  files (`.github/workflows/*`, `.gitlab-ci*.yml`, `.circleci/config.yml`,
+  `Jenkinsfile`, `azure-pipelines.yml`, `bitbucket-pipelines.yml`,
+  `.travis.yml`), `.env*`, `.secrets*` and `.pre-commit-config.yaml`. An
+  accepted finding is neither package work nor an open row in the html plan;
+  it sits under the accepted group.
+- **`SUBSYSTEM_OF_RULE` is an exact cover** of the registry: its keys equal
+  the set of rule ids, every value is one of the ten `SUBSYSTEMS`, and
+  `subsystem_of()` looks up the parent id (before `/`) so `AUD-301/structured`
+  lands where AUD-301 does. Everything else draws in the `NOT_ATTRIBUTED`
+  box. Adding a rule without a row here fails the test, on purpose.
+- **`--format html`** (`audit/html.py`, `render_html(report, quiet=False)`)
+  is a document, not a dashboard: ASCII only, no severity colour (order is
+  the priority), `[UNMEASURED]` on every Fig. 1 box, the disclaimer above
+  the figure, and the two document-2 sections ("Since the baseline",
+  "Remaining actions") only when `--baseline` was given. Line 1 is exactly
+  `patterns.OWN_HTML_MARKER_LINE` (`<!-- # aisg-audit: ignore-file -->`), so a
+  re-audit skips it by the marker. The JSON is authoritative; the html carries
+  nothing the JSON does not. `--inventory-only --format html` renders the
+  page with the no-rules banner and the inventory; every other format writes
+  the inventory JSON (`kind: inventory`). `--inventory-only` refuses (exit 2)
+  `--baseline` and `--write-baseline`: no rule runs, so neither can do what
+  it says.
+- **`walk` skips the audit's own output** -- a `.json` whose head carries
+  `"schema": "aisg/1"` and `"kind": "audit"` or `"kind": "inventory"`, and an
+  html whose first line is `OWN_HTML_MARKER_LINE` -- and lists it in
+  `inventory.own_output_skipped`, rendered as one inventory line in every
+  format; SARIF carries it at `runs[0].properties.own_output_skipped`.
+  `.aisg-audit/` (`patterns.AUDIT_DIR`) is deliberately NOT in `SKIP_DIRS`
+  and is never pruned by `.gitignore` (the walker exempts it like `.env*`;
+  the `gitignored` flag still says so): measure and probe reports written
+  there must be discovered as evidence (`REPORTED <age>`) whether or not they
+  are committed, so the skip is by content, not by directory.
+- **pydeep reads the approval gate literally.** `ToolPolicyGuard(
+  require_approval=[])`, `None` or `()` is an inert gate ("require_approval
+  is empty") and `approval_callback=None` is no callback, so AUD-201 fires;
+  `ToolPolicyGuard(**cfg)` is not recorded as a gate and yields an UNKNOWN
+  item (category `deep`) saying the approval configuration could not be
+  resolved, so AUD-201 fires and the UNKNOWN row says why. `run_processing`
+  mutates the caller's context dict and clears the `tool_call` it set when the
+  call returns; `ToolPolicyGuard.setup` coerces dict policies to `ToolPolicy`.
+- **The system card has an `incident_contact` field** (a `TODO` placeholder
+  from `aisg init`). A blank or `TODO`-prefixed value still counts as absent
+  for AUD-703 (`discover._incident_contact`, `rules/observability.py`), but
+  the inventory records the raw placeholder string, not `None`, when no other
+  contact key (`contact`, `security_contact`, `incident.contact`) names
+  anyone; the AUD-703 snippet then reads `has an unfilled incident_contact`,
+  and a card with no contact key at all reads `has no incident_contact`. The
+  card's fields are the system id, name and purpose, role, `risk_tier` (with
+  its caveat), `annex_iii_category`, `affected_persons`, deployment and
+  `incident_contact`; there is no model or data field, and the skill docs
+  must not invent one.
+- **Three flags are per-invocation actions, never pyproject defaults.**
+  `main.NOT_CONFIGURABLE` (`write_baseline`, `inventory_only`, `list_rules`,
+  with `amend_baseline` and `accept`) is excluded from `[tool.aisg-audit]`
+  resolution: a `true` there would make every audit rewrite a baseline, run
+  no rule, or print the catalogue and exit 0, with no flag to undo it. Two
+  more things the walk never hides: a file over `max_size` is not read, and
+  that is an UNKNOWN row (`walk._oversize_item`) plus the inventory line
+  `oversize files skipped: N` (`report._T_INV_OVERSIZE`, from
+  `target.oversize_files`; a document without the key says so rather than
+  printing 0); and the audit's own SARIF output is recognised as own output
+  by the run's property bag, which `to_sarif` emits first with `aisg_schema`
+  then `own_output_skipped` in that order (`walk._OWN_SARIF_RE`) -- the lint
+  SARIF carries `aisg_schema` too, so the marker alone would skip a document
+  that is not ours.
+- **The skill runs five phases** (survey, document 1, apply, document 2,
+  verify; design section 7). Every artefact is under `.aisg-audit/` and every
+  command runs from the repo root, because `[tool.aisg-audit]` resolves from
+  the CWD. Phase 3 walks the plan table top-down, one row per approval, and
+  reads `recommendation.package` from the JSON -- never the html prose -- to
+  pick between the package idiom (`references/apply/python.md`, keyed by the
+  first symbol), "in addition to, not instead of", and the outside-package
+  action; after each diff the re-audit, not the diff, is the evidence. The
+  skill proposes the `.gitignore` line for `.aisg-audit/` as a diff and never
+  edits `.gitignore` itself. `test_skill_package.py` pins the vocabulary
+  (`.aisg-audit/`, `--amend-baseline`, `--accept`, `--format html`,
+  `recommendation.package`, `leaves_open`, `same_control`) and that
+  `controls.md`'s Package column covers every registry rule.
+- **`controls.md` copies the registry, and the copy is generated.** The
+  severity word in each rule heading, every `- Mapping:` line (the rule's
+  `controls` tuple, joined `, `, ending `.`) and every `Leaves open:` text
+  (`recommendation.package.leaves_open`, verbatim up to re-wrapping) come from
+  `ALL_RULES`. Edit the rule, then run `python scripts/controls_md.py`
+  (`--check` lists the drift and exits 1) and `python scripts/sync_skill.py`;
+  `test_skill_package.py` parses the file against the registry, so hand-edited
+  drift fails. `apply/python.md`'s "Leaves open" bullets are a summary; the
+  wording to quote in a plan row is the JSON's `leaves_open`.
 
 ## Adding a guard
 

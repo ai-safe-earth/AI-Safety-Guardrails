@@ -16,7 +16,7 @@ import re
 from pathlib import PurePosixPath
 from typing import Any
 
-from aisg.devtools.audit import patterns
+from aisg.devtools.audit import patterns, vocab
 from aisg.devtools.audit.model import (
     AuditContext,
     Basis,
@@ -24,6 +24,7 @@ from aisg.devtools.audit.model import (
     EvidenceKind,
     Finding,
     MatchKind,
+    Package,
     Recommendation,
     Scope,
     Severity,
@@ -53,9 +54,6 @@ _KEYWORD_CAVEAT = (
     "is a legal determination made by the operator, not a tool output."
 )
 
-# Values that mean "not determined" for a card field, after lower/strip.
-_UNSET_VALUES = frozenset({"", "unknown", "null", "none", "n/a", "na", "tbd"})
-
 _RISK_TIER_LINE_RE = re.compile(r"^\s*risk_tier\s*:", re.M)
 
 # Doc files where Annex III words are prose about the project, not prompt material.
@@ -69,10 +67,8 @@ def _basename(relpath: str) -> str:
 
 
 def _unset(value: Any) -> bool:
-    if value is None:
-        return True
-    text = str(value).strip().lower()
-    return text in _UNSET_VALUES or text.startswith("todo")
+    """A card field with no answer: `vocab.is_unset`, the reading AUD-703 shares."""
+    return vocab.is_unset(value)
 
 
 def _card(ctx: AuditContext) -> dict[str, Any] | None:
@@ -133,7 +129,7 @@ class NoSystemCard(AuditRule):
     recommendation = Recommendation(
         tier=Tier.T2,
         summary=(
-            "Write down what the system is for, who operates it, which model it runs, and "
+            "Write down what the system is for, who operates it, who is affected by it, and "
             "how to report an incident: `aisg init` writes ai-system-card.yaml with those "
             "fields and the risk-tier caveat."
         ),
@@ -142,6 +138,16 @@ class NoSystemCard(AuditRule):
             "a model card from the Hugging Face model-card template committed as MODEL_CARD.md",
             "Google's Model Card Toolkit output committed next to the model config",
             "an Annex IV technical-documentation outline written by hand in docs/",
+        ),
+        package=Package(
+            mechanism="document",
+            symbols=("aisg init",),
+            same_control=True,
+            leaves_open=(
+                "Every field in the card is the operator's own assertion; aisg init writes "
+                "the file and the risk-tier caveat, nothing more. Whether the entries are "
+                "true is not something the tool can check."
+            ),
         ),
     )
 
@@ -168,8 +174,8 @@ class NoSystemCard(AuditRule):
             return []
         why = (
             "no system card found (ai-system-card.yaml, model_card.md, MODEL_CARD.md, "
-            "system-card*); the audit has no operator statement of purpose, model, risk "
-            "tier or incident contact to compare the code against"
+            "system-card*); the audit has no operator statement of purpose, operator, "
+            "affected persons, risk tier or incident contact to compare the code against"
         )
         return [self.absence_finding(unit=None, why=why)]
 
@@ -207,6 +213,15 @@ class RiskTierUndetermined(AuditRule):
             "set risk_tier in ai-system-card.yaml by hand with a link to the review",
             "the EU AI Act compliance checker questionnaire, with its output committed",
             "a signed-off risk assessment in docs/ that the card points to",
+        ),
+        package=Package(
+            mechanism="document",
+            symbols=("aisg init",),
+            same_control=False,
+            leaves_open=(
+                "Classification is a legal determination the operator makes; aisg init only "
+                "records the answer. The determination itself is outside the package."
+            ),
         ),
     )
 
@@ -274,6 +289,15 @@ class AnnexKeywordsWithoutCategory(AuditRule):
             "set annex_iii_category in ai-system-card.yaml by hand, or `none` with a reason",
             "a documented use-case scoping review in docs/ that lists the domains served",
             "aisg lint, whose EU-AIA-005 rules flag the same domains in Python code paths",
+        ),
+        package=Package(
+            mechanism="document",
+            symbols=("aisg init",),
+            same_control=False,
+            leaves_open=(
+                "Whether the prompts serve an Annex III domain is a legal determination the "
+                "operator makes; aisg init only records the category or a reason for none."
+            ),
         ),
     )
 

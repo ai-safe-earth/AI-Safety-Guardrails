@@ -12,6 +12,9 @@ Two kinds of table live here, and consumers must treat them differently:
   ``GATE_BYPASS_CONFIG``, ``KILL_SWITCH_ENV_READS``): ``.search()`` the text;
   ``group(0)`` is the evidence.
 
+``UNSET_VALUES`` / ``UNSET_PREFIX`` and ``is_unset()`` are the one reading of a
+system-card placeholder, shared by discovery and the rules that read the card.
+
 The first line of this file is the audit's ignore marker so the walker never
 matches the audit against its own vocabulary. Nothing here measures anything:
 these lists decide what a rule *looks at*; precision stays UNMEASURED.
@@ -20,9 +23,44 @@ these lists decide what a rule *looks at*; precision stays UNMEASURED.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from aisg.modules.processing.llm_tool_filter import LLMToolFilter
 from aisg.modules.processing.tool_policy import TOOL_RISK_TIERS
+
+# --------------------------------------------------------------------------- #
+# System-card placeholders
+# --------------------------------------------------------------------------- #
+
+# Words that mean "not determined" in a card field, compared after strip and lower.
+# One list for every consumer: governance (risk_tier, annex_iii_category), the
+# incident contact (discover, AUD-703). `aisg init` writes `TODO ...` placeholders,
+# so any value starting with UNSET_PREFIX (any case) counts too. `[]` / `{}` are the
+# spellings an empty collection takes once a card value has been stringified.
+UNSET_VALUES: frozenset[str] = frozenset(
+    {"", "unknown", "null", "none", "n/a", "na", "tbd", "[]", "{}"}
+)
+UNSET_PREFIX = "todo"
+
+
+def is_unset(value: Any) -> bool:
+    """Whether a system-card field holds no answer.
+
+    `None` (a missing key, or YAML null) is unset. A string is unset when, stripped
+    and lowercased, it is one of UNSET_VALUES or starts with UNSET_PREFIX. An empty
+    list or mapping is unset. Any other value -- a bool, a number, a non-empty
+    collection -- is something the card says, and what it means is the consuming
+    rule's business: a contact rule wants a string, a tier rule reads the word.
+    """
+    if value is None:
+        return True
+    if isinstance(value, str):
+        text = value.strip().lower()
+        return text in UNSET_VALUES or text.startswith(UNSET_PREFIX)
+    if isinstance(value, (list, tuple, set, frozenset, dict)):
+        return len(value) == 0
+    return False
+
 
 # --------------------------------------------------------------------------- #
 # Capability regexes (applied to a tool's name + first 30 lines of body)
@@ -138,8 +176,9 @@ ALLOWLIST_SYMBOLS: tuple[str, ...] = (
 )
 
 # Prompt-injection sanitisers on the ingress-to-prompt path (AUD-302). Excludes bare
-# `strip`/`clean`/`escape` and sink-specific escapes (`html.escape`, `shlex.quote`): those
-# protect a sink, not the prompt, and the taint layer handles them per sink.
+# `strip`/`escape`, generic string scrubbers, and sink-specific escapes (`html.escape`,
+# `shlex.quote`): those protect a sink, not the prompt, and the taint layer handles them
+# per sink.
 SANITISER_SYMBOLS: tuple[str, ...] = (
     "promptinjectionguard",
     "sanitize",

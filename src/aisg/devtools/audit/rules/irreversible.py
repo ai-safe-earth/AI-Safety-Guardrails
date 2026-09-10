@@ -26,6 +26,7 @@ from aisg.devtools.audit.model import (
     EvidenceKind,
     Finding,
     MatchKind,
+    Package,
     Recommendation,
     Scope,
     Severity,
@@ -120,9 +121,19 @@ class IrreversibleUngated(AuditRule):
             "approve.",
             "Route the action through a ticket, PR or review queue the agent can open but "
             "not merge.",
-            "aisg: register the tool with ToolPolicyGuard(require_approval=True, "
+            'aisg: list the tool in ToolPolicyGuard(require_approval=["<tool>"], '
             "approval_callback=...) so a denied or timed-out approval is Action.HUMAN, not "
             "a pass.",
+        ),
+        package=Package(
+            mechanism="gate",
+            symbols=("ToolPolicyGuard",),
+            same_control=True,
+            leaves_open=(
+                "`require_approval` needs a real `approval_callback`, and only tools dispatched "
+                "through `run_processing` with the tool call passed explicitly reach it. "
+                "Action.HUMAN sets `passed=False`, not `blocked`; the caller has to honour it."
+            ),
         ),
     )
 
@@ -185,10 +196,13 @@ class InertGate(AuditRule):
     known_failure_modes = (
         "Cannot verify a callback that exists but always returns true; that is what "
         "`aisg measure` and a runtime drill are for.",
-        "AST tier: only the shapes pydeep knows (`require_approval=True` without "
-        "`approval_callback`, `interrupt_before` without a checkpointer, a GATE_BYPASS "
-        "literal) are recognised. A guard call inside a swallowing `except` is AUD-802's "
-        "fail-open finding, not an inert gate here.",
+        "AST tier: only the shapes pydeep knows are recognised: any non-empty "
+        "`require_approval` (a list, a tuple, `True`) with no `approval_callback` or with "
+        "`approval_callback=None`; an empty `require_approval` (`[]`, `()`, `set()`, `None`); "
+        "`interrupt_before` or `interrupt_after` without a checkpointer; and a GATE_BYPASS "
+        "literal. `ToolPolicyGuard(**cfg)` with no literal `require_approval` is neither: "
+        "it is an UNKNOWN row and the tool reads as ungated. A guard call inside a "
+        "swallowing `except` is AUD-802's fail-open finding, not an inert gate here.",
         "Grep tier: a GATE_BYPASS literal in a test, a fixture or a sample config reads the "
         "same as one in production code.",
         "MCP-served tools are not inspected; a gate switched off in the server's own config "
@@ -204,8 +218,19 @@ class InertGate(AuditRule):
             "set; without one the interrupt never pauses.",
             "Remove `auto_approve=True` / `human_in_the_loop=False` / `--yes` from production "
             "paths and config files and keep them behind an explicit test-only flag.",
-            "aisg: ToolPolicyGuard with an `approval_callback` that returns Action.HUMAN on "
-            "denial or timeout; see AUD-802 for the fail-open side of the same gate.",
+            "aisg: ToolPolicyGuard(require_approval=[...], approval_callback=...) where the "
+            "callback answers False to deny; the guard turns a denial or timeout into "
+            "Action.HUMAN. See AUD-802 for the fail-open side of the same gate.",
+        ),
+        package=Package(
+            mechanism="gate",
+            symbols=("ToolPolicyGuard",),
+            same_control=True,
+            leaves_open=(
+                "A bypass flag in code or config, and a LangGraph interrupt compiled without a "
+                "checkpointer, are removed by hand. The guard adds a gate; it does not delete "
+                "the one that is inert."
+            ),
         ),
     )
 
@@ -304,6 +329,15 @@ class NoDryRun(AuditRule):
             "expose only the plan step to the model by default.",
             "aisg: put ToolPolicyGuard in front of the tool and keep the apply step behind an "
             "approval callback while the plan step runs freely.",
+        ),
+        package=Package(
+            mechanism="gate",
+            symbols=("ToolPolicyGuard",),
+            same_control=False,
+            leaves_open=(
+                "A `dry_run` parameter and an idempotency key are changes inside the tool. The "
+                "gate decides whether the call is made; it does not make a repeated call safe."
+            ),
         ),
     )
 

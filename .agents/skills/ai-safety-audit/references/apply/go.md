@@ -5,6 +5,11 @@ Python-only, so every AUD-401..406 finding in Go is a co-located grep hit (a sin
 lines of a model call sharing an identifier): read the code before proposing a change.
 Standard-library names below are stable; for third-party SDKs check the current docs.
 
+The `recommendation.package.symbols` in the JSON (`ToolPolicyGuard`, `PIIDetector`,
+`RateLimiter`, ...) are Python-only: this package has no Go runtime, so in phase 3 a Go
+unit always takes the outside-package branch whatever `same_control` says. The control the
+rule asks for applies unchanged; this file is how to write it here.
+
 ## T1 -- config
 
 - AUD-601: pin the model id in one config value (`Model: "gpt-4o-2024-11-20"`-style dated

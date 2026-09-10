@@ -14,8 +14,9 @@ emits no other per-guard rate that a rule may read.
 One unmeasured guard is one fact. AUD-801 groups its sites per (unit, guard): a
 guard imported, re-exported and constructed in a dozen modules of one unit is one
 finding, anchored on the first site by (file, line) -- the fingerprint is computed
-from that site alone, so adding a second import never changes it -- with the other
-sites appended as `also` evidence (at most `_ALSO_CAP`, then "+N more sites" in the
+from that site alone, so an import that sorts after the anchor never changes it,
+while one that sorts before it becomes the new anchor -- with the other sites
+appended as `also` evidence (at most `_ALSO_CAP`, then "+N more sites" in the
 notes). AUD-804 groups the same way per (unit, sub-finding), because both facts it
 reports, a credential binding and a timeout, are resolved per unit, not per judge
 line.
@@ -42,6 +43,7 @@ from aisg.devtools.audit.model import (
     EvidenceKind,
     Finding,
     MatchKind,
+    Package,
     Recommendation,
     Scope,
     Severity,
@@ -447,11 +449,22 @@ class GuardUnmeasured(AuditRule):
             "report, and re-run it when the guard or its configuration changes."
         ),
         alternatives=(
-            "Run `aisg measure` against the preset and commit measure-report.json next to it.",
+            "Run `aisg measure --config <preset> -o .aisg-audit/measure-report.json` and "
+            "commit the report where a fresh clone's audit will find it.",
             "Write a promptfoo / deepeval / inspect_ai suite that sends both attack and "
             "benign cases through the guard and asserts on block rates.",
             "Replay a labelled sample of production traffic through the guard offline and "
             "record the block rate on each class in the repository.",
+        ),
+        package=Package(
+            mechanism="measurement",
+            symbols=("aisg measure",),
+            same_control=True,
+            leaves_open=(
+                "Only guards registered with this package can be measured in-process; a "
+                "third-party guard needs its own harness. The numbers go into a Profile from "
+                "the measure output and are never typed in by hand."
+            ),
         ),
     )
 
@@ -581,6 +594,16 @@ class GuardFailOpen(AuditRule):
             "If the pipeline runs through aisg, set `pipeline.fail_open: false` in the "
             "preset and keep LLMToolFilter.high_risk_fail_closed on.",
         ),
+        package=Package(
+            mechanism="gate",
+            symbols=("GuardrailPipeline", "LLMToolFilter"),
+            same_control=True,
+            leaves_open=(
+                "`fail_open: false` on the pipeline and `high_risk_fail_closed` on the tool "
+                "filter cover the package's own guards. A try/except that swallows a guard's "
+                "error in your own code is untouched and is removed by hand."
+            ),
+        ),
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
@@ -670,8 +693,19 @@ class GuardReportedBelowThreshold(AuditRule):
             "the benign cases it broke to its regression corpus.",
             "Demote the guard from BLOCK to FLAG for the failing family and route flagged "
             "traffic to review instead of rejecting it.",
-            "If the guard is an aisg guard, lower its `sensitivity` or disable the failing "
-            "family in the preset, then re-run `aisg measure`.",
+            "If the guard is PromptInjectionGuard, lower its `sensitivity` (the one aisg guard "
+            "that has the knob); for any other guard, disable it or narrow its patterns in "
+            "the preset. Then re-run `aisg measure` and commit the new report.",
+        ),
+        package=Package(
+            mechanism="measurement",
+            symbols=("PromptInjectionGuard", "aisg measure"),
+            same_control=False,
+            leaves_open=(
+                "Re-tuning is a judgement made from the measure output: `sensitivity` exists "
+                "only on PromptInjectionGuard, and every other guard is re-tuned by editing "
+                "its patterns or switching it off. The new report has to be generated again."
+            ),
         ),
     )
 
@@ -803,9 +837,19 @@ class LLMJudgeWithoutCredentialsOrTimeout(AuditRule):
             "instead of discovering the gap on the first request.",
             "Wrap the judge call in a hard timeout (asyncio.wait_for or the client's "
             "timeout option) and treat a timeout as a failed check, not a pass.",
-            "If the judge is an aisg LLM judge, set `timeout` on it and keep fail_open off; "
-            "with no credentials it otherwise costs seconds per request and lets traffic "
-            "through.",
+            "If the judge is an aisg LLM judge (an LLMJudgeBase subclass), pass `timeout` "
+            "and `fail_open=False` to it; with no credentials it otherwise costs seconds per "
+            "request and lets traffic through.",
+        ),
+        package=Package(
+            mechanism="gate",
+            symbols=("LLMJudgeBase",),
+            same_control=True,
+            leaves_open=(
+                "`timeout` and `fail_open=False` apply to this package's judges only; a judge "
+                "from another library keeps its own defaults. Declaring the key in "
+                ".env.example is an edit to your repository."
+            ),
         ),
     )
 
@@ -940,8 +984,20 @@ class KeywordOnlyFilter(AuditRule):
             "Llama Guard) and keep the word list only as a fast pre-filter.",
             "Run a local classifier (a fine-tuned toxicity model via Detoxify or "
             "Presidio for PII) and measure its false-positive rate on your own traffic.",
-            "If the pipeline runs through aisg, enable toxicity_output / pii_detector and "
-            "run `aisg measure` so the trade is on record.",
+            "If the pipeline runs through aisg, put LLMOutputFilter (a judge, which needs "
+            "credentials, a timeout and fail-closed -- see AUD-804) behind the word list and "
+            "run `aisg measure` so the trade is on record; toxicity_output is itself a "
+            "pattern list and adds no classifier.",
+        ),
+        package=Package(
+            mechanism="detector",
+            symbols=("LLMOutputFilter", "aisg measure"),
+            same_control=False,
+            leaves_open=(
+                "LLMOutputFilter is a judge: it needs credentials, a timeout and a fail-closed "
+                "setting (AUD-804) before it adds anything. toxicity_output is a pattern "
+                "list like the one reported here, not a classifier."
+            ),
         ),
     )
 

@@ -175,6 +175,17 @@ def test_1001_fires_on_noise_fixture(audit_fixture, audit_context):
     assert "aisg init" in f.recommendation.summary
 
 
+def test_1001_summary_names_only_fields_the_card_has():
+    # The card `aisg init` writes has purpose, operator role, affected persons, an incident
+    # contact and the risk-tier caveat; it has no model field, so the summary must not
+    # promise one.
+    summary = governance.NoSystemCard.recommendation.summary
+    assert "model" not in summary.lower()
+    for phrase in ("what the system is for", "who operates it", "who is affected"):
+        assert phrase in summary
+    assert "report an incident" in summary and "risk-tier caveat" in summary
+
+
 def test_1001_silent_when_card_present(audit_fixture, audit_context, py_agent):
     for root in (py_agent, audit_fixture("info_only")):
         ctx = audit_context(root)
@@ -268,6 +279,45 @@ def test_1002_hand_built_card_without_file_text(tmp_path):
 
 def test_1002_not_gated_on_ai_surface():
     assert governance.RiskTierUndetermined.requires_ai_surface is False
+
+
+@pytest.mark.parametrize(
+    "value, unset",
+    [
+        (None, True),
+        ("", True),
+        ("   ", True),
+        ("unknown", True),
+        (" Unknown ", True),
+        ("null", True),
+        ("none", True),
+        ("n/a", True),
+        ("NA", True),
+        ("tbd", True),
+        ("TODO", True),
+        ("todo: after legal review", True),
+        ([], True),
+        ({}, True),
+        ("high", False),
+        ("limited", False),
+        ("employment_and_worker_management", False),
+        (False, False),
+        (0, False),
+        (["biometrics"], False),
+    ],
+)
+def test_unset_is_the_shared_card_placeholder_reading(value, unset):
+    # `_unset` is `vocab.is_unset`, the predicate AUD-703's `contact_named` also uses, so
+    # the placeholder words cannot drift apart between the card rules. A bool or a
+    # number is a value the card holds, not a placeholder; what it means is the rule's
+    # business.
+    from aisg.devtools.audit import vocab
+
+    assert governance._unset(value) is unset
+    assert vocab.is_unset(value) is unset
+    for word in vocab.UNSET_VALUES:
+        assert governance._unset(word) is True
+    assert vocab.UNSET_PREFIX == "todo"
 
 
 # ---------------------------------------------------------------------------

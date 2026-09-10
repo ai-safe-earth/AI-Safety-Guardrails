@@ -342,7 +342,9 @@ class NemoRailsMiddleware:
             PipelineResult from the output stage.
             Check ``result.blocked`` and ``result.sanitized_output``.
         """
-        ctx = context or {}
+        # A caller's empty dict is still the caller's dict: the PII token map and the
+        # tool counters written here must be readable after the call.
+        ctx = context if context is not None else {}
         if conversation_history:
             ctx["conversation_history"] = conversation_history
 

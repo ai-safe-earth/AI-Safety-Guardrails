@@ -33,6 +33,7 @@ from aisg.devtools.audit.rules.observability import (
     NoIncidentPath,
     NoLLMObservability,
     NoToolCallAuditLog,
+    contact_named,
 )
 
 ALLOWED_LINT_RULES = {
@@ -265,6 +266,87 @@ def test_703_silent_when_card_names_a_contact(tmp_path: Path):
         system_card={"file": "ai-system-card.yaml", "incident_contact": "oncall@example.test"},
     )
     assert NoIncidentPath().evaluate(AuditContext(root=tmp_path, inventory=inventory)) == []
+
+
+@pytest.mark.parametrize("value", ["", "   ", "\t\n", "TODO: who is paged", "todo", "ToDo"])
+def test_703_fires_when_the_card_contact_is_a_placeholder(tmp_path: Path, value):
+    # `aisg init` writes the key with a placeholder; the key being present proves nothing.
+    inventory = Inventory(
+        units=[_ai_unit()],
+        system_card={"file": "ai-system-card.yaml", "incident_contact": value},
+    )
+    findings = NoIncidentPath().evaluate(AuditContext(root=tmp_path, inventory=inventory))
+    assert [f.display_id for f in findings] == ["AUD-703"]
+    assert "ai-system-card.yaml has an unfilled incident_contact" in findings[0].evidence[0].snippet
+    assert "names no contact" in findings[0].notes
+
+
+@pytest.mark.parametrize(
+    "value, named",
+    [
+        (None, False),
+        ("", False),
+        ("  ", False),
+        ("TODO", False),
+        ("todo: fill in", False),
+        (" Todo ", False),
+        # The placeholder words governance treats as unset (vocab.UNSET_VALUES) read the
+        # same here: one predicate for every card field.
+        ("none", False),
+        ("None", False),
+        ("null", False),
+        ("n/a", False),
+        ("NA", False),
+        ("unknown", False),
+        ("tbd", False),
+        (" TBD ", False),
+        # Only a string can name a contact.
+        (False, False),
+        (True, False),
+        (0, False),
+        (42, False),
+        ([], False),
+        (["oncall@example.test"], False),
+        ({}, False),
+        (str([]), False),
+        ("oncall@example.test", True),
+        ("  +1 555 0100  ", True),
+        ("nobody@example.test", True),
+    ],
+)
+def test_contact_named_predicate(value, named):
+    assert contact_named(value) is named
+
+
+def test_contact_named_shares_the_governance_reading():
+    # Governance's `_unset` and `contact_named` are the same predicate over strings, so
+    # a card value cannot be "unset" for AUD-1002 and "a contact" for AUD-703.
+    from aisg.devtools.audit import vocab
+    from aisg.devtools.audit.rules.governance import _unset
+
+    for word in sorted(vocab.UNSET_VALUES) + ["TODO", "todo x", "Unknown", " N/A "]:
+        assert _unset(word) is True and contact_named(word) is False, word
+    for word in ("oncall@example.test", "high", "employment_and_worker_management"):
+        assert _unset(word) is False and contact_named(word) is True, word
+
+
+def test_703_unfilled_wording_on_the_aisg_init_default_line(py_agent, audit_context):
+    # `aisg init --defaults` writes the key with its placeholder. Discovery records the
+    # placeholder as written, so the finding says the key is unfilled, not missing.
+    from aisg.devtools.system_card import DEFAULT_CARD, _yaml_scalar
+
+    card = py_agent / "ai-system-card.yaml"
+    line = f"incident_contact: {_yaml_scalar(DEFAULT_CARD['incident_contact'])}\n"
+    card.write_text(card.read_text(encoding="utf-8") + line, encoding="utf-8")
+    ctx = audit_context(py_agent)
+    assert ctx.inventory.system_card["incident_contact"] == DEFAULT_CARD["incident_contact"]
+    findings, _ = _run(NoIncidentPath, ctx)
+    assert [f.display_id for f in findings] == ["AUD-703"]
+    snippet = findings[0].evidence[0].snippet
+    assert "ai-system-card.yaml has an unfilled incident_contact" in snippet
+    assert "has no incident_contact" not in snippet
+    assert "names no contact" in findings[0].notes
+    assert len(snippet) <= 160
 
 
 def test_703_silent_on_baseline(audit_fixture, audit_context):

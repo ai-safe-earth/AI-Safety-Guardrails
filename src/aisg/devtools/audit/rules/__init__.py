@@ -7,7 +7,7 @@ Rule base class and registry for `aisg audit`. Selection is evaluated on every c
 from __future__ import annotations
 
 import importlib
-from typing import Sequence
+from typing import NamedTuple, Sequence
 
 from aisg.core.measurement import MIN_PRECISION
 from aisg.devtools.audit.model import (
@@ -19,6 +19,7 @@ from aisg.devtools.audit.model import (
     EvidenceKind,
     Finding,
     MatchKind,
+    Package,
     Recommendation,
     Scope,
     Severity,
@@ -33,8 +34,13 @@ from aisg.devtools.audit.model import (
 __all__ = [
     "ALL_RULES",
     "MISSING_RULE_MODULES",
+    "NOT_ATTRIBUTED",
+    "SUBSYSTEMS",
+    "SUBSYSTEM_OF_RULE",
     "AuditRule",
+    "Package",
     "Recommendation",
+    "Subsystem",
     "default_rules",
     "experimental_rules",
     "file_text",
@@ -43,8 +49,98 @@ __all__ = [
     "rule_by_id",
     "run_rules",
     "select_rules",
+    "subsystem_of",
     "unit_of",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Subsystems: where a finding sits on the system map
+# ---------------------------------------------------------------------------
+
+
+class Subsystem(NamedTuple):
+    """One box on the system map. `inventory_keys` are the Inventory sections it summarises."""
+
+    key: str
+    title: str
+    inventory_keys: tuple[str, ...]
+
+
+# Two rows of five. The first row is the data flow (drawn with arrows), the second the
+# foundations under it. Order matters: it is the drawing order.
+SUBSYSTEMS: tuple[Subsystem, ...] = (
+    Subsystem("data_in", "Data in", ("data_sources", "ingress")),
+    Subsystem("runtime", "Host and agent runtime", ("hosts", "loops")),
+    Subsystem("model", "Model calls and prompts", ("llm_calls", "models")),
+    Subsystem("tools", "Tools and actions", ("tools", "external_actions", "mcp")),
+    Subsystem("sinks", "Output sinks", ("sinks",)),
+    Subsystem("secrets", "Secrets and personal data", ("secrets",)),
+    Subsystem("supply", "Supply chain", ("models", "mcp", "ci")),
+    Subsystem("guardrails", "Guardrails", ("guardrails",)),
+    Subsystem("observability", "Observability", ("observability",)),
+    Subsystem("governance", "Evals and governance", ("evals", "system_card", "incident_path")),
+)
+
+# The box for anything that cannot be placed: a finding with an id outside the
+# registry, and every UNKNOWN item that names no rule. Always drawn, never dropped.
+NOT_ATTRIBUTED = "not_attributed"
+
+# Every rule id maps to exactly one subsystem; a test pins the key set against ALL_RULES.
+SUBSYSTEM_OF_RULE: dict[str, str] = {
+    "AUD-101": "runtime",
+    "AUD-102": "runtime",
+    "AUD-107": "runtime",
+    "AUD-108": "runtime",
+    "AUD-301": "data_in",
+    "AUD-302": "model",
+    "AUD-303": "model",
+    "AUD-103": "tools",
+    "AUD-104": "tools",
+    "AUD-105": "tools",
+    "AUD-201": "tools",
+    "AUD-202": "tools",
+    "AUD-203": "tools",
+    "AUD-401": "tools",
+    "AUD-402": "tools",
+    "AUD-403": "tools",
+    "AUD-405": "tools",
+    "AUD-406": "tools",
+    "AUD-404": "sinks",
+    "AUD-106": "secrets",
+    "AUD-501": "secrets",
+    "AUD-502": "secrets",
+    "AUD-503": "secrets",
+    "AUD-504": "secrets",
+    "AUD-505": "secrets",
+    "AUD-601": "supply",
+    "AUD-602": "supply",
+    "AUD-603": "supply",
+    "AUD-604": "supply",
+    "AUD-605": "supply",
+    "AUD-606": "supply",
+    "AUD-802": "guardrails",
+    "AUD-803": "guardrails",
+    "AUD-804": "guardrails",
+    "AUD-805": "guardrails",
+    "AUD-701": "observability",
+    "AUD-702": "observability",
+    "AUD-703": "governance",
+    "AUD-801": "governance",
+    "AUD-901": "governance",
+    "AUD-902": "governance",
+    "AUD-903": "governance",
+    "AUD-904": "governance",
+    "AUD-1001": "governance",
+    "AUD-1002": "governance",
+    "AUD-1003": "governance",
+}
+
+
+def subsystem_of(finding_id: str) -> str:
+    """Subsystem key for a finding or rule id; a sub-finding (`AUD-101/docs`) follows its parent."""
+    parent = finding_id.split("/", 1)[0]
+    return SUBSYSTEM_OF_RULE.get(parent, NOT_ATTRIBUTED)
 
 
 class AuditRule:

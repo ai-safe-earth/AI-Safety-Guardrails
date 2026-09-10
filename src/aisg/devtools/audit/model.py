@@ -50,6 +50,9 @@ __all__ = [
     "Evidence",
     "Scope",
     "Hit",
+    "PACKAGE_MECHANISMS",
+    "Package",
+    "NO_PACKAGE",
     "Recommendation",
     "Finding",
     "UnknownItem",
@@ -424,21 +427,79 @@ class Hit:
     lang: str | None = None
 
 
+PACKAGE_MECHANISMS: tuple[str, ...] = (
+    "gate",
+    "budget",
+    "detector",
+    "record",
+    "measurement",
+    "document",
+    "none",
+)
+
+
+@dataclass(frozen=True)
+class Package:
+    """
+    What this package offers for a finding, and what that leaves open.
+
+    `same_control` is True only when wiring `symbols` IS the control the rule asks for;
+    a detector is never the same control as a sandbox. `leaves_open` is required whenever
+    the package offers anything, so a partial control always says what remains. It is a
+    description of the package's reach, never a verdict on the finding.
+    """
+
+    mechanism: str
+    symbols: tuple[str, ...] = ()
+    same_control: bool = False
+    leaves_open: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "symbols", tuple(self.symbols))
+        if self.mechanism not in PACKAGE_MECHANISMS:
+            raise ValueError(f"package mechanism {self.mechanism!r} not in {PACKAGE_MECHANISMS}")
+        if self.mechanism == "none":
+            if self.symbols or self.same_control or self.leaves_open:
+                raise ValueError("a 'none' package carries no symbols, no same_control, no text")
+        else:
+            if not self.symbols:
+                raise ValueError(f"package mechanism {self.mechanism!r} names no symbol")
+            if not self.leaves_open.strip():
+                raise ValueError(f"package {self.symbols} must say what it leaves open")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "mechanism": self.mechanism,
+            "symbols": list(self.symbols),
+            "same_control": self.same_control,
+            "leaves_open": self.leaves_open,
+        }
+
+
+NO_PACKAGE = Package("none")
+
+
 @dataclass(frozen=True)
 class Recommendation:
     tier: Tier
     summary: str
     alternatives: tuple[str, ...] = ()
+    # Default only so ad-hoc rules build; every shipped rule sets it explicitly (a
+    # registry test compares against NO_PACKAGE by identity).
+    package: Package = NO_PACKAGE
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tier", Tier(self.tier))
         object.__setattr__(self, "alternatives", tuple(self.alternatives))
+        if isinstance(self.package, dict):
+            object.__setattr__(self, "package", Package(**self.package))
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "tier": self.tier.value,
             "summary": self.summary,
             "alternatives": list(self.alternatives),
+            "package": self.package.to_dict(),
         }
 
 
@@ -497,6 +558,9 @@ class Finding:
     sub: str | None = None  # sub-finding kind: "inert", "apm-only", "interpreter", "docs"
     report: dict[str, Any] | None = None  # file/schema/generated_at/age_source/age_days
     baseline_status: str | None = None  # "new" | "unchanged"
+    # The operator's recorded reason from the baseline's `accepted` list. Their words,
+    # never the audit's; rendered under a label that says so.
+    accepted_reason: str | None = None
     notes: str | None = None
 
     def __post_init__(self) -> None:
@@ -554,6 +618,8 @@ class Finding:
             out["report"] = _plain(self.report)
         if self.baseline_status is not None:
             out["baseline_status"] = self.baseline_status
+        if self.accepted_reason is not None:
+            out["accepted_reason"] = self.accepted_reason
         if self.notes is not None:
             out["notes"] = self.notes
         return out
@@ -741,6 +807,7 @@ INVENTORY_KEYS: tuple[str, ...] = (
     "loops",
     "ci",
     "incident_path",
+    "own_output_skipped",
     "unknown",
 )
 
@@ -771,6 +838,9 @@ class Inventory:
     loops: list[dict[str, Any]] = field(default_factory=list)
     ci: list[dict[str, Any]] = field(default_factory=list)
     incident_path: list[str] = field(default_factory=list)
+    # The audit's own JSON reports found in the tree and not scanned: their evidence
+    # snippets would re-report every finding at a second path. Listed, never silent.
+    own_output_skipped: list[str] = field(default_factory=list)
     unknown: list[UnknownItem] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:

@@ -1410,6 +1410,85 @@ def test_config_globs_never_match_inside_skip_dirs_by_accident() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Protected paths: the skill never edits these without an approved diff
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        # Host permission files and MCP configs.
+        (".claude/settings.json", True),
+        (".claude/settings.local.json", True),
+        ("packages/agent/.claude/settings.json", True),
+        (".codex/config.toml", True),
+        (".cursor/mcp.json", True),
+        (".cursor/rules/python.mdc", True),
+        (".gemini/settings.json", True),
+        (".mcp.json", True),
+        (".vscode/mcp.json", True),
+        ("claude_desktop_config.json", True),
+        ("home/AppData/Roaming/Claude/claude_desktop_config.json", True),
+        # CI: every host the bootstrap globs know.
+        (".github/workflows/ci.yml", True),
+        (".gitlab-ci.yml", True),
+        (".gitlab-ci-euaiact.yml", True),
+        (".circleci/config.yml", True),
+        ("Jenkinsfile", True),
+        ("ci/Jenkinsfile", True),
+        ("azure-pipelines.yml", True),
+        ("azure-pipelines.yaml", True),
+        ("bitbucket-pipelines.yml", True),
+        ("bitbucket-pipelines.yaml", True),
+        (".travis.yml", True),
+        # Secrets and hooks.
+        (".env", True),
+        (".env.local", True),
+        ("cfg/.env.production", True),
+        (".secrets", True),
+        (".secrets.baseline", True),
+        (".pre-commit-config.yaml", True),
+        # Windows separators are normalised before matching.
+        (".github\\workflows\\ci.yml", True),
+        # Negatives: source, docs, look-alikes and the wrong extension.
+        ("src/app.py", False),
+        ("README.md", False),
+        ("docs/ci.md", False),
+        ("docs/.github/workflows.md", False),
+        (".github/CODEOWNERS", False),
+        (".circleci/README.md", False),
+        ("Jenkinsfile.md", False),
+        ("azure-pipelines.json", False),
+        (".travis.yaml", False),
+        (".envrc", False),
+        ("environment.yml", False),
+        ("mcp.json", False),
+        ("claude_desktop_config.json.bak", False),
+        ("pyproject.toml", False),
+    ],
+)
+def test_is_protected_path(path: str, expected: bool) -> None:
+    assert p.is_protected_path(path) is expected
+
+
+def test_protected_paths_cover_every_bootstrap_ci_glob() -> None:
+    # A CI file the audit scans for unpinned bootstraps is one the skill must not edit
+    # unasked; the two tables drift apart otherwise.
+    ci_samples = {
+        ".github/workflows/ci.yml",
+        ".gitlab-ci.yml",
+        ".circleci/config.yml",
+        "Jenkinsfile",
+        "azure-pipelines.yml",
+        "bitbucket-pipelines.yml",
+        ".travis.yml",
+    }
+    for sample in ci_samples:
+        assert _any(p.BOOTSTRAP_FILE_GLOBS, sample), sample
+        assert p.is_protected_path(sample), sample
+
+
+# ---------------------------------------------------------------------------
 # Mention vs use
 # ---------------------------------------------------------------------------
 

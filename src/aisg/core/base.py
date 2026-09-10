@@ -231,7 +231,10 @@ class GuardrailBase(ABC):
         if not self.enabled:
             return CheckResult(passed=True, action=Action.ALLOW, sanitized_content=content)
 
-        ctx = context or {}
+        # An empty dict is still the caller's dict: guards keep per-session state
+        # in it (PII token map, tool budget counters), so it must not be swapped
+        # for a throwaway just because it has no keys yet.
+        ctx = context if context is not None else {}
         start = time.perf_counter()
         result = await self.check(content, ctx)
         result.latency_ms = (time.perf_counter() - start) * 1000

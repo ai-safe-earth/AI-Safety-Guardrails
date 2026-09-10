@@ -12,7 +12,7 @@ import pytest
 from aisg.core.base import Action, CheckResult, GuardrailBase, GuardrailStage
 from aisg.core.exceptions import GuardrailBlockedError
 from aisg.core.pipeline import GuardrailPipeline
-from aisg.modules.input.pii_detector import PIIDetector
+from aisg.modules.input.pii_detector import PII_TOKEN_MAP_KEY, PIIDetector, PIIRestorer
 from aisg.modules.input.prompt_injection import PromptInjectionGuard
 from aisg.modules.output.toxicity import ToxicityFilter
 from aisg.modules.policy.eu_ai_act import EUAIActCompliance, RiskTier
@@ -149,6 +149,121 @@ class TestToolPolicyGuard:
         ctx = {"role": "user"}
         result = await guard("Hello", ctx)
         assert result.passed
+
+
+class TestToolPolicyFromMapping:
+    """
+    A YAML config hands `policies` over as plain dicts. setup() used to store
+    them as given, so `policy.is_allowed(...)` failed on the first tool call
+    (or, with default_deny off, never ran at all).
+    """
+
+    def test_dict_values_become_tool_policies(self):
+        guard = ToolPolicyGuard(
+            policies={
+                "user": {"allow": ["search"], "deny": ["exec_code"]},
+                "admin": ToolPolicy(allow=["*"], deny=[]),
+            }
+        )
+        assert isinstance(guard.policies["user"], ToolPolicy)
+        assert guard.policies["user"].allow == ["search"]
+        assert guard.policies["user"].deny == ["exec_code"]
+        assert guard.policies["user"].argument_rules == {}
+        assert isinstance(guard.policies["admin"], ToolPolicy)
+
+    @pytest.mark.asyncio
+    async def test_dict_policy_is_enforced(self):
+        guard = ToolPolicyGuard(
+            policies={
+                "user": {
+                    "allow": ["search", "read_file"],
+                    "deny": ["exec_code"],
+                    "argument_rules": {"read_file": {"path": "./data/*"}},
+                }
+            }
+        )
+        ok = await guard("q", {"role": "user", "tool_call": {"name": "search", "arguments": {}}})
+        assert ok.passed
+        denied = await guard(
+            "q", {"role": "user", "tool_call": {"name": "exec_code", "arguments": {}}}
+        )
+        assert denied.action == Action.BLOCK
+        bad_arg = await guard(
+            "q",
+            {
+                "role": "user",
+                "tool_call": {"name": "read_file", "arguments": {"path": "/etc/passwd"}},
+            },
+        )
+        assert bad_arg.action == Action.BLOCK
+        assert bad_arg.findings[0].category == "tool_argument_violation"
+
+    def test_unknown_key_names_the_role_and_the_key(self):
+        with pytest.raises(ValueError) as exc_info:
+            ToolPolicyGuard(policies={"user": {"allow": ["search"], "allowed": ["x"]}})
+        msg = str(exc_info.value)
+        assert "'user'" in msg
+        assert "'allowed'" in msg
+        assert "argument_rules" in msg, "the error should list the accepted keys"
+
+    def test_non_mapping_value_is_rejected(self):
+        with pytest.raises(ValueError, match="'user'"):
+            ToolPolicyGuard(policies={"user": ["search"]})
+
+    def test_from_config_with_dict_policies(self, tmp_path):
+        config = tmp_path / "tools.yaml"
+        config.write_text(
+            """
+pipeline:
+  parallel_checks: false
+processing:
+  tool_policy:
+    default_deny: true
+    policies:
+      user:
+        allow: [search, calculator]
+        deny: [exec_code, shell_command]
+        argument_rules:
+          fetch_url:
+            url: "https://trusted.example/*"
+      admin:
+        allow: ["*"]
+        deny: []
+"""
+        )
+        p = GuardrailPipeline.from_config(str(config))
+        guard = p.processing_guards[0]
+        assert isinstance(guard, ToolPolicyGuard)
+        assert all(isinstance(v, ToolPolicy) for v in guard.policies.values())
+        assert guard.policies["user"].is_allowed("search")
+        assert not guard.policies["user"].is_allowed("exec_code")
+        assert guard.policies["admin"].is_allowed("deploy")
+        assert guard.policies["user"].argument_rules == {
+            "fetch_url": {"url": "https://trusted.example/*"}
+        }
+
+    @pytest.mark.asyncio
+    async def test_from_config_policies_are_enforced_through_the_pipeline(self, tmp_path):
+        config = tmp_path / "tools.yaml"
+        config.write_text(
+            """
+processing:
+  tool_policy:
+    policies:
+      user:
+        allow: [search]
+        deny: [exec_code]
+"""
+        )
+        p = GuardrailPipeline.from_config(str(config))
+        allowed = await p.run_processing(
+            "q", {"role": "user"}, tool_call={"name": "search", "arguments": {}}
+        )
+        assert allowed.passed
+        blocked = await p.run_processing(
+            "q", {"role": "user"}, tool_call={"name": "exec_code", "arguments": {}}
+        )
+        assert blocked.blocked
 
 
 # ---------------------------------------------------------------------------
@@ -540,3 +655,333 @@ class TestRunProcessingToolCall:
         assert seen == []
         assert result.passed is True
         assert result.requires_human is False
+
+
+class TestRunProcessingSharesTheContext:
+    """
+    run_processing used to run on a copy of the caller's context, so
+    ToolPolicyGuard's per-session counters landed on the copy and vanished:
+    `max_tool_calls_per_session` never tripped. CLAUDE.md's pipeline
+    invariants say the one shared dict is what the budget hangs off.
+    """
+
+    @staticmethod
+    def _pipeline(**guard_kwargs):
+        guard = ToolPolicyGuard(
+            policies={"user": ToolPolicy(allow=["search"], deny=[])},
+            **guard_kwargs,
+        )
+        return GuardrailPipeline(processing_guards=[guard], parallel=False)
+
+    @pytest.mark.asyncio
+    async def test_session_budget_trips_across_calls(self):
+        p = self._pipeline(max_tool_calls_per_session=2)
+        ctx = {"role": "user", "user_id": "u1"}
+        call = {"name": "search", "arguments": {}}
+
+        first = await p.run_processing("q", ctx, tool_call=call)
+        second = await p.run_processing("q", ctx, tool_call=call)
+        third = await p.run_processing("q", ctx, tool_call=call)
+
+        assert first.passed and second.passed
+        assert third.blocked, "the third call must exceed a budget of two"
+        assert third.checks[0].findings[0].category == "tool_budget_exceeded"
+        assert ctx["_tool_session_counters"]["__total__"] == 2, "counters live on the caller's dict"
+
+    @pytest.mark.asyncio
+    async def test_fresh_context_gets_a_fresh_budget(self):
+        p = self._pipeline(max_tool_calls_per_session=1)
+        call = {"name": "search", "arguments": {}}
+        assert (await p.run_processing("q", {"role": "user"}, tool_call=call)).passed
+        assert (await p.run_processing("q", {"role": "user"}, tool_call=call)).passed
+
+    @pytest.mark.asyncio
+    async def test_argument_tool_call_does_not_linger(self):
+        """A tool_call given as an argument must not drive the next call."""
+        p = self._pipeline()
+        ctx = {"role": "user"}
+        await p.run_processing("q", ctx, tool_call={"name": "search", "arguments": {}})
+        assert "tool_call" not in ctx
+        assert ctx["guardrail_stage"] == "processing", "other stage keys stay, as elsewhere"
+
+    @pytest.mark.asyncio
+    async def test_context_tool_call_is_left_in_place(self):
+        p = self._pipeline()
+        call = {"name": "search", "arguments": {}}
+        ctx = {"role": "user", "tool_call": call}
+        await p.run_processing("q", ctx)
+        assert ctx["tool_call"] is call
+
+    @pytest.mark.asyncio
+    async def test_context_tool_call_is_restored_after_an_explicit_argument(self):
+        p = self._pipeline()
+        original = {"name": "search", "arguments": {}}
+        ctx = {"role": "user", "tool_call": original}
+        await p.run_processing("q", ctx, tool_call={"name": "search", "arguments": {"q": 1}})
+        assert ctx["tool_call"] is original
+
+    @pytest.mark.asyncio
+    async def test_tool_call_is_restored_when_a_guard_raises(self):
+        class _Boom(GuardrailBase):
+            name = "boom"
+            stage = GuardrailStage.PROCESSING
+
+            async def check(self, content, context):
+                raise RuntimeError("guard failure")
+
+        p = GuardrailPipeline(processing_guards=[_Boom()], parallel=False)
+        ctx = {"role": "user"}
+        with pytest.raises(RuntimeError):
+            await p.run_processing("q", ctx, tool_call={"name": "search", "arguments": {}})
+        assert "tool_call" not in ctx
+
+
+class TestToolPolicyShape:
+    """
+    `is_allowed` iterates `allow` and `deny`. A YAML scalar where a list was
+    meant (`allow: "read_*"`) used to load fine and then iterate character by
+    character, and the `*` in it matched every tool. The shape is checked at
+    construction and again when the guard is built, with the role named.
+    """
+
+    def test_scalar_allow_is_rejected_at_construction(self):
+        with pytest.raises(ValueError) as exc_info:
+            ToolPolicy(allow="read_*", deny=[])
+        msg = str(exc_info.value)
+        assert "'allow' must be a list of patterns, got str" in msg
+        assert "read_*" not in msg, "the message names the type, never the value"
+
+    def test_scalar_deny_is_rejected_at_construction(self):
+        with pytest.raises(ValueError, match="'deny' must be a list of patterns, got str"):
+            ToolPolicy(allow=["search"], deny="shell_command")
+
+    def test_scalar_allow_via_mapping_names_the_role(self):
+        with pytest.raises(ValueError) as exc_info:
+            ToolPolicyGuard(policies={"user": {"allow": "read_*", "deny": ["shell_command"]}})
+        msg = str(exc_info.value)
+        assert msg.startswith("Tool policy for role 'user': ")
+        assert "'allow' must be a list of patterns, got str" in msg
+        assert "read_*" not in msg
+
+    def test_scalar_deny_via_mapping_names_the_role(self):
+        with pytest.raises(ValueError) as exc_info:
+            ToolPolicyGuard(policies={"ops": {"allow": ["*"], "deny": "shell_command"}})
+        msg = str(exc_info.value)
+        assert msg.startswith("Tool policy for role 'ops': ")
+        assert "'deny' must be a list of patterns, got str" in msg
+        assert "shell_command" not in msg
+
+    def test_non_string_pattern_inside_the_list_is_rejected(self):
+        with pytest.raises(ValueError, match="'allow' must be a list of patterns, got list"):
+            ToolPolicyGuard(policies={"user": {"allow": ["search", 3]}})
+
+    @pytest.mark.parametrize(
+        "rules",
+        [
+            "read_file",
+            ["read_file"],
+            {"read_file": "./data/*"},
+            {"read_file": {"path": ["./data/*"]}},
+            {"read_file": {7: "./data/*"}},
+        ],
+    )
+    def test_bad_argument_rules_are_rejected(self, rules):
+        with pytest.raises(ValueError) as exc_info:
+            ToolPolicyGuard(policies={"user": {"allow": ["read_file"], "argument_rules": rules}})
+        msg = str(exc_info.value)
+        assert msg.startswith("Tool policy for role 'user': ")
+        assert "'argument_rules'" in msg
+        assert "./data/*" not in msg, "argument rules can carry secrets; never echo values"
+
+    def test_argument_rules_value_shape_is_rejected_at_construction(self):
+        with pytest.raises(ValueError, match="'argument_rules'"):
+            ToolPolicy(allow=["read_file"], argument_rules={"read_file": "./data/*"})
+
+    def test_tuple_of_patterns_is_accepted(self):
+        policy = ToolPolicy(allow=("search", "read_*"), deny=())
+        assert policy.is_allowed("read_file")
+        guard = ToolPolicyGuard(policies={"user": {"allow": ("search",), "deny": ()}})
+        assert guard.policies["user"].is_allowed("search")
+
+    def test_instance_reassigned_after_construction_is_caught_at_guard_build(self):
+        policy = ToolPolicy(allow=["search"], deny=[])
+        policy.allow = "read_*"
+        with pytest.raises(ValueError) as exc_info:
+            ToolPolicyGuard(policies={"user": policy})
+        assert str(exc_info.value).startswith("Tool policy for role 'user': ")
+
+    def test_scalar_allow_no_longer_allows_every_tool(self):
+        """The failure mode the check exists for: a stray `*` in a string."""
+        with pytest.raises(ValueError):
+            ToolPolicyGuard(policies={"user": {"allow": "read_*", "deny": []}})
+
+    def test_from_config_rejects_a_scalar_where_a_list_is_expected(self, tmp_path):
+        config = tmp_path / "tools.yaml"
+        config.write_text(
+            """
+processing:
+  tool_policy:
+    policies:
+      user:
+        allow: "read_*"
+        deny: shell_command
+"""
+        )
+        with pytest.raises(ValueError) as exc_info:
+            GuardrailPipeline.from_config(str(config))
+        msg = str(exc_info.value)
+        assert "Tool policy for role 'user'" in msg
+        assert "'allow' must be a list of patterns, got str" in msg
+        assert "'deny' must be a list of patterns, got str" in msg
+        assert "read_*" not in msg and "shell_command" not in msg
+
+    def test_from_config_rejects_bad_argument_rules(self, tmp_path):
+        config = tmp_path / "tools.yaml"
+        config.write_text(
+            """
+processing:
+  tool_policy:
+    policies:
+      user:
+        allow: [read_file]
+        argument_rules:
+          read_file: "./data/*"
+"""
+        )
+        with pytest.raises(ValueError, match="'argument_rules'"):
+            GuardrailPipeline.from_config(str(config))
+
+
+class TestToolPolicyUnknownOptions:
+    """
+    setup() used to swallow unknown keywords through **kwargs, so
+    `require_aproval:` in a YAML loaded silently as no approval list --
+    the control was off and nothing said so. `_coerce_policy` already rejected
+    the same class of typo one level down.
+    """
+
+    def test_misspelled_require_approval_is_rejected(self):
+        with pytest.raises(ValueError) as exc_info:
+            ToolPolicyGuard(require_aproval=["send_email"])
+        msg = str(exc_info.value)
+        assert "ToolPolicyGuard" in msg
+        assert "'require_aproval'" in msg
+        assert "require_approval" in msg, "the accepted options are listed"
+        assert "max_tool_calls_per_session" in msg
+
+    def test_every_unknown_option_is_named(self):
+        with pytest.raises(ValueError) as exc_info:
+            ToolPolicyGuard(max_tool_calls_per_sesion=5, deflt_deny=True)
+        msg = str(exc_info.value)
+        assert "'deflt_deny', 'max_tool_calls_per_sesion'" in msg
+
+    def test_enabled_is_still_consumed_by_the_base_class(self):
+        guard = ToolPolicyGuard(enabled=False, max_tool_calls_per_session=3)
+        assert guard.enabled is False
+        assert guard.max_tool_calls_per_session == 3
+
+    def test_from_config_rejects_a_misspelled_option(self, tmp_path):
+        config = tmp_path / "tools.yaml"
+        config.write_text(
+            """
+processing:
+  tool_policy:
+    enabled: true
+    default_deny: true
+    require_aproval:
+      - send_email
+"""
+        )
+        with pytest.raises(ValueError, match="'require_aproval'"):
+            GuardrailPipeline.from_config(str(config))
+
+    def test_from_config_with_every_documented_option_loads(self, tmp_path):
+        config = tmp_path / "tools.yaml"
+        config.write_text(
+            """
+processing:
+  tool_policy:
+    enabled: true
+    default_deny: true
+    default_role: user
+    approval_timeout: 30.0
+    max_tool_calls_per_session: 5
+    max_calls_per_tool: 2
+    require_approval: [send_email]
+    policies:
+      user:
+        allow: [search]
+        deny: [exec_code]
+"""
+        )
+        guard = GuardrailPipeline.from_config(str(config)).processing_guards[0]
+        assert isinstance(guard, ToolPolicyGuard)
+        assert guard.require_approval == ["send_email"]
+        assert guard.max_calls_per_tool == 2
+
+
+class TestEmptyContextIsTheCallersDict:
+    """
+    `_run_stage` and `GuardrailBase.__call__` did `context or {}`, so a
+    caller's empty dict counted as absent and the stage ran on a throwaway:
+    guardrail_stage, the PII token map and the tool budget counters were
+    written where the caller could never read them. run_processing already
+    tested `is not None`; the other stages must do the same.
+    """
+
+    @pytest.mark.asyncio
+    async def test_run_input_writes_the_stage_on_the_callers_empty_dict(self):
+        p = GuardrailPipeline(input_guards=[PromptInjectionGuard()], parallel=False)
+        ctx: dict = {}
+        await p.run_input("hello", ctx)
+        assert ctx["guardrail_stage"] == "input"
+
+    @pytest.mark.asyncio
+    async def test_run_output_writes_the_stage_on_the_callers_empty_dict(self):
+        p = GuardrailPipeline(output_guards=[ToxicityFilter()], parallel=True)
+        ctx: dict = {}
+        await p.run_output("hello", ctx)
+        assert ctx["guardrail_stage"] == "output"
+
+    @pytest.mark.asyncio
+    async def test_pii_tokenize_round_trip_through_an_initially_empty_dict(self):
+        p = GuardrailPipeline(
+            input_guards=[PIIDetector(action="tokenize", entities=["EMAIL"])],
+            output_guards=[PIIRestorer()],
+            parallel=False,
+        )
+        ctx: dict = {}
+        tokenized = await p.run_input("Contact alice@example.com please", ctx)
+        assert "alice@example.com" not in tokenized.sanitized_output
+        assert PII_TOKEN_MAP_KEY in ctx, "the token map must land on the shared dict"
+
+        token = next(iter(ctx[PII_TOKEN_MAP_KEY]))
+        restored = await p.run_output(f"Sure, I will write to {token}.", ctx)
+        assert "alice@example.com" in restored.sanitized_output
+        assert "<PII:" not in restored.sanitized_output
+
+    @pytest.mark.asyncio
+    async def test_guard_call_keeps_state_on_the_callers_empty_dict(self):
+        guard = ToolPolicyGuard(
+            policies={"user": ToolPolicy(allow=["search"], deny=[])},
+            max_tool_calls_per_session=1,
+        )
+        ctx: dict = {}
+        call = {"name": "search", "arguments": {}}
+        first = await guard("q", _with_call(ctx, call))
+        assert first.passed
+        assert ctx["_tool_session_counters"]["__total__"] == 1
+        second = await guard("q", _with_call(ctx, call))
+        assert second.blocked, "the budget lives on the caller's dict, so the second call trips"
+
+    @pytest.mark.asyncio
+    async def test_none_context_still_gets_a_fresh_dict(self):
+        p = GuardrailPipeline(input_guards=[PromptInjectionGuard()], parallel=False)
+        result = await p.run_input("hello", None)
+        assert result.passed
+
+
+def _with_call(ctx: dict, call: dict) -> dict:
+    """Put the tool call on the caller's own dict (the guard reads context["tool_call"])."""
+    ctx["tool_call"] = call
+    return ctx

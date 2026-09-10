@@ -64,6 +64,7 @@ __all__ = [
     "SARIF_LEVEL",
     "TOOL_NAME",
     "WIDTH",
+    "all_templates",
     "build_report",
     "catalogue",
     "check_templates",
@@ -79,7 +80,7 @@ __all__ = [
 
 DISTRIBUTION = "aisguard"
 TOOL_NAME = "aisg-audit"
-FORMATS: tuple[str, ...] = ("terminal", "json", "sarif", "markdown")
+FORMATS: tuple[str, ...] = ("terminal", "json", "sarif", "markdown", "html")
 FAIL_ON_CHOICES: tuple[str, ...] = ("critical", "high", "medium", "low", "info", "never")
 WIDTH = 100
 
@@ -160,6 +161,7 @@ _T_SEE_FIRST = "{items}: see the first {ref} above"
 _T_MD_ANCHOR = '<a id="{anchor}"></a>'
 _T_MD_LINK = "[{text}](#{anchor})"
 _T_NOTE = "note: {text}"
+_T_ACCEPTED_REASON = "accepted: {reason}"
 _T_UNKNOWN_ITEM = "[{category}] {what}: {why}"
 _T_RESOLVE = "resolve: {text}"
 _T_FILE = "file: {file}"
@@ -173,7 +175,11 @@ _T_INV_LLM_CALLS = "llm_calls: {n}"
 _T_INV_TOOLS = "tools: {n}"
 _T_INV_MCP = "mcp servers: {n}"
 _T_INV_HOSTS = "hosts: {n}"
-_T_BASELINE = "baseline: {new} new, {unchanged} unchanged, {fixed} fixed ({file})"
+_T_INV_OWN_OUTPUT = "own output skipped: {items}"
+_T_INV_OWN_OUTPUT_NONE = "none"
+_T_INV_OVERSIZE = "oversize files skipped: {n}"
+_T_INV_OVERSIZE_UNRECORDED = "not recorded"
+_T_BASELINE = "baseline: {new} new, {unchanged} unchanged, {gone} no longer reported ({file})"
 _T_SARIF_MESSAGE = "[{label}] {title}"
 _T_EXIT = "exit code: {code}"
 
@@ -222,6 +228,7 @@ _TEMPLATES: tuple[str, ...] = (
     _T_MD_ANCHOR,
     _T_MD_LINK,
     _T_NOTE,
+    _T_ACCEPTED_REASON,
     _T_UNKNOWN_ITEM,
     _T_RESOLVE,
     _T_FILE,
@@ -235,16 +242,31 @@ _TEMPLATES: tuple[str, ...] = (
     _T_INV_TOOLS,
     _T_INV_MCP,
     _T_INV_HOSTS,
+    _T_INV_OWN_OUTPUT,
+    _T_INV_OWN_OUTPUT_NONE,
+    _T_INV_OVERSIZE,
+    _T_INV_OVERSIZE_UNRECORDED,
     _T_BASELINE,
     _T_SARIF_MESSAGE,
     _T_EXIT,
 )
 
 
+def all_templates() -> tuple[str, ...]:
+    """
+    Every fixed string any renderer emits: this module's plus the html renderer's.
+    Imported lazily because `html.py` builds on this module's templates, so a module-level
+    import in either direction is a cycle.
+    """
+    from aisg.devtools.audit.html import TEMPLATES as html_templates
+
+    return _TEMPLATES + html_templates
+
+
 def check_templates() -> list[str]:
-    """Banned phrases present in the renderer's own fixed strings. Never scans findings."""
+    """Banned phrases present in the renderers' own fixed strings. Never scans findings."""
     found: list[str] = []
-    for template in _TEMPLATES:
+    for template in all_templates():
         lowered = template.lower()
         for phrase in BANNED_PHRASES:
             if phrase in lowered and phrase not in found:
@@ -389,10 +411,14 @@ def _as_dict(obj: Any) -> Any:
 
 def _target(ctx: AuditContext) -> dict[str, Any]:
     source = (_as_dict(ctx.inventory) or {}).get("target") or {}
+    # The walker excludes as resolved (CLI flag or `[tool.aisg-audit]`): a reader of the
+    # report sees what was not walked without re-deriving it from the pyproject.
+    exclude = getattr(ctx.options, "exclude", None) or ()
     return {
         "path": _posix(source.get("path") or ctx.root),
         "git_sha": source.get("git_sha"),
         "dirty": source.get("dirty"),
+        "exclude": [str(item) for item in exclude],
     }
 
 
@@ -625,7 +651,8 @@ def _finding_detail_lines(
 ) -> list[str]:
     """
     Detail lines shared by markdown and terminal, in a fixed order: scope, evidence, fix,
-    then the rule-level blocks (alternatives, controls, known failure modes), then the note.
+    then the rule-level blocks (alternatives, controls, known failure modes), then the note,
+    then the baseline's accepted reason when the finding carries one.
 
     `first` is the earlier finding of the same rule whose rule-level blocks were already
     printed. A block identical to `first`'s is replaced by one reference line naming
@@ -655,6 +682,10 @@ def _finding_detail_lines(
         lines.append(_T_SEE_FIRST.format(items=" / ".join(folded), ref=ref or first.display_id))
     if finding.notes:
         lines.append(_T_NOTE.format(text=finding.notes))
+    # The reason is why the finding is not counted; a reader of the terminal or markdown
+    # output otherwise has to open the baseline file to learn it.
+    if finding.accepted_reason:
+        lines.append(_T_ACCEPTED_REASON.format(reason=finding.accepted_reason))
     return lines
 
 
@@ -691,6 +722,10 @@ def _inventory_lines(inventory: Inventory | dict[str, Any] | None) -> list[str]:
     languages = inv.get("languages") or {}
     mcp = inv.get("mcp") or {}
     items = ", ".join(f"{lang} {n}" for lang, n in sorted(languages.items())) or _T_NONE
+    # The audit's own earlier output found in the tree and skipped by the walk. One line,
+    # always: a page that re-reported its own snippets would be an audit of the audit.
+    own = inv.get("own_output_skipped") or []
+    own_items = ", ".join(str(p) for p in own) if isinstance(own, list) and own else None
     return [
         _T_INV_UNITS.format(n=len(inv.get("units") or [])),
         _T_INV_LANGUAGES.format(n=len(languages), items=items),
@@ -698,7 +733,30 @@ def _inventory_lines(inventory: Inventory | dict[str, Any] | None) -> list[str]:
         _T_INV_TOOLS.format(n=len(inv.get("tools") or [])),
         _T_INV_MCP.format(n=len(mcp.get("servers") or []) if isinstance(mcp, dict) else 0),
         _T_INV_HOSTS.format(n=len(inv.get("hosts") or [])),
+        _T_INV_OWN_OUTPUT.format(items=own_items or _T_INV_OWN_OUTPUT_NONE),
+        _T_INV_OVERSIZE.format(n=_unrecorded(_oversize_files(inv))),
     ]
+
+
+def _oversize_files(inv: Any) -> int | None:
+    """
+    `target.oversize_files`: files the walk never opened because they were over
+    `max_size`. The walk hands the paths to the caller, which records the count next to
+    `skipped_files`. `None` when the document has no such key (an older report read back
+    from disk): the renderers then say so rather than printing 0, because zero is a
+    claim and nobody made it.
+    """
+    target = inv.get("target") if isinstance(inv, dict) else None
+    value = target.get("oversize_files") if isinstance(target, dict) else None
+    if isinstance(value, list):
+        return len(value)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def _unrecorded(count: int | None) -> str:
+    return _T_INV_OVERSIZE_UNRECORDED if count is None else str(count)
 
 
 def _baseline_line(report: Report) -> str | None:
@@ -708,7 +766,7 @@ def _baseline_line(report: Report) -> str | None:
     return _T_BASELINE.format(
         file=block.get("file") or _T_DASH,
         new=block.get("new", 0),
-        fixed=block.get("fixed", 0),
+        gone=len(block.get("no_longer_reported") or []),
         unchanged=block.get("unchanged", 0),
     )
 
@@ -799,9 +857,13 @@ def _sarif_result(finding: Finding) -> dict[str, Any]:
         "report": finding.report,
         "gitignored": finding.gitignored,
         "baseline_status": finding.baseline_status,
+        # Carries `package`, so a Code Scanning consumer sees what the package can wire.
+        "recommendation": finding.recommendation.to_dict(),
     }
     if finding.notes is not None:
         properties["notes"] = finding.notes
+    if finding.accepted_reason is not None:
+        properties["accepted_reason"] = finding.accepted_reason
     result["properties"] = properties
     return result
 
@@ -842,18 +904,29 @@ def to_sarif(report: Report) -> str:
             )
         )
     version = (report.tool or {}).get("version") or tool_version()
+    inv = _as_dict(report.inventory)
+    own = inv.get("own_output_skipped") if isinstance(inv, dict) else None
+    own_output = [str(p) for p in own] if isinstance(own, list) else []
+    oversize_files = _oversize_files(inv)
     # No `schema` at the root: the 2.1.0 schema forbids unknown root keys and
     # Code Scanning uploads validate strictly. The marker rides in the run's
-    # property bag, which is the one place SARIF allows arbitrary keys.
+    # property bag, which is the one place SARIF allows arbitrary keys; so does
+    # the own-output list, since SARIF has no inventory block of its own.
+    # The property bag is the run's FIRST key, and `aisg_schema` then `own_output_skipped`
+    # its first two: `walk.is_own_report` reads only the head of a file, and with the bag
+    # after `results` a SARIF written into the tree was scanned like any other file and
+    # reproduced its own findings on the next run. A test pins the order.
     doc = {
         "$schema": SARIF_SCHEMA_URI,
         "version": SARIF_VERSION,
         "runs": [
             {
-                "tool": {"driver": {"name": TOOL_NAME, "version": version, "rules": rules_out}},
-                "results": [_sarif_result(f) for f in findings],
                 "properties": {
                     "aisg_schema": SCHEMA_VERSION,
+                    "own_output_skipped": own_output,
+                    # SARIF has no inventory block; `null` means the count was not
+                    # recorded, never zero.
+                    "oversize_files": oversize_files,
                     "disclaimer": report.disclaimer,
                     "generated_at": report.generated_at,
                     "target": _as_dict(report.target),
@@ -862,6 +935,8 @@ def to_sarif(report: Report) -> str:
                     "external_tools": [_as_dict(t) for t in report.external_tools],
                     "baseline": report.baseline,
                 },
+                "tool": {"driver": {"name": TOOL_NAME, "version": version, "rules": rules_out}},
+                "results": [_sarif_result(f) for f in findings],
             }
         ],
     }
@@ -1088,4 +1163,9 @@ def render(report: Report, fmt: str, *, quiet: bool = False) -> str:
         return to_markdown(report)
     if fmt == "terminal":
         return to_terminal(report, quiet=quiet)
+    if fmt == "html":
+        # Local import: `html.py` imports this module's templates, see `all_templates`.
+        from aisg.devtools.audit.html import render_html
+
+        return render_html(report)
     raise ValueError(f"unknown format {fmt!r}; expected one of {', '.join(FORMATS)}")

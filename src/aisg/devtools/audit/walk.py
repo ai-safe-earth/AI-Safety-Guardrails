@@ -15,6 +15,28 @@ Rules that hold here:
   once under UNKNOWN. Silence is never a pass.
 - `subprocess` is used only for read-only `git` commands, never with `shell=True`, never
   with `check=True`, always with a timeout.
+- The audit's own output is not audited. A `.json` whose head carries both the schema
+  marker and `"kind": "audit"` or `"kind": "inventory"`, a `.sarif` (or `.json`) whose
+  head carries the run property bag the SARIF renderer writes first (`aisg_schema` then
+  `own_output_skipped`), and an html document whose first line is `OWN_HTML_MARKER_LINE`,
+  are skipped and named in `own_output_skipped`, so a report written into the tree does
+  not reproduce every finding it lists on the next run. A baseline
+  (`kind: audit-baseline`) is still scanned: an accepted reason that quotes the literal
+  it accepts must show up. So is every other document of the schema family, the lint
+  SARIF included: it carries the same `aisg_schema` marker but not the audit's second
+  key. No `SKIP_DIRS` entry does this, so measure and probe reports placed next to the
+  audit report are still discovered as evidence.
+- The head every marker check reads is decoded the way `read_text` decodes the whole
+  file: UTF-8 with the BOM stripped. A BOM before `OWN_HTML_MARKER_LINE` used to defeat
+  `is_own_html`, so the html report fell through to the plain marker skip.
+- A file over `max_size` is not read, and that is reported: the count, the limit and the
+  first few paths go under UNKNOWN, and `oversize_skipped` receives every path so the
+  caller can put the count on the inventory. Silence is never a pass.
+- `.aisg-audit/` (`AUDIT_DIR`) is never pruned by `.gitignore`, in either the directory
+  or the file branch. The skill puts every artefact there and proposes the gitignore line
+  for it, so the measure and probe reports the skill itself produces would otherwise stop
+  being evidence the moment the line landed. As with `.env*`, `would_ignore()` stays raw
+  and `FileRecord.gitignored` still says so.
 """
 
 from __future__ import annotations
@@ -29,11 +51,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from aisg.devtools.audit.model import Unit, UnknownCategory, UnknownItem
+from aisg.devtools.audit.model import SCHEMA_VERSION, Unit, UnknownCategory, UnknownItem
 from aisg.devtools.audit.patterns import (
+    AUDIT_DIR,
     ENV_FILE_RE,
     IGNORE_MARKER,
     LANG_BY_EXT,
+    OWN_HTML_MARKER_LINE,
     SKIP_DIRS,
     UNIT_MANIFESTS,
 )
@@ -49,6 +73,8 @@ __all__ = [
     "GitIgnore",
     "read_text",
     "has_ignore_marker",
+    "is_own_report",
+    "is_own_html",
     "unit_of",
     "walk",
     "git_meta",
@@ -78,6 +104,19 @@ _NON_CODE_LANGS = frozenset({"config", "other"})
 _SKIP_NAMES = frozenset(s for s in SKIP_DIRS if "/" not in s)
 _SKIP_PATHS = frozenset(s for s in SKIP_DIRS if "/" in s)
 _SHA_RE = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+
+# The audit's own JSON output (report or inventory): the exact quoted forms `json.dumps`
+# writes, with optional whitespace after the colon. `"kind": "audit-baseline"` does not
+# match the second one.
+_OWN_SCHEMA_RE = re.compile(r'"schema":\s*"' + re.escape(SCHEMA_VERSION) + '"')
+_OWN_KIND_RE = re.compile(r'"kind":\s*"(?:audit|inventory)"')
+# The audit's own SARIF: `report.to_sarif` writes the run's property bag first, and its
+# first two keys in this order. The lint SARIF carries `aisg_schema` too, so the marker
+# alone would skip a document that is not ours.
+_OWN_SARIF_RE = re.compile(
+    r'"aisg_schema":\s*"' + re.escape(SCHEMA_VERSION) + r'",\s*"own_output_skipped":'
+)
+_OWN_REPORT_SUFFIXES = (".json", ".sarif")
 
 
 # ---------------------------------------------------------------------------
@@ -293,9 +332,14 @@ class GitIgnore:
         return self._matches(rel, is_dir)
 
     def match(self, relpath: str, is_dir: bool = False) -> bool:
-        """`would_ignore` with the hard exception: a `.env*` file is never ignored."""
+        """
+        `would_ignore` with the hard exceptions: a `.env*` file is never ignored, and
+        neither is `AUDIT_DIR` or anything under it.
+        """
         rel = _norm_rel(relpath)
         if not is_dir and _is_env_file(rel.rsplit("/", 1)[-1]):
+            return False
+        if rel == AUDIT_DIR or rel.startswith(AUDIT_DIR + "/"):
             return False
         return self.would_ignore(rel, is_dir)
 
@@ -330,6 +374,33 @@ def read_text(path: Path, max_size: int | None = None) -> str | None:
 def has_ignore_marker(head: str) -> bool:
     """True when `IGNORE_MARKER` appears in the first five lines."""
     return any(IGNORE_MARKER in line for line in head.splitlines()[:MARKER_LINES])
+
+
+def is_own_report(name: str, head: str) -> bool:
+    """
+    True when the file's head is the audit's own output: a `.json` carrying both the
+    schema marker and `"kind": "audit"` (or `"kind": "inventory"`), or a `.sarif` (or
+    `.json`) carrying the SARIF run properties `aisg_schema` then `own_output_skipped`,
+    in the first `HEAD_BYTES`. A baseline (`"kind": "audit-baseline"`) and every other
+    document of the schema family stay scanned.
+    """
+    lower = name.lower()
+    if not lower.endswith(_OWN_REPORT_SUFFIXES):
+        return False
+    if _OWN_SARIF_RE.search(head):
+        return True
+    if not lower.endswith(".json"):
+        return False
+    return bool(_OWN_SCHEMA_RE.search(head)) and bool(_OWN_KIND_RE.search(head))
+
+
+def is_own_html(head: str) -> bool:
+    """
+    True when the first line is exactly `OWN_HTML_MARKER_LINE`: the audit's own html
+    report. `has_ignore_marker` would drop it too, but silently; this names it.
+    """
+    first = head.split("\n", 1)[0].rstrip("\r")
+    return first == OWN_HTML_MARKER_LINE
 
 
 # ---------------------------------------------------------------------------
@@ -429,9 +500,23 @@ class _Pending:
 
 
 def walk(
-    root: Path, options: WalkOptions | None = None
+    root: Path,
+    options: WalkOptions | None = None,
+    *,
+    own_output_skipped: list[str] | None = None,
+    oversize_skipped: list[str] | None = None,
 ) -> tuple[list[FileRecord], list[Unit], list[UnknownItem]]:
-    """Enumerate `root`. Never raises on an unreadable entry; see the module docstring."""
+    """
+    Enumerate `root`. Never raises on an unreadable entry; see the module docstring.
+
+    `own_output_skipped`, when given, receives the POSIX relpath of every file skipped as
+    the audit's own report (`is_own_report`, `is_own_html`), so the caller can put the
+    list in the inventory; those files get no UNKNOWN row, they are named there instead.
+
+    `oversize_skipped`, when given, receives the POSIX relpath of every file over
+    `options.max_size`. Those files always get one UNKNOWN row (count, limit, first few
+    paths) whether or not the sink is passed; the sink is for the inventory's count.
+    """
     opts = options or WalkOptions()
     root = Path(root).resolve()
     exclude = _normalise_excludes(opts.exclude)
@@ -441,6 +526,7 @@ def walk(
     symlinks = 0
     unreadable = 0
     ignored_dirs: list[str] = []
+    oversize: list[str] = []
 
     def _onerror(_err: OSError) -> None:
         nonlocal unreadable
@@ -487,6 +573,7 @@ def walk(
             try:
                 size = full.stat().st_size
                 if size > opts.max_size:
+                    oversize.append(rel)
                     continue
                 with open(full, "rb") as fh:
                     head = fh.read(HEAD_BYTES)
@@ -495,7 +582,16 @@ def walk(
                 continue
             if b"\x00" in head:
                 continue
-            if has_ignore_marker(head.decode("utf-8", errors="replace")):
+            # `utf-8-sig`: the same text `read_text` returns. A BOM left in place put
+            # three bytes before the html marker line and defeated `is_own_html`.
+            text_head = head.decode("utf-8-sig", errors="replace")
+            # The html report carries the marker on line 1; name it before the marker
+            # check drops it without a trace.
+            if is_own_html(text_head) or is_own_report(name, text_head):
+                if own_output_skipped is not None:
+                    own_output_skipped.append(rel)
+                continue
+            if has_ignore_marker(text_head):
                 continue
             pending.append(_Pending(full, rel, _lang_for(name), size, gitignored))
 
@@ -542,10 +638,33 @@ def walk(
         )
     if ignored_dirs:
         unknown.append(_ignored_dirs_item(ignored_dirs))
+    if oversize:
+        if oversize_skipped is not None:
+            oversize_skipped.extend(sorted(oversize))
+        unknown.append(_oversize_item(oversize, opts.max_size))
     return records, units, unknown
 
 
 _IGNORED_DIRS_NAMED = 6
+_OVERSIZE_NAMED = 3
+
+
+def _oversize_item(oversize: list[str], limit: int) -> UnknownItem:
+    """A file over `max_size` was never opened, so nothing in it was audited. A large
+    file is exactly where a dumped conversation log, an eval corpus or a bundled config
+    lives, so the skip is counted and named, never silent."""
+    names = sorted(oversize)
+    shown = ", ".join(names[:_OVERSIZE_NAMED])
+    if len(names) > _OVERSIZE_NAMED:
+        shown += f", +{len(names) - _OVERSIZE_NAMED} more"
+    return UnknownItem(
+        category=UnknownCategory.RUNTIME,
+        what="oversize files skipped",
+        why=f"{len(names)} file(s) over the {limit} byte limit not read: {shown}",
+        how_to_resolve=(
+            "Re-run with a larger size limit (WalkOptions.max_size), or audit those files directly."
+        ),
+    )
 
 
 def _ignored_dirs_item(ignored_dirs: list[str]) -> UnknownItem:

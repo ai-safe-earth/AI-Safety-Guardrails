@@ -202,6 +202,12 @@ _KILL_CALLS: frozenset[tuple[str, ...]] = frozenset(
     }
 )
 _MUTATORS = frozenset({"append", "extend", "insert", "add", "update", "put", "setdefault"})
+_EMPTY_CTORS = (["list"], ["tuple"], ["set"], ["dict"], ["frozenset"])
+# Gates that exist only through their keywords: with `**name` in place of them there
+# is nothing to read, and the site is UNKNOWN rather than a gate of either kind.
+_CONFIGURED_GATES = frozenset({"ToolPolicyGuard"})
+# The rules that consume a tool-gate join; an UNKNOWN about an unresolvable gate names them.
+_UNRESOLVED_GATE_RULES: tuple[str, ...] = ("AUD-201", "AUD-202")
 _LOOP_CAPS = frozenset(vocab.LOOP_CAP_SYMBOLS)
 _SANITISERS = tuple(vocab.SANITISER_SYMBOLS)
 _LEGS = ("private", "untrusted", "external_action")
@@ -589,15 +595,48 @@ def _target_names(target: ast.AST) -> list[str]:
     return [root.id] if isinstance(root, ast.Name) else []
 
 
+_OPAQUE_CALL = "..."  # what a nested call renders as: no callee name, no arguments
+
+
+def _collapse_calls(node: ast.AST, keep: ast.Call | None) -> ast.AST:
+    """A copy of `node` with every `ast.Call` other than `keep` replaced by `...`.
+
+    The copy is what the gate-text pass reads, so a gate literal (`ToolPolicyGuard`,
+    `require_approval=`, `auto_approve=True`) is matched by exactly one visit: the
+    call that owns it, at that call's own line. Rendering a nested call's text from
+    the outer statement used to record a reason-less, i.e. live, gate at the outer
+    line, and `_record_gate` reconciles the two records only when they share a line:
+    a `ToolPolicyGuard(**cfg)` on a later line of a multi-line statement left a
+    phantom live gate for `join_gates` to find. The callee is collapsed with the
+    rest: `ToolPolicyGuard(**cfg).check(x)` reads `....check(x)` from the outer call.
+    """
+    if isinstance(node, ast.Call) and node is not keep:
+        return ast.copy_location(ast.Name(id=_OPAQUE_CALL, ctx=ast.Load()), node)
+    fields: dict[str, Any] = {}
+    for name, value in ast.iter_fields(node):
+        if isinstance(value, list):
+            fields[name] = [
+                _collapse_calls(v, keep) if isinstance(v, ast.AST) else v for v in value
+            ]
+        elif isinstance(value, ast.AST):
+            fields[name] = _collapse_calls(value, keep)
+        else:
+            fields[name] = value
+    # `ast.unparse` reads a statement's lineno (type comments); the copy keeps it.
+    return ast.copy_location(type(node)(**fields), node)
+
+
+def _owned_text(node: ast.AST, keep: ast.Call | None = None) -> str:
+    """`node` unparsed with nested calls opaque; "" when it cannot be rendered."""
+    try:
+        return ast.unparse(_collapse_calls(node, keep))
+    except Exception:  # exotic nodes must never kill the audit
+        return ""
+
+
 def _shallow(call: ast.Call) -> str:
     """Call rendered with nested calls collapsed, so a gate literal is seen by one call only."""
-
-    def arg(n: ast.AST) -> str:
-        return ".".join(_chain(n.func)) + "(...)" if isinstance(n, ast.Call) else _unparse(n)
-
-    parts = [arg(a) for a in call.args]
-    parts += [f"{k.arg or '**'}={arg(k.value)}" for k in call.keywords]
-    return f"{_unparse(call.func)}({', '.join(parts)})"
+    return _owned_text(call, call)
 
 
 def _kwarg(call: ast.Call, name: str) -> ast.AST | None:
@@ -609,6 +648,41 @@ def _kwarg(call: ast.Call, name: str) -> ast.AST | None:
 
 def _is_true(node: ast.AST | None) -> bool:
     return isinstance(node, ast.Constant) and node.value is True
+
+
+def _is_empty(node: ast.AST) -> bool:
+    """An explicit nothing: `None`, an empty literal collection, or a bare `set()`."""
+    if isinstance(node, ast.Constant):
+        return node.value is None
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        return not node.elts
+    if isinstance(node, ast.Dict):
+        return not node.keys
+    if isinstance(node, ast.Call) and not node.args and not node.keywords:
+        return _chain(node.func) in _EMPTY_CTORS
+    return False
+
+
+def _is_set(node: ast.AST | None) -> bool:
+    """A keyword value that is not absent, None, False or an empty literal collection.
+
+    `ToolPolicyGuard(require_approval=["send_email"])` takes a list of tool names, and
+    with no `approval_callback` the guard approves every one of them; the literal `True`
+    is the shape the docs once showed, not the one the constructor takes.
+    """
+    if node is None:
+        return False
+    if isinstance(node, ast.Constant):
+        return bool(node.value)
+    return not _is_empty(node)
+
+
+def _star_kwarg(call: ast.Call) -> str | None:
+    """The name behind the first `**name` of a call, if any."""
+    for k in call.keywords:
+        if k.arg is None:
+            return _unparse(k.value) or "kwargs"
+    return None
 
 
 def _sanitiser_name(chain: list[str]) -> bool:
@@ -1117,6 +1191,9 @@ class _Analyser:
         self.facts = PyFacts()
         self.legs: dict[str, dict[str, dict[str, tuple[int, int, str]]]] = {}
         self.recorded: set[int] = set()
+        # Lines where a gate call was configured through `**name`: no GateSite is
+        # kept for them, whichever order the Assign and the Call arrive in.
+        self.unresolved: set[int] = set()
         self.system_uses: set[str] = set()
         self.calls_by_scope: dict[str, list[str]] = {}
         # (index into prompt_assemblies, names it was assigned to): resolved once every
@@ -1259,7 +1336,8 @@ class _Analyser:
 
     def _assign(self, node: ast.Assign, scope: _Scope) -> None:
         if self.mod.has_gate_text:
-            self._gate_text(_unparse(node), node, scope, None)
+            # Calls are opaque here: a literal inside one belongs to that call's visit.
+            self._gate_text(_owned_text(node), node, scope, None)
         target = node.targets[0] if len(node.targets) == 1 else None
         if not (isinstance(target, ast.Name) and "tool" in target.id.lower()):
             return
@@ -1368,11 +1446,15 @@ class _Analyser:
         if bypass is not None:
             reason = "bypass: " + bypass.group(0).strip()
         elif call is not None:
-            if (
-                _is_true(_kwarg(call, "require_approval"))
-                and _kwarg(call, "approval_callback") is None
-            ):
-                reason = "require_approval=True without approval_callback"
+            approval_list = _kwarg(call, "require_approval")
+            star = _star_kwarg(call)
+            if approval_list is None and star is not None and symbol in _CONFIGURED_GATES:
+                self._unresolved_gate(symbol, star, node.lineno)
+                return
+            if approval_list is not None and _is_empty(approval_list):
+                reason = "require_approval is empty"
+            elif _is_set(approval_list) and not _is_set(_kwarg(call, "approval_callback")):
+                reason = "require_approval without approval_callback"
             elif (
                 symbol in ("interrupt_before", "interrupt_after")
                 and _kwarg(call, "checkpointer") is None
@@ -1381,15 +1463,48 @@ class _Analyser:
         gate = GateSite(symbol, self.mod.relpath, node.lineno, scope.name, reason)
         self._record_gate(gate)
 
+    def _unresolved_gate(self, symbol: str, star: str, line: int) -> None:
+        """`ToolPolicyGuard(**cfg)`: neither a live gate nor an inert one, an UNKNOWN.
+
+        Whatever `cfg` holds is not in this file's AST, so the site cannot vouch for
+        a tool; the tool reads as ungated and the UNKNOWN row says why.
+        """
+        relpath = self.mod.relpath
+        self.unresolved.add(line)
+        self.facts.gates[:] = [
+            g for g in self.facts.gates if not (g.file == relpath and g.line == line)
+        ]
+        self.facts.unknown.append(
+            UnknownItem(
+                category=UnknownCategory.DEEP,
+                what=f"approval configuration of {symbol} at {relpath}:{line}",
+                why=(
+                    f"the call is configured through **{star}, so whether require_approval "
+                    "names any tool and approval_callback is set could not be resolved"
+                ),
+                how_to_resolve=(
+                    "pass require_approval and approval_callback as literal keywords at "
+                    "the call site; the site counts as no gate until then"
+                ),
+                file=relpath,
+                # The tool-gate rules read this item; without them the html figure
+                # draws it on the "not attributed" box instead of the tools box.
+                rule_ids=_UNRESOLVED_GATE_RULES,
+            )
+        )
+
     def _record_gate(self, gate: GateSite) -> None:
         """One GateSite per (file, line); an inert record wins over a live one.
 
-        The same source line reaches `_gate_text` twice: once as the whole
-        Assign (`guard = ToolPolicyGuard(require_approval=True)`, no Call to
-        inspect, so no reason) and once as the Call itself (reason resolved).
-        Keeping both let `join_gates` pick the reason-less record first and
-        report an inert gate as live.
+        Nested calls are opaque to the gate-text pass (`_collapse_calls`), so a
+        literal is normally seen once, by the call that owns it. Two records can
+        still share a line -- two gate calls on one line, or an Assign whose own
+        text and a call on it both match -- and keeping both let `join_gates`
+        pick a reason-less record first and report an inert gate as live. A line
+        `_unresolved_gate` gave up on takes no record in either order.
         """
+        if gate.line in self.unresolved:
+            return
         gates = self.facts.gates
         for i, existing in enumerate(gates):
             if existing.file != gate.file or existing.line != gate.line:

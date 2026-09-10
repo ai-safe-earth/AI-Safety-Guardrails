@@ -4,6 +4,11 @@ Idioms per tier for Node and browser code. Library APIs move; where a name is qu
 check the current docs before writing it into the user's code. Deep analysis is Python-only,
 so every AUD-401..406 finding in TypeScript is a co-located grep hit: read the code first.
 
+The `recommendation.package.symbols` in the JSON (`ToolPolicyGuard`, `PIIDetector`,
+`RateLimiter`, ...) are Python-only: this package has no TypeScript runtime, so in phase 3
+a TypeScript unit always takes the outside-package branch whatever `same_control` says.
+The control the rule asks for applies unchanged; this file is how to write it here.
+
 ## T1 -- config
 
 - AUD-101 / AUD-108: `.claude/settings.json` `permissions.allow` lists exact commands, not

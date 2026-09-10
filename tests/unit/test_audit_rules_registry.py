@@ -3,7 +3,8 @@ tests/unit/test_audit_rules_registry.py
 ---------------------------------------
 Registry-level pins for `aisg audit` rules: every module present, ids and
 priorities consistent, metadata complete, precision UNMEASURED (never guessed),
-and every rule safe on an empty context.
+every rule safe on an empty context, every rule classified (package and
+subsystem), and every package symbol a real name in this distribution.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ from pathlib import Path
 import pytest
 
 from aisg.devtools.audit.model import (
+    NO_PACKAGE,
+    PACKAGE_MECHANISMS,
     TRIFECTA_RULE_ID,
     AuditContext,
     Inventory,
@@ -21,9 +24,13 @@ from aisg.devtools.audit.model import (
     UnknownCategory,
     UnknownItem,
 )
+from aisg.devtools.audit.report import BANNED_PHRASES
 from aisg.devtools.audit.rules import (
     ALL_RULES,
     MISSING_RULE_MODULES,
+    NOT_ATTRIBUTED,
+    SUBSYSTEM_OF_RULE,
+    SUBSYSTEMS,
     AuditRule,
     default_rules,
     experimental_rules,
@@ -31,9 +38,41 @@ from aisg.devtools.audit.rules import (
     rule_by_id,
     run_rules,
     select_rules,
+    subsystem_of,
 )
 
 RULE_ID = re.compile(r"^AUD-\d{3,4}$")
+
+# The one word the design bans outright, assembled from fragments so this file does not
+# carry it as a contiguous literal (the self-audit scans tests too).
+BANNED_WORD_RE = re.compile(r"\bcl" + r"ean\b", re.IGNORECASE)
+
+# Package symbols are either a console verb ("aisg measure") or a class name. A verb must
+# be a subcommand of the single console script; a class must be reachable from `aisg`.
+VERB_RE = re.compile(r"^aisg [a-z]+$")
+
+# The closed set of class names a rule may name: each is exported from `aisg/__init__.py`
+# (the plan table and the skill print them as the thing to wire, so they are one import
+# away). A new symbol is exported and added here before a rule names it.
+CLASS_SYMBOLS = frozenset(
+    {
+        "AuditLogger",
+        "GuardrailPipeline",
+        "LLMJudgeBase",
+        "LLMOutputFilter",
+        "LLMToolFilter",
+        "PIIDetector",
+        "PIIRestorer",
+        "PromptInjectionGuard",
+        "RateLimiter",
+        "TelemetryProvider",
+        "ToolPolicy",
+        "ToolPolicyGuard",
+    }
+)
+
+# Text that would turn a "what remains open" note into a claim of completion.
+COMPLETION_CLAIMS = ("resolves", "fixes", "solves", "closes the finding", "guarantees")
 
 EXPECTED_IDS = {
     *(f"AUD-{n}" for n in range(101, 109)),
@@ -213,3 +252,166 @@ def test_rule_exception_becomes_an_unknown_item(tmp_path: Path) -> None:
     assert item.what == "rule AUD-9999"
     assert "RuntimeError: boom" in item.why
     assert item.rule_ids == ("AUD-9999",)
+
+
+# ---------------------------------------------------------------------------
+# Package classification: what this distribution offers for each rule
+# ---------------------------------------------------------------------------
+
+
+def _package_symbols() -> list[str]:
+    return sorted({symbol for rule in ALL_RULES for symbol in rule.recommendation.package.symbols})
+
+
+def _rule_texts(rule: type[AuditRule]) -> list[tuple[str, str]]:
+    """Every prose field of a rule's recommendation, labelled for the assertion message."""
+    rec = rule.recommendation
+    out = [("summary", rec.summary), ("leaves_open", rec.package.leaves_open)]
+    out += [(f"alternatives[{i}]", alt) for i, alt in enumerate(rec.alternatives)]
+    return out
+
+
+@pytest.mark.parametrize("rule", ALL_RULES, ids=lambda r: r.id)
+def test_every_rule_sets_its_package_explicitly(rule: type[AuditRule]) -> None:
+    # The sentinel is the dataclass default; a rule that left it in place was never
+    # classified. A rule that offers nothing says so with its own Package("none").
+    package = rule.recommendation.package
+    assert package is not NO_PACKAGE, f"{rule.id} never set recommendation.package"
+    assert package.mechanism in PACKAGE_MECHANISMS
+    if package.mechanism == "none":
+        assert package.symbols == ()
+        assert not package.same_control
+        assert package.leaves_open == ""
+        # A rule the package cannot help with still names the alternative in aisg terms,
+        # so the reader learns that nothing here applies rather than inferring it.
+        assert any("aisg" in alt.lower() for alt in rule.recommendation.alternatives), (
+            f"{rule.id}: a 'none' package needs an alternative saying nothing in aisg applies"
+        )
+    else:
+        assert package.symbols, f"{rule.id} offers {package.mechanism} but names no symbol"
+        assert package.leaves_open.strip(), f"{rule.id} does not say what stays open"
+
+
+@pytest.mark.parametrize("rule", ALL_RULES, ids=lambda r: r.id)
+def test_leaves_open_is_plain_ascii_prose(rule: type[AuditRule]) -> None:
+    text = rule.recommendation.package.leaves_open
+    if not text:
+        return
+    assert text.isascii(), f"{rule.id}: leaves_open is not ASCII"
+    assert text == text.strip()
+    assert text.endswith("."), f"{rule.id}: leaves_open must be one or two full sentences"
+    sentences = [s for s in re.split(r"(?<=\.)\s+", text) if s]
+    assert 1 <= len(sentences) <= 3, f"{rule.id}: leaves_open is {len(sentences)} sentences"
+    lowered = text.lower()
+    for claim in COMPLETION_CLAIMS:
+        assert claim not in lowered, f"{rule.id}: leaves_open claims completion ({claim!r})"
+
+
+@pytest.mark.parametrize("rule", ALL_RULES, ids=lambda r: r.id)
+def test_recommendation_prose_is_free_of_banned_language(rule: type[AuditRule]) -> None:
+    for label, text in _rule_texts(rule):
+        lowered = text.lower()
+        for phrase in BANNED_PHRASES:
+            assert phrase not in lowered, f"{rule.id} {label}: banned phrase {phrase!r}"
+        assert not BANNED_WORD_RE.search(text), f"{rule.id} {label}: the banned word"
+
+
+@pytest.mark.parametrize("rule", ALL_RULES, ids=lambda r: r.id)
+def test_same_control_rules_name_a_wirable_symbol_first(rule: type[AuditRule]) -> None:
+    # `same_control` means wiring the first symbol IS the control the rule asks for, so
+    # the first symbol is what the closing-the-loop fixtures wire; it must be a class
+    # or a verb, never prose.
+    package = rule.recommendation.package
+    if not package.same_control:
+        return
+    assert package.mechanism != "none"
+    first = package.symbols[0]
+    assert VERB_RE.match(first) or first.isidentifier(), f"{rule.id}: {first!r}"
+
+
+@pytest.mark.parametrize("rule", ALL_RULES, ids=lambda r: r.id)
+def test_detector_is_never_same_control_on_a_p1_to_p4_rule(rule: type[AuditRule]) -> None:
+    # A detector flags; it does not gate. On the blast-radius, trust-boundary, sink and
+    # irreversible-action rules the control the rule asks for is a gate, budget or
+    # allowlist, so offering a detector as "the same control" would let the plan's "who"
+    # column hand the package a row it cannot close.
+    assert "detector" in PACKAGE_MECHANISMS
+    package = rule.recommendation.package
+    if rule.priority <= 4 and package.mechanism == "detector":
+        assert not package.same_control, (
+            f"{rule.id}: a detector is not the control at P{rule.priority}"
+        )
+
+
+@pytest.mark.parametrize("rule", ALL_RULES, ids=lambda r: r.id)
+def test_sub_findings_inherit_the_parent_package(rule: type[AuditRule]) -> None:
+    # `AuditRule.finding()` copies the class-level recommendation into every Finding,
+    # so AUD-NNN/<k> carries the same package as AUD-NNN. Pinned on the shared helper so
+    # a rule that builds its own Recommendation per finding would show up here.
+    instance = rule()
+    finding = instance.absence_finding(unit=None, why="probe")
+    assert finding.recommendation.package == rule.recommendation.package
+    assert finding.recommendation.package is rule.recommendation.package
+
+
+def test_package_symbols_are_only_verbs_or_class_names() -> None:
+    for symbol in _package_symbols():
+        assert VERB_RE.match(symbol) or symbol.isidentifier(), symbol
+    # Every 'aisg <verb>' is a subcommand of the one console script.
+    from aisg.cli import COMMANDS
+
+    verbs = [s for s in _package_symbols() if VERB_RE.match(s)]
+    assert verbs, "no rule names a console verb"
+    for verb in verbs:
+        assert verb.split()[1] in COMMANDS, f"{verb!r} is not an aisg subcommand"
+
+
+@pytest.mark.parametrize("symbol", sorted(CLASS_SYMBOLS))
+def test_class_symbols_are_exported_from_aisg(symbol: str) -> None:
+    import aisg
+
+    obj = getattr(aisg, symbol, None)
+    assert obj is not None, f"aisg.{symbol} is not exported"
+    assert isinstance(obj, type), f"aisg.{symbol} is not a class"
+    assert symbol in aisg.__all__
+
+
+def test_every_class_symbol_is_in_the_closed_set() -> None:
+    # Whatever a rule names must be one of the exported classes, or the recommendation
+    # lies; the set is closed so a new symbol is exported before a rule names it.
+    class_symbols = {s for s in _package_symbols() if not VERB_RE.match(s)}
+    assert class_symbols
+    assert class_symbols <= CLASS_SYMBOLS, sorted(class_symbols - CLASS_SYMBOLS)
+    # And the set does not drift: every entry is a name some rule uses.
+    assert CLASS_SYMBOLS <= class_symbols, sorted(CLASS_SYMBOLS - class_symbols)
+
+
+# ---------------------------------------------------------------------------
+# Subsystems: every rule sits in exactly one box on the system map
+# ---------------------------------------------------------------------------
+
+
+def test_subsystem_keys_are_unique_and_ordered_for_drawing() -> None:
+    keys = [s.key for s in SUBSYSTEMS]
+    assert len(keys) == len(set(keys))
+    assert len(keys) == 10
+    assert NOT_ATTRIBUTED not in keys, "the catch-all box is not a subsystem"
+    for subsystem in SUBSYSTEMS:
+        assert subsystem.title.strip()
+        assert subsystem.inventory_keys
+
+
+def test_every_rule_maps_to_exactly_one_subsystem() -> None:
+    assert set(SUBSYSTEM_OF_RULE) == {rule.id for rule in ALL_RULES}
+    valid = {s.key for s in SUBSYSTEMS}
+    for rule_id, key in SUBSYSTEM_OF_RULE.items():
+        assert key in valid, f"{rule_id} -> {key!r} is not a subsystem"
+
+
+def test_subsystem_of_follows_the_parent_for_sub_findings() -> None:
+    assert subsystem_of("AUD-103") == "tools"
+    assert subsystem_of("AUD-103/2") == "tools"
+    assert subsystem_of("AUD-101/docs") == subsystem_of("AUD-101")
+    assert subsystem_of("AUD-9999") == NOT_ATTRIBUTED
+    assert subsystem_of("") == NOT_ATTRIBUTED
+    assert subsystem_of("not-a-rule/x") == NOT_ATTRIBUTED

@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 
 from aisg.devtools.audit.baseline import BaselineDiff
+from aisg.devtools.audit.html import TEMPLATES as HTML_TEMPLATES
 from aisg.devtools.audit.model import (
     DISCLAIMER,
     AuditContext,
@@ -45,10 +46,12 @@ from aisg.devtools.audit.model import (
     UnknownItem,
 )
 from aisg.devtools.audit.report import (
+    _T_ACCEPTED_REASON,
     _TEMPLATES,
     BANNED_PHRASES,
     DISTRIBUTION,
     SARIF_LEVEL,
+    all_templates,
     build_report,
     catalogue,
     check_templates,
@@ -60,7 +63,7 @@ from aisg.devtools.audit.report import (
 )
 from aisg.devtools.audit.rules import ALL_RULES, AuditRule
 
-FORMATS = ("json", "sarif", "markdown", "terminal")
+FORMATS = ("json", "sarif", "markdown", "terminal", "html")
 
 # The negative-phrase list of section 10 item 1, pinned independently of
 # `report.BANNED_PHRASES`. Assembled from fragments so no audit file -- this test
@@ -341,8 +344,12 @@ def test_banned_phrases_match_the_design_list():
 def test_templates_carry_no_banned_phrase_and_no_clean():
     assert check_templates() == []
     assert DISCLAIMER in _TEMPLATES
-    for template in _TEMPLATES:
+    # `all_templates()` is what `check_templates` and `--debug` scan: the terminal's
+    # strings plus the html renderer's, so a phrase in either is caught.
+    assert set(all_templates()) == set(_TEMPLATES) | set(HTML_TEMPLATES)
+    for template in all_templates():
         assert not CLEAN_WORD.search(template), template
+        assert template.isascii(), template
 
 
 def test_tool_version_comes_from_package_metadata():
@@ -471,7 +478,7 @@ def test_summarise_by_bucket_measured_counts_adapter_findings_only():
 
 def test_summarise_with_baseline_reports_new_count():
     findings = every_kind()
-    diff = BaselineDiff(new=findings[:2], fixed=["deadbeef"], unchanged=findings[2:], file="b.json")
+    diff = BaselineDiff(new=findings[:2], gone=["deadbeef"], unchanged=findings[2:], file="b.json")
     summary = summarise(findings, [], [], [], diff, "low", 1)
     assert summary["baseline_new"] == 2
 
@@ -485,7 +492,12 @@ def test_build_report_pins_trifecta_first_and_fills_blocks():
     report = build()
     assert report.findings[0].id == "AUD-301"
     assert report.tool == {"name": "aisg-audit", "version": tool_version()}
-    assert report.target == {"path": "C:/work/target", "git_sha": "abc123", "dirty": False}
+    assert report.target == {
+        "path": "C:/work/target",
+        "git_sha": "abc123",
+        "dirty": False,
+        "exclude": [],
+    }
     assert report.measured == [
         {
             "source": "gitleaks",
@@ -568,6 +580,111 @@ def test_build_report_can_omit_inventory():
     assert "(not included)" in render(report, "terminal")
 
 
+def test_own_output_skipped_is_one_line_in_every_rendered_format():
+    """
+    The walk records the audit's own earlier output it skipped; every page says so on one
+    line, `none` included, so a tree that holds a stale report is never silently thinner.
+    """
+    report = build()
+    report.inventory.own_output_skipped = ["audit-report.json", "out/audit.html"]
+    for fmt in ("terminal", "markdown", "html"):
+        text = render(report, fmt)
+        assert text.count("own output skipped: audit-report.json, out/audit.html") == 1, fmt
+    assert json.loads(render(report, "json"))["inventory"]["own_output_skipped"] == [
+        "audit-report.json",
+        "out/audit.html",
+    ]
+    # SARIF has no inventory block, so the list rides in the run's property bag next to
+    # the schema marker -- never at the root, which admits no extra keys.
+    sarif = json.loads(render(report, "sarif"))
+    assert set(sarif) == {"$schema", "version", "runs"}
+    assert sarif["runs"][0]["properties"]["own_output_skipped"] == [
+        "audit-report.json",
+        "out/audit.html",
+    ]
+    report.inventory.own_output_skipped = []
+    for fmt in ("terminal", "markdown", "html"):
+        assert render(report, fmt).count("own output skipped: none") == 1, fmt
+    assert json.loads(render(report, "sarif"))["runs"][0]["properties"]["own_output_skipped"] == []
+
+
+def test_sarif_own_output_skipped_is_always_present():
+    # A report read back from disk may carry no inventory at all; the key is still there
+    # and empty, so a consumer never has to guess whether the walk recorded nothing or
+    # the renderer dropped it.
+    report = build()
+    report.inventory = None
+    props = json.loads(render(report, "sarif"))["runs"][0]["properties"]
+    assert list(props)[:2] == ["aisg_schema", "own_output_skipped"]
+    assert props["own_output_skipped"] == []
+
+
+def test_sarif_run_property_bag_is_the_first_key_of_the_run():
+    """
+    The walker decides "own output" from the head of a file. With the bag after
+    `results`, a SARIF written into the tree was past the head and got scanned like any
+    other file, reproducing its own findings. The root stays exactly the three keys the
+    2.1.0 schema allows.
+    """
+    text = render(build(), "sarif")
+    doc = json.loads(text)
+    assert list(doc) == ["$schema", "version", "runs"]
+    run = doc["runs"][0]
+    assert list(run) == ["properties", "tool", "results"]
+    assert list(run["properties"])[:2] == ["aisg_schema", "own_output_skipped"]
+    # Textual order too: `json.dumps` keeps dict order, and the marker must sit before
+    # the first result in the bytes the walker reads.
+    assert text.index('"aisg_schema"') < text.index('"results"')
+
+
+def test_sarif_written_into_the_tree_is_skipped_by_the_walker(tmp_path: Path):
+    """Both ends together: the renderer's SARIF, written to disk, is recognised by the
+    walker as the audit's own output, under either extension."""
+    from aisg.devtools.audit.walk import walk
+
+    text = render(build(), "sarif")
+    for name in (".aisg-audit/audit.sarif", "out/audit.json"):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+    skipped: list[str] = []
+
+    records, _, unknown = walk(tmp_path, own_output_skipped=skipped)
+
+    assert [r.relpath for r in records] == ["app.py"]
+    assert sorted(skipped) == [".aisg-audit/audit.sarif", "out/audit.json"]
+    assert unknown == []
+
+
+def test_oversize_count_is_one_inventory_line_in_every_rendered_format():
+    """
+    The walk hands the caller the paths it never opened; the caller records the count on
+    `target.oversize_files` next to `skipped_files`. Every page prints it. A document
+    without the key says so instead of claiming zero.
+    """
+    report = build()
+    report.inventory.target["oversize_files"] = 2
+    for fmt in ("terminal", "markdown", "html"):
+        assert render(report, fmt).count("oversize files skipped: 2") == 1, fmt
+    assert json.loads(render(report, "json"))["inventory"]["target"]["oversize_files"] == 2
+    # SARIF has no inventory block: the count rides in the run bag after the two marker
+    # keys, which keep their pinned order.
+    props = json.loads(render(report, "sarif"))["runs"][0]["properties"]
+    assert list(props)[:3] == ["aisg_schema", "own_output_skipped", "oversize_files"]
+    assert props["oversize_files"] == 2
+    report.inventory.target["oversize_files"] = 0
+    for fmt in ("terminal", "markdown", "html"):
+        assert render(report, fmt).count("oversize files skipped: 0") == 1, fmt
+    assert json.loads(render(report, "sarif"))["runs"][0]["properties"]["oversize_files"] == 0
+    del report.inventory.target["oversize_files"]
+    for fmt in ("terminal", "markdown", "html"):
+        assert render(report, fmt).count("oversize files skipped: not recorded") == 1, fmt
+    assert json.loads(render(report, "sarif"))["runs"][0]["properties"]["oversize_files"] is None
+    report.inventory = None
+    assert json.loads(render(report, "sarif"))["runs"][0]["properties"]["oversize_files"] is None
+
+
 # ---------------------------------------------------------------------------
 # renderer invariants across formats
 # ---------------------------------------------------------------------------
@@ -620,8 +737,14 @@ def test_sub_finding_renders_with_its_slash_id():
 
 
 def test_render_rejects_unknown_format():
-    with pytest.raises(ValueError):
-        render(build(), "html")
+    with pytest.raises(ValueError, match="pdf"):
+        render(build(), "pdf")
+
+
+def test_render_dispatches_html():
+    page = render(build(), "html")
+    assert page.splitlines()[0] == "<!-- # aisg-audit: ignore-file -->"
+    assert page.isascii()
 
 
 # ---------------------------------------------------------------------------
@@ -672,7 +795,16 @@ def test_sarif_shape_levels_and_properties():
         "report",
         "gitignored",
         "baseline_status",
+        "recommendation",
     }
+    # `recommendation.package` rides along so a Code Scanning consumer sees what the
+    # package can wire; the shape is `Recommendation.to_dict()`.
+    for result in run["results"]:
+        package = result["properties"]["recommendation"]["package"]
+        assert set(package) >= {"mechanism", "symbols", "same_control", "leaves_open"}
+        assert isinstance(package["symbols"], list)
+    assert first["properties"]["recommendation"]["package"]["mechanism"] == "none"
+    assert "accepted_reason" not in first["properties"]
     assert run["properties"]["summary"]["findings"] == 7
     assert [u["category"] for u in run["properties"]["unknown"]] == ["tools", "deep"]
     assert [t["name"] for t in run["properties"]["external_tools"]] == [
@@ -779,6 +911,7 @@ def test_markdown_order_and_finding_detail_lines():
         "tools: 1",
         "mcp servers: 1",
         "hosts: 1",
+        "own output skipped: none",
     ]
     position = -1
     for needle in order:
@@ -1014,13 +1147,16 @@ def test_info_only_exits_zero_but_stays_a_finding():
 # baseline
 # ---------------------------------------------------------------------------
 
-BASELINE_LINE = "baseline: 6 new, 1 unchanged, 1 fixed (audit-baseline.json)"
+BASELINE_LINE = "baseline: 6 new, 1 unchanged, 1 no longer reported (audit-baseline.json)"
+GONE = "0123456789abcdef"
 
 
 def with_baseline() -> Report:
-    """every_kind() diffed against a baseline: AUD-1002 unchanged, six new, one fixed."""
+    """every_kind() diffed against a baseline: AUD-1002 unchanged, six new, one gone."""
     findings = every_kind()
-    diff = BaselineDiff(file="audit-baseline.json", fixed=["0123456789abcdef"])
+    diff = BaselineDiff(
+        file="audit-baseline.json", gone=[GONE], no_longer_reported=[{"fingerprint": GONE}]
+    )
     for finding in findings:
         finding.baseline_status = "unchanged" if finding.id == "AUD-1002" else "new"
         (diff.unchanged if finding.baseline_status == "unchanged" else diff.new).append(finding)
@@ -1029,7 +1165,14 @@ def with_baseline() -> Report:
 
 def test_baseline_block_and_tags_render():
     report = with_baseline()
-    assert report.baseline == {"file": "audit-baseline.json", "new": 6, "fixed": 1, "unchanged": 1}
+    # The counts, plus whatever else `BaselineDiff.to_dict()` carries (accepted reasons,
+    # the baseline's stamp, the named fingerprints): renderers read it with `.get`. There is
+    # no count for the gone fingerprints: `no_longer_reported` is the list and the number.
+    assert report.baseline["file"] == "audit-baseline.json"
+    assert (report.baseline["new"], report.baseline["unchanged"]) == (6, 1)
+    assert "fixed" not in report.baseline
+    assert report.baseline.get("accepted") == []
+    assert report.baseline.get("no_longer_reported") == [{"fingerprint": GONE}]
     assert report.summary["baseline_new"] == 6
     text = render(report, "terminal")
     assert BASELINE_LINE in text
@@ -1037,7 +1180,33 @@ def test_baseline_block_and_tags_render():
     assert text.count("[baseline: unchanged]") == 1
     doc = json.loads(render(report, "json"))
     assert doc["baseline"] == report.baseline
+    assert list(doc["baseline"])[:4] == ["file", "kind", "new", "unchanged"]
     assert {f["baseline_status"] for f in doc["findings"]} == {"new", "unchanged"}
+
+
+def test_baseline_block_without_the_new_keys_still_renders():
+    """A report read back from disk may carry a bare block; every renderer copes."""
+    report = with_baseline()
+    report.baseline = {"file": "audit-baseline.json", "new": 6, "unchanged": 1}
+    for fmt in FORMATS:
+        text = render(report, fmt)
+        assert text
+        # Terminal and html are the ASCII-only renderers; markdown and json pass snippets through.
+        if fmt in ("terminal", "html"):
+            assert text.isascii(), fmt
+    bare = "baseline: 6 new, 1 unchanged, 0 no longer reported (audit-baseline.json)"
+    assert bare in render(report, "terminal")
+    assert bare in render(report, "markdown")
+    assert bare in render(report, "html")
+
+
+def test_no_renderer_calls_an_absent_fingerprint_fixed():
+    """A rename or a move produces the same absence, so no format uses the past participle."""
+    report = with_baseline()
+    for fmt in FORMATS:
+        text = render(report, fmt).lower()
+        assert ("fix" + "ed") not in text, fmt
+        assert BASELINE_LINE in text or fmt in ("json", "sarif"), fmt
 
 
 @pytest.mark.parametrize("quiet", [False, True])
@@ -1066,3 +1235,34 @@ def test_no_baseline_line_without_a_baseline():
     for quiet in (False, True):
         assert "baseline:" not in to_terminal(build(), quiet=quiet)
     assert "baseline:" not in render(build(), "markdown")
+
+
+def test_accepted_reason_is_shown_on_the_finding_in_terminal_and_markdown():
+    """
+    The reason is why an unchanged finding is not counted; a reader of the rendered page
+    should not have to open the baseline file to learn it. Findings without one carry no
+    `accepted:` line at all.
+    """
+    reason = "read-only stub, approval wired in the caller"
+    report = with_baseline()
+    unchanged = next(f for f in report.findings if f.baseline_status == "unchanged")
+    unchanged.accepted_reason = reason
+    line = "accepted: " + reason
+    assert _T_ACCEPTED_REASON in _TEMPLATES
+    for fmt in ("terminal", "markdown"):
+        text = render(report, fmt)
+        assert text.count(line) == 1, fmt
+        assert text.count("accepted: ") == 1, fmt
+        # The reason closes the finding's own detail block: the fix line of the same
+        # finding (the nearest `scope:` above) precedes it.
+        at = text.index(line)
+        block = text[text.rindex("scope: ", 0, at) : at]
+        assert "fix (" in block and unchanged.display_id in text[: text.rindex("scope: ", 0, at)]
+    assert line not in to_terminal(report, quiet=True)
+    doc = json.loads(render(report, "json"))
+    assert [f["accepted_reason"] for f in doc["findings"] if f.get("accepted_reason")] == [reason]
+    sarif = json.loads(render(report, "sarif"))
+    accepted = [r for r in sarif["runs"][0]["results"] if "accepted_reason" in r["properties"]]
+    assert [r["properties"]["accepted_reason"] for r in accepted] == [reason]
+    for fmt in ("terminal", "markdown"):
+        assert "accepted: " not in render(build(), fmt), fmt

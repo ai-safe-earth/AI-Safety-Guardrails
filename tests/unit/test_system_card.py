@@ -59,8 +59,32 @@ class TestRenderCard:
             "annex_iii_category",
             "affected_persons",
             "deployment",
+            "incident_contact",
         ):
             assert key in data, f"missing {key}"
+
+    def test_incident_contact_round_trips(self):
+        data = yaml.safe_load(render_card(_card(incident_contact="oncall@example.test")))
+        assert data["incident_contact"] == "oncall@example.test"
+
+    def test_default_incident_contact_is_a_todo_placeholder(self):
+        """
+        `aisg audit` (AUD-703, AUD-1001) reads this key and treats a value
+        that still starts with TODO as no contact at all -- the placeholder
+        must never pass for a real one.
+        """
+        assert DEFAULT_CARD["incident_contact"].startswith("TODO")
+        data = yaml.safe_load(render_card(_card()))
+        assert data["incident_contact"].startswith("TODO")
+
+    def test_incident_contact_carries_a_comment_saying_who(self):
+        lines = render_card(_card()).splitlines()
+        idx = next(i for i, ln in enumerate(lines) if ln.startswith("incident_contact:"))
+        assert lines[idx - 1].startswith("#")
+        assert "misbehaves" in lines[idx - 1]
+
+    def test_card_is_ascii(self):
+        assert render_card(_card()).isascii()
 
     def test_legal_determination_caveat_sits_above_risk_tier(self):
         """The caveat is the point of the file; it must precede risk_tier."""
@@ -126,7 +150,20 @@ class TestInitCLI:
         dest = tmp_path / "ai-system-card.yaml"
         assert main(["--defaults", "-o", str(dest)]) == 0
         assert dest.is_file()
-        assert yaml.safe_load(dest.read_text(encoding="utf-8"))["schema"] == "aisg/1"
+        data = yaml.safe_load(dest.read_text(encoding="utf-8"))
+        assert data["schema"] == "aisg/1"
+        assert data["incident_contact"].startswith("TODO")
+
+    def test_interactive_prompts_for_incident_contact(self, tmp_path, monkeypatch):
+        """Every prompt takes its default except the contact, which we answer."""
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        answers = iter(["", "", "", "", "", "", "", "pager@example.test"])
+        monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+        dest = tmp_path / "c.yaml"
+        assert main(["-o", str(dest)]) == 0
+        data = yaml.safe_load(dest.read_text(encoding="utf-8"))
+        assert data["incident_contact"] == "pager@example.test"
+        assert data["risk_tier"] == "unknown"
 
     def test_defaults_generates_unique_ids(self, tmp_path):
         ids = []

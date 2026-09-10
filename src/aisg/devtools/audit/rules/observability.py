@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from aisg.devtools.audit import vocab
 from aisg.devtools.audit.model import (
     AuditContext,
     Basis,
@@ -25,6 +26,7 @@ from aisg.devtools.audit.model import (
     EvidenceKind,
     Finding,
     MatchKind,
+    Package,
     Recommendation,
     Scope,
     Severity,
@@ -61,6 +63,18 @@ _INCIDENT_PATH_NAMES = (
     "SECURITY.md, INCIDENT*.md, docs/incident*, runbook*, "
     ".github/ISSUE_TEMPLATE/*security*, or a system-card incident_contact"
 )
+
+
+def contact_named(value: Any) -> bool:
+    """
+    Whether a system-card contact value names anyone. `aisg init` writes the card with
+    `TODO:` placeholders, and a freshly generated card must not satisfy AUD-703 on the
+    strength of the key being present: blank, whitespace, `TODO...` (any case) and the
+    placeholder words in `vocab.UNSET_VALUES` (`none`, `n/a`, `tbd`, ...) all read as
+    absent -- the same reading the governance rules give a card field. Only a string
+    can name a contact: a bool, a number, None, a list or a mapping is not one.
+    """
+    return isinstance(value, str) and not vocab.is_unset(value)
 
 
 def _entries(ctx: AuditContext, section: str) -> list[dict[str, Any]]:
@@ -137,6 +151,16 @@ class NoLLMObservability(AuditRule):
             "Braintrust, Arize Phoenix or W&B Weave.",
             "If the pipeline runs through aisg, construct aisg.modules.observability.otel."
             "TelemetryProvider once per process and point it at your collector.",
+        ),
+        package=Package(
+            mechanism="record",
+            symbols=("TelemetryProvider",),
+            same_control=True,
+            leaves_open=(
+                "Only calls that go through `run_full` are traced; an LLM call made outside "
+                "the pipeline is not. TelemetryProvider sets the process-global tracer and "
+                "meter providers, so construct it once per process."
+            ),
         ),
     )
 
@@ -246,6 +270,16 @@ class NoToolCallAuditLog(AuditRule):
             "If the pipeline runs through aisg, enable AuditLogger; note that its log() is "
             "async but writes with blocking I/O.",
         ),
+        package=Package(
+            mechanism="record",
+            symbols=("AuditLogger",),
+            same_control=False,
+            leaves_open=(
+                "An AuditRecord carries the stage, content hashes and the checks that ran; "
+                "it does not carry the tool name, its arguments, the caller or the outcome. "
+                "log() is async but writes with blocking I/O."
+            ),
+        ),
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
@@ -327,6 +361,16 @@ class NoIncidentPath(AuditRule):
             "If you keep an ai-system-card.yaml (for example from `aisg init`), fill in "
             "incident_contact so the card carries the contact too.",
         ),
+        package=Package(
+            mechanism="document",
+            symbols=("aisg init",),
+            same_control=False,
+            leaves_open=(
+                "`incident_contact` on the card is a place to write the contact down. The "
+                "runbook -- who is paged, how harm is reported, how the system is stopped -- "
+                "is the control and is written by you."
+            ),
+        ),
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
@@ -339,11 +383,12 @@ class NoIncidentPath(AuditRule):
             return []
         card = getattr(ctx.inventory, "system_card", None)
         contact = card.get("incident_contact") if isinstance(card, dict) else None
-        if contact:
+        if contact_named(contact):
             return []
         card_note = ""
         if isinstance(card, dict) and card.get("file"):
-            card_note = f"; {card.get('file')} has no incident_contact"
+            what = "an unfilled" if contact is not None else "no"
+            card_note = f"; {card.get('file')} has {what} incident_contact"
         finding = self.absence_finding(
             unit=None,
             why=f"no incident path{card_note}; looked for {_INCIDENT_PATH_SHORT}",

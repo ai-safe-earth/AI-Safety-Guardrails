@@ -20,6 +20,7 @@ from aisg.devtools.audit.model import (
     DISCLAIMER,
     FINDING_KEYS,
     INVENTORY_KEYS,
+    NO_PACKAGE,
     REDACT_PATTERNS,
     REPORT_KEYS,
     SCHEMA_VERSION,
@@ -36,6 +37,7 @@ from aisg.devtools.audit.model import (
     Hit,
     Inventory,
     MatchKind,
+    Package,
     Recommendation,
     Report,
     ReportRecord,
@@ -338,7 +340,42 @@ def test_hit_and_recommendation_shapes():
     r = Recommendation("T2", "gate it", ["aisg", "other"])
     assert r.tier is Tier.T2
     assert r.alternatives == ("aisg", "other")
-    assert roundtrip(r) == {"tier": "T2", "summary": "gate it", "alternatives": ["aisg", "other"]}
+    assert r.package is NO_PACKAGE
+    assert roundtrip(r) == {
+        "tier": "T2",
+        "summary": "gate it",
+        "alternatives": ["aisg", "other"],
+        "package": {"mechanism": "none", "symbols": [], "same_control": False, "leaves_open": ""},
+    }
+
+
+def test_package_shapes_and_validation():
+    """A package entry describes the package's reach, never a verdict: anything offered
+    must say what it leaves open, and `none` carries nothing."""
+    p = Package("gate", ("ToolPolicyGuard",), True, "only calls through run_processing")
+    assert roundtrip(p) == {
+        "mechanism": "gate",
+        "symbols": ["ToolPolicyGuard"],
+        "same_control": True,
+        "leaves_open": "only calls through run_processing",
+    }
+    assert Package("none") == NO_PACKAGE
+    r = Recommendation(
+        "T2",
+        "gate it",
+        package={"mechanism": "detector", "symbols": ["PIIDetector"], "leaves_open": "x"},
+    )
+    assert r.package.mechanism == "detector" and r.package.same_control is False
+    with pytest.raises(ValueError):
+        Package("sandbox", ("ToolPolicyGuard",), False, "x")
+    with pytest.raises(ValueError):
+        Package("gate", (), False, "x")  # offers something but names no symbol
+    with pytest.raises(ValueError):
+        Package("gate", ("ToolPolicyGuard",), True, "  ")  # offers something, says nothing
+    with pytest.raises(ValueError):
+        Package("none", ("ToolPolicyGuard",))  # none carries nothing
+    with pytest.raises(ValueError):
+        Package("none", same_control=True)
 
 
 # ---------------------------------------------------------------------------
@@ -558,7 +595,12 @@ def test_report_to_dict_key_order_matches_section_3_2():
         reports=[{"source": "measure-report.json"}],
         unknown=[UnknownItem("tools", "x", "y")],
         external_tools=[ExternalToolResult("gitleaks", "ran", False)],
-        baseline={"file": "audit-baseline.json", "new": 0, "fixed": 0, "unchanged": 1},
+        baseline={
+            "file": "audit-baseline.json",
+            "new": 0,
+            "unchanged": 1,
+            "no_longer_reported": [],
+        },
         inventory=Inventory(),
         rules=[{"id": "AUD-301", "measured_precision": None, "ran": True, "experimental": False}],
     )

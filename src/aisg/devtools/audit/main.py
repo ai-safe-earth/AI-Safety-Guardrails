@@ -23,10 +23,14 @@ from typing import Any, Sequence
 from aisg.devtools._config import apply_tool_config
 from aisg.devtools.audit import adapters, discover, pydeep, walk
 from aisg.devtools.audit.baseline import (
+    BASELINE_KIND,
     BaselineDiff,
+    BaselineDocument,
     BaselineError,
+    amend_baseline,
     diff,
-    load_baseline,
+    parse_accept,
+    read_baseline,
     write_baseline,
 )
 from aisg.devtools.audit.model import (
@@ -51,6 +55,7 @@ __all__ = [
     "EXIT_FINDINGS",
     "EXIT_INTERRUPTED",
     "EXIT_OK",
+    "NOT_CONFIGURABLE",
     "AuditOptions",
     "build_parser",
     "main",
@@ -59,6 +64,14 @@ __all__ = [
 
 PROG = "aisg audit"
 CONFIG_SECTION = "aisg-audit"
+
+# Parser dests that are per-invocation actions, not defaults for a run: never read from
+# `[tool.aisg-audit]`. Otherwise a pyproject could make every audit rewrite a baseline
+# (`write_baseline`), run no rule (`inventory_only`) or print the catalogue and exit 0
+# (`list_rules`) -- and the two booleans, once `true` there, have no flag to undo them.
+NOT_CONFIGURABLE: frozenset[str] = frozenset(
+    {"amend_baseline", "accept", "write_baseline", "inventory_only", "list_rules"}
+)
 
 # `EXIT_OK` says "nothing counted", on purpose: a zero exit is not a bill of health.
 EXIT_OK = 0
@@ -75,6 +88,18 @@ UNMEASURED = "UNMEASURED"
 _REDACT_REFUSED = (
     "--no-redact is refused: redaction is not optional. Secret-shaped snippets are "
     "always redacted in every format; there is no flag that prints them."
+)
+_INVENTORY_BASELINE_REFUSED = (
+    "--inventory-only runs no rules, so {flag} has nothing to compare or record; "
+    "drop one of the two flags"
+)
+_WRITE_BASELINE_REFUSED = (
+    "--write-baseline {path} exists and is not an audit-baseline ({why}); refusing to "
+    "overwrite it. Move it or pick another path."
+)
+_SAME_PATH_REFUSED = (
+    "--output and --write-baseline both name {path}: the baseline would overwrite the "
+    "report just written there; give the two different paths"
 )
 
 
@@ -151,6 +176,8 @@ class AuditOptions:
     include_ignored: bool = False
     baseline: str | None = None
     write_baseline: str | None = None
+    amend_baseline: str | None = None
+    accept: tuple[str, ...] = ()
     inventory_only: bool = False
     include_home: bool = False
     deep: str = "python"
@@ -205,6 +232,8 @@ class AuditOptions:
             include_ignored=bool(get("include_ignored", False)),
             baseline=_opt_str(get("baseline")),
             write_baseline=_opt_str(get("write_baseline")),
+            amend_baseline=_opt_str(get("amend_baseline")),
+            accept=_accepts(get("accept")),
             inventory_only=bool(get("inventory_only", False)),
             include_home=bool(get("include_home", False)),
             deep=deep,
@@ -238,6 +267,15 @@ def _opt_str(value: Any) -> str | None:
         return None
     text = str(value)
     return text if text else None
+
+
+def _accepts(value: Any) -> tuple[str, ...]:
+    """The repeatable `--accept` values as given; a lone string counts as one entry."""
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    return tuple(str(item) for item in value)
 
 
 # ---------------------------------------------------------------------------
@@ -306,13 +344,37 @@ def build_parser() -> argparse.ArgumentParser:
         "--write-baseline",
         default=None,
         metavar="FILE",
-        help="write this run's fingerprints as a baseline and exit 0",
+        help=(
+            "also write this run's fingerprints as a baseline; the report still renders, "
+            "exit 0. Reasons are carried over from --baseline and from the file being "
+            "refreshed (a reason whose fingerprint is no longer reported is dropped) "
+            "(not settable from pyproject)"
+        ),
+    )
+    parser.add_argument(
+        "--amend-baseline",
+        default=None,
+        metavar="FILE",
+        help=(
+            "record --accept reasons in an existing baseline and exit 0; no scan runs "
+            "(not settable from pyproject)"
+        ),
+    )
+    parser.add_argument(
+        "--accept",
+        action="append",
+        default=None,
+        metavar="FINGERPRINT=REASON",
+        help=(
+            "with --amend-baseline: the reason a listed fingerprint stays (repeatable; "
+            "ASCII, no verdict language, nothing secret-shaped)"
+        ),
     )
     parser.add_argument(
         "--inventory-only",
         action="store_true",
         default=False,
-        help="print the inventory document and exit 0",
+        help="print the inventory document and exit 0 (not settable from pyproject)",
     )
     parser.add_argument(
         "--include-home",
@@ -386,7 +448,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--list-rules",
         action="store_true",
         default=False,
-        help="print the rule catalogue and exit 0",
+        help="print the rule catalogue and exit 0 (not settable from pyproject)",
     )
     parser.add_argument(
         "--quiet",
@@ -467,9 +529,13 @@ def _resolve_root(path: str) -> Path:
 
 def _build_context(options: AuditOptions, root: Path) -> AuditContext:
     """walk -> discover -> pydeep, every UNKNOWN item folded into one context."""
+    own_output_skipped: list[str] = []
+    oversize_skipped: list[str] = []
     files, units, walk_unknown = walk.walk(
         root,
         walk.WalkOptions(exclude=tuple(options.exclude), include_ignored=options.include_ignored),
+        own_output_skipped=own_output_skipped,
+        oversize_skipped=oversize_skipped,
     )
     inventory, hits, facts = discover.discover(
         root,
@@ -480,6 +546,13 @@ def _build_context(options: AuditOptions, root: Path) -> AuditContext:
             trusted_mcp_hosts=tuple(options.trusted_mcp_hosts),
         ),
     )
+    # The walker names the audit's own reports it stepped over; the inventory carries the
+    # list so every renderer can say what was not looked at.
+    inventory.own_output_skipped = sorted(own_output_skipped)
+    # Files over the size limit were never opened. The walk lists the first few under
+    # UNKNOWN; the count sits next to `skipped_files` so the inventory line can print a
+    # number instead of "not recorded".
+    inventory.target["oversize_files"] = len(oversize_skipped)
     unknown: list[UnknownItem] = list(walk_unknown) + list(inventory.unknown)
     pyfacts = None
     if options.deep == "python":
@@ -552,10 +625,105 @@ def _write_output(text: str, output: str | None) -> None:
         handle.write(text)
 
 
+def _amend(options: AuditOptions) -> int:
+    """
+    `--amend-baseline FILE --accept FP=REASON ...`: record reasons in an existing baseline.
+    No scan, no render. Every accept is parsed and checked before anything is written; a
+    refusal is a `BaselineError` (exit 2 via `main`) and the file is left as it was.
+    """
+    path = options.amend_baseline or ""
+    if not options.accept:
+        _note(f"--amend-baseline {path} needs at least one --accept FINGERPRINT=REASON")
+        return EXIT_FATAL
+    accepts: dict[str, str] = {}
+    for item in options.accept:
+        fingerprint, reason = parse_accept(item)
+        accepts[fingerprint] = reason
+    count = amend_baseline(Path(path), accepts)
+    _note(
+        f"baseline {path} amended: {count} reason{'' if count == 1 else 's'} recorded; "
+        "no scan ran, exit 0 because recording a reason does not judge the finding"
+    )
+    return EXIT_OK
+
+
 def _inventory_document(ctx: AuditContext, unknown: Sequence[UnknownItem]) -> str:
     doc = ctx.inventory.to_dict()
     doc["unknown"] = [item.to_dict() for item in unknown]
     return json.dumps(doc, indent=2, ensure_ascii=True) + "\n"
+
+
+def _inventory_text(ctx: AuditContext, options: AuditOptions) -> str:
+    """
+    `--inventory-only` output. Every machine format gets the inventory document; html is
+    a page, not a document, so it gets a Report with no rule ran and renders the no-rules
+    banner over the inventory and the map.
+    """
+    unknown = _dedupe_unknown(ctx.unknown)
+    if options.format != "html":
+        return _inventory_document(ctx, unknown)
+    report = build_report(
+        ctx,
+        [],
+        unknown,
+        [],
+        ctx.reports,
+        None,
+        rules=[],
+        fail_on=options.fail_on,
+        exit_code=EXIT_OK,
+    )
+    return render(report, "html", quiet=options.quiet)
+
+
+def _same_path(output: str | None, write_baseline: str) -> bool:
+    """True when `-o` and `--write-baseline` resolve to one file (neither need exist yet)."""
+    if output is None:
+        return False
+    return Path(output).resolve() == Path(write_baseline).resolve()
+
+
+def _refreshed_baseline(path: Path) -> BaselineDocument | None:
+    """
+    The document already at the `--write-baseline` target, or `None` when there is none.
+    A file that is not an audit-baseline (unreadable, another kind, a report) is refused
+    here rather than overwritten: the message names the path, `main` maps it to exit 2.
+    """
+    if not path.exists():
+        return None
+    try:
+        document = read_baseline(path)
+    except BaselineError as exc:
+        raise BaselineError(_WRITE_BASELINE_REFUSED.format(path=path.as_posix(), why=exc)) from exc
+    if document.kind != BASELINE_KIND:
+        raise BaselineError(
+            _WRITE_BASELINE_REFUSED.format(
+                path=path.as_posix(), why=f"kind {document.kind!r} is not {BASELINE_KIND!r}"
+            )
+        )
+    return document
+
+
+def _carried_reasons(
+    findings: Sequence[Finding],
+    compared: BaselineDocument | None,
+    refreshed: BaselineDocument | None,
+) -> tuple[dict[str, str], int]:
+    """
+    The reasons a refreshed baseline keeps, and how many were dropped because their
+    fingerprint is no longer reported. The file being refreshed contributes first and the
+    `--baseline` document overrides it: that is the one the operator explicitly compared
+    against. A report used as `--baseline` carries no reasons.
+    """
+    reasons: dict[str, str] = {}
+    if refreshed is not None:
+        reasons.update(refreshed.accepted)
+    if compared is not None and compared.kind == BASELINE_KIND:
+        reasons.update(compared.accepted)
+    # `write_baseline` refuses a reason no finding carries, so the filter is not optional.
+    reported = {f.fingerprint for f in findings}
+    carried = {fp: reason for fp, reason in reasons.items() if fp in reported}
+    return carried, len(reasons) - len(carried)
 
 
 # ---------------------------------------------------------------------------
@@ -580,6 +748,34 @@ def run_audit(args: argparse.Namespace | AuditOptions) -> int:
         sys.stdout.flush()
         return EXIT_OK
 
+    if options.accept and options.amend_baseline is None:
+        _note("--accept needs --amend-baseline FILE: a reason is recorded in a baseline, not a run")
+        return EXIT_FATAL
+    if options.amend_baseline is not None:
+        return _amend(options)
+
+    if options.inventory_only:
+        # No rule runs, so neither baseline flag can do what it says; exiting 0 with the
+        # flag ignored would read as if it had.
+        for flag, value in (
+            ("--baseline", options.baseline),
+            ("--write-baseline", options.write_baseline),
+        ):
+            if value is not None:
+                _note(_INVENTORY_BASELINE_REFUSED.format(flag=flag))
+                return EXIT_FATAL
+
+    # Read before the scan: a target that cannot be overwritten is found out before any
+    # work is done, and the file is left exactly as it was.
+    refreshed: BaselineDocument | None = None
+    if options.write_baseline is not None:
+        if _same_path(options.output, options.write_baseline):
+            # The baseline is written after the report: at one path the second write
+            # would replace the first while stderr reported both as written.
+            _note(_SAME_PATH_REFUSED.format(path=Path(options.write_baseline).as_posix()))
+            return EXIT_FATAL
+        refreshed = _refreshed_baseline(Path(options.write_baseline))
+
     if options.debug:
         leaked = check_templates()
         if leaked:
@@ -592,7 +788,7 @@ def run_audit(args: argparse.Namespace | AuditOptions) -> int:
     ctx = _build_context(options, root)
 
     if options.inventory_only:
-        _write_output(_inventory_document(ctx, _dedupe_unknown(ctx.unknown)), options.output)
+        _write_output(_inventory_text(ctx, options), options.output)
         if options.output is not None:
             _note(f"inventory written to {options.output}")
         return EXIT_OK
@@ -617,9 +813,18 @@ def run_audit(args: argparse.Namespace | AuditOptions) -> int:
     unknown = _dedupe_unknown(list(ctx.unknown) + list(rule_unknown) + list(tool_unknown))
 
     baseline_diff: BaselineDiff | None = None
+    compared: BaselineDocument | None = None
     if options.baseline is not None:
-        known = load_baseline(Path(options.baseline))
-        baseline_diff = diff(findings, known, options.baseline)
+        compared = read_baseline(Path(options.baseline))
+        baseline_diff = diff(
+            findings,
+            compared.fingerprints,
+            options.baseline,
+            accepted=compared.accepted,
+            index=compared.index,
+            generated_at=compared.generated_at,
+            kind=compared.kind,
+        )
 
     exit_code = compute_exit_code(
         findings,
@@ -639,15 +844,6 @@ def run_audit(args: argparse.Namespace | AuditOptions) -> int:
         exit_code=exit_code,
     )
 
-    if options.write_baseline is not None:
-        write_baseline(report, Path(options.write_baseline))
-        _note(
-            f"baseline written to {options.write_baseline} "
-            f"({len(report.findings)} fingerprint{'' if len(report.findings) == 1 else 's'}); "
-            "exit 0 because a baseline write records findings, it does not judge them"
-        )
-        return EXIT_OK
-
     text = render(report, options.format, quiet=options.quiet)
     _write_output(text, options.output)
     if options.output is not None:
@@ -655,13 +851,32 @@ def run_audit(args: argparse.Namespace | AuditOptions) -> int:
         if options.format != "terminal":
             sys.stdout.write(render(report, "terminal", quiet=True))
             sys.stdout.flush()
-    return exit_code
+
+    if options.write_baseline is not None:
+        # After the render: the report and the baseline are the same run, both on disk.
+        # A refresh keeps the reasons already recorded, or every acceptance would turn
+        # back into a suppression; `None` (not `{}`) keeps the `accepted` key out of a
+        # baseline that has no reason to carry.
+        carried, dropped = _carried_reasons(report.findings, compared, refreshed)
+        write_baseline(report, Path(options.write_baseline), reasons=carried or None)
+        fingerprints = len({f.fingerprint for f in report.findings})
+        detail = (
+            f"{fingerprints} fingerprint{'' if fingerprints == 1 else 's'}, "
+            f"{len(carried)} reason{'' if len(carried) == 1 else 's'} carried over"
+        )
+        if dropped:
+            detail += f", {dropped} not carried: fingerprint no longer reported"
+        _note(
+            f"baseline written to {options.write_baseline} ({detail}); "
+            "exit 0 because a baseline write records findings, it does not judge them"
+        )
+    return EXIT_OK if options.write_baseline is not None else exit_code
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Console entry: parse, apply `[tool.aisg-audit]` defaults, run, map errors to exit codes."""
     parser = build_parser()
-    apply_tool_config(parser, CONFIG_SECTION)
+    apply_tool_config(parser, CONFIG_SECTION, exclude=NOT_CONFIGURABLE)
     ns = parser.parse_args(list(argv) if argv is not None else None)
     debug = bool(getattr(ns, "debug", False))
     try:

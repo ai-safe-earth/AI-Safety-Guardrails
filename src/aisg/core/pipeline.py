@@ -97,14 +97,30 @@ class GuardrailPipeline:
         latter. The explicit argument wins when both are given; previously an
         omitted argument overwrote a context-supplied tool_call with `{}`,
         silently disabling every tool policy for that call.
+
+        The caller's `context` dict is mutated, not copied, like every other
+        stage: ToolPolicyGuard keeps its per-session budget counters in it, so
+        running on a copy reset the budget on every call and
+        `max_tool_calls_per_session` never tripped. Only `tool_call` is put
+        back the way it was found -- an argument given to this call must not
+        linger in the dict and drive the next call.
         """
-        ctx = {**(context or {})}
-        if tool_call:
+        ctx = context if context is not None else {}
+        missing = object()
+        previous = ctx.get("tool_call", missing)
+        if tool_call is not None:
             ctx["tool_call"] = tool_call
-        ctx.setdefault("tool_call", {})
-        return await self._run_stage(
-            GuardrailStage.PROCESSING, content, self.processing_guards, ctx
-        )
+        else:
+            ctx.setdefault("tool_call", {})
+        try:
+            return await self._run_stage(
+                GuardrailStage.PROCESSING, content, self.processing_guards, ctx
+            )
+        finally:
+            if previous is missing:
+                ctx.pop("tool_call", None)
+            else:
+                ctx["tool_call"] = previous
 
     async def run_output(self, content: str, context: dict | None = None) -> PipelineResult:
         """Run all output-stage guardrails."""
@@ -213,7 +229,11 @@ class GuardrailPipeline:
         guards: list[GuardrailBase],
         context: dict | None,
     ) -> PipelineResult:
-        ctx = context or {}
+        # `context or {}` treated a caller's empty dict as absent and ran on a
+        # throwaway: guardrail_stage, the PII token map and the tool budget
+        # counters were then written where the caller could never read them,
+        # so a fresh `ctx = {}` shared across stages was not shared at all.
+        ctx = context if context is not None else {}
         ctx["guardrail_stage"] = (
             stage.value
         )  # consumed by eu_ai_act, nist_ai_rmf transparency logic

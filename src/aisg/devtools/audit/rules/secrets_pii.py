@@ -24,6 +24,7 @@ from aisg.devtools.audit.model import (
     Finding,
     Hit,
     MatchKind,
+    Package,
     Recommendation,
     Severity,
     Tier,
@@ -202,6 +203,15 @@ class SecretLiteral(AuditRule):
             "aisg audit in CI with --fail-on critical to block the merge",
             "git-filter-repo to purge the value from history after rotation",
         ),
+        package=Package(
+            mechanism="detector",
+            symbols=("aisg audit",),
+            same_control=False,
+            leaves_open=(
+                "Moving the value out, rotating it and adding a pre-commit scanner are the "
+                "control. The audit in CI reports a value that is already committed."
+            ),
+        ),
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
@@ -264,6 +274,15 @@ class SecretInConfig(AuditRule):
             "1Password / keychain-backed `op run` or `envchain` wrappers around the host",
             "aisg audit in CI with --fail-on critical",
             "gitleaks with a custom rule for MCP config paths",
+        ),
+        package=Package(
+            mechanism="detector",
+            symbols=("aisg audit",),
+            same_control=False,
+            leaves_open=(
+                "Replacing the value with a `${VAR}` reference and rotating it are the "
+                "control. The audit in CI reports the literal; it does not move it."
+            ),
         ),
     )
 
@@ -364,6 +383,16 @@ class SecretIntoPrompt(AuditRule):
             "Microsoft Presidio anonymizer on the assembled prompt",
             "a tool-side credential injection layer (the model sees a handle, not the value)",
             "LLM Guard Secrets scanner on the input side",
+        ),
+        package=Package(
+            mechanism="detector",
+            symbols=("PIIDetector", "PIIRestorer"),
+            same_control=False,
+            leaves_open=(
+                'Tokenising covers the PII half only: `action="tokenize"` is regex-only and '
+                "matches the detector's own entity types. A credential passed into the prompt "
+                "has no entity type here and stays open until it is passed at call time."
+            ),
         ),
     )
 
@@ -486,6 +515,16 @@ class VerbatimLogging(AuditRule):
             "LLM observability with content redaction (Langfuse / Arize masking hooks)",
             "structlog processor that drops prompt / response keys",
         ),
+        package=Package(
+            mechanism="detector",
+            symbols=("PIIDetector", "AuditLogger"),
+            same_control=False,
+            leaves_open=(
+                "Redaction in front of the logger lowers what a log line exposes; the verbatim "
+                "log call is the control and stays where it is. AuditLogger hashes only the "
+                "pipeline's own records, not your log lines."
+            ),
+        ),
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
@@ -584,6 +623,15 @@ class LiteralPii(AuditRule):
             "Microsoft Presidio to anonymise eval sets and log samples",
             "Faker-generated fixtures with a seed checked into the repo",
             "a pre-commit hook that rejects PII_PATTERNS matches under prompts/ and evals/",
+        ),
+        package=Package(
+            mechanism="detector",
+            symbols=("PIIDetector",),
+            same_control=False,
+            leaves_open=(
+                "Replacing the literal values in the fixtures is the control. The detector "
+                "finds them in a corpus; the file is edited by hand."
+            ),
         ),
     )
 

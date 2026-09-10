@@ -55,7 +55,10 @@ class LangChainGuardrailCallback:
 
     def __init__(self, pipeline, context: dict | None = None):
         self.pipeline = pipeline
-        self.context = context or {}
+        # One dict for the whole session, shared with the caller when given:
+        # ToolPolicyGuard's budget counters and the PII token map live in it.
+        # An empty dict is still the caller's dict, so `or {}` would be wrong.
+        self.context = context if context is not None else {}
         self._blocked_message: str | None = None
 
     def on_llm_start(
@@ -112,13 +115,21 @@ class LangChainGuardrailCallback:
         run_id: UUID,
         **kwargs: Any,
     ) -> None:
-        """Run processing guardrails (tool policy) before tool execution."""
+        """
+        Run processing guardrails (tool policy) before tool execution.
+
+        The pipeline runs on `self.context` itself, not a copy. ToolPolicyGuard
+        keeps its per-session counters in the context dict, so a copy per call
+        threw them away and `max_tool_calls_per_session` / `max_calls_per_tool`
+        never tripped through this integration. `run_processing` puts
+        `tool_call` back the way it found it, so nothing from one tool call
+        leaks into the next.
+        """
         tool_name = serialized.get("name", "")
         tool_call = {"name": tool_name, "arguments": {"input": input_str}}
-        ctx = {**self.context, "tool_call": tool_call}
 
         result = _run_async(
-            self.pipeline.run_processing(input_str, context=ctx, tool_call=tool_call)
+            self.pipeline.run_processing(input_str, context=self.context, tool_call=tool_call)
         )
         if result.blocked:
             raise PermissionError(f"[Tool Policy] {result.rejection_message}")

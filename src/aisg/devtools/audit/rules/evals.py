@@ -28,6 +28,7 @@ from aisg.devtools.audit.model import (
     EvidenceKind,
     Finding,
     MatchKind,
+    Package,
     Recommendation,
     ReportRecord,
     Scope,
@@ -221,6 +222,16 @@ class NoEvalsInCI(AuditRule):
             "deepeval or ragas test cases run by pytest in the existing test job",
             "inspect_ai or garak invoked from tox.ini / noxfile.py so the runner is versioned",
         ),
+        package=Package(
+            mechanism="measurement",
+            symbols=("aisg measure", "aisg probe"),
+            same_control=True,
+            leaves_open=(
+                "The CI workflow edit is yours to make, and `aisg probe` needs an endpoint "
+                "that is being served. A run on every change is the control; what the run "
+                "reports is a separate question."
+            ),
+        ),
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
@@ -312,6 +323,15 @@ class ProbeReportFailures(AuditRule):
             "garak or pyrit red-team runs against the same endpoint",
             "promptfoo red-team plugins for the same attack families in the eval config",
             "a hand-written regression suite that replays the failed cases through pytest",
+        ),
+        package=Package(
+            mechanism="measurement",
+            symbols=("aisg probe", "aisg measure"),
+            same_control=False,
+            leaves_open=(
+                "A new run shows what still gets through. Fixing the guard or the endpoint "
+                "behind each case that got through is the work, and it is done by hand."
+            ),
         ),
     )
 
@@ -426,6 +446,15 @@ class StaleReport(AuditRule):
             "a CI job that fails when the committed report predates the model-bearing files",
             "promptfoo eval with the model id in the provider string and the results committed",
             "a changelog entry per model change that links the eval run it was measured with",
+        ),
+        package=Package(
+            mechanism="measurement",
+            symbols=("aisg measure", "aisg probe"),
+            same_control=True,
+            leaves_open=(
+                "Regenerating the report against the current model id and config is the "
+                "control. The report goes stale again on the next model or config change."
+            ),
         ),
     )
 
@@ -620,6 +649,16 @@ class NoBenignCorpus(AuditRule):
             "promptfoo tests tagged benign with icontains / equals assertions on the expected answer",
             "deepeval or ragas cases built from real, consented user traffic",
             "an evals/benign/ directory of must-survive prompts replayed in CI",
+        ),
+        package=Package(
+            mechanism="measurement",
+            symbols=("aisg measure",),
+            same_control=False,
+            leaves_open=(
+                "aisg measure scores the package guards against its own benign corpus. "
+                "Benign cases in your own eval config are the control this rule looks for, "
+                "and adding them is by hand."
+            ),
         ),
     )
 

@@ -3,7 +3,8 @@ tests/unit/test_audit_vocab.py
 ------------------------------
 Pins `aisg.devtools.audit.vocab`: capability classification is token-based (not
 substring), the risk-tier order of authority, the kill-switch vocabulary's deliberate
-exclusions, the env-read regexes, MCP implied legs, and the ignore marker on line 1.
+exclusions, the env-read regexes, MCP implied legs, the ignore marker on line 1, and
+that no source file under the audit package spells out the banned word or a phrase.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from aisg.devtools.audit import vocab
+from aisg.devtools.audit.report import BANNED_PHRASES
 from aisg.devtools.audit.vocab import (
     ALLOWLIST_SYMBOLS,
     APPROVAL_SYMBOLS,
@@ -61,6 +63,30 @@ LEGS = {"private", "untrusted", "external_action"}
 def test_line_one_is_the_ignore_marker():
     first = Path(vocab.__file__).read_text(encoding="utf-8").splitlines()[0]
     assert first == "# aisg-audit: ignore-file"
+
+
+# The word the design bans outright, assembled from fragments as `baseline.py` does so
+# this file does not carry it either.
+BANNED_WORD_RE = re.compile(r"\bcl" + r"ean\b", re.IGNORECASE)
+AUDIT_PACKAGE = Path(vocab.__file__).resolve().parent
+
+
+def _audit_sources() -> list[Path]:
+    return sorted(p for p in AUDIT_PACKAGE.rglob("*.py") if "__pycache__" not in p.parts)
+
+
+@pytest.mark.parametrize(
+    "path", _audit_sources(), ids=lambda p: p.relative_to(AUDIT_PACKAGE).as_posix()
+)
+def test_no_audit_source_carries_the_banned_word_or_a_banned_phrase(path: Path):
+    # Comments and docstrings included: `report.check_templates()` covers only the
+    # rendered strings, and a comment that spells the word out is one edit away from a
+    # template. `baseline.py` assembles the word from fragments for the same reason.
+    text = path.read_text(encoding="utf-8")
+    assert not BANNED_WORD_RE.search(text), path.name
+    lowered = text.lower()
+    for phrase in BANNED_PHRASES:
+        assert phrase not in lowered, (path.name, phrase)
 
 
 # --------------------------------------------------------------------------- #

@@ -25,6 +25,7 @@ from aisg.devtools.audit.model import (
     Inventory,
     MatchKind,
     Severity,
+    UnknownCategory,
 )
 from aisg.devtools.audit.rules import run_rules
 from aisg.devtools.audit.rules.guards import GuardFailOpen
@@ -223,6 +224,78 @@ def test_aud201_inert_gate_is_aud202_not_aud201(py_agent, audit_context):
     assert inert.scope.name == "tools.py::send_email"
 
 
+@pytest.mark.parametrize("literal", ["[]", "()", "set()", "None"])
+def test_aud201_empty_require_approval_is_an_inert_gate(py_agent, audit_context, literal):
+    """A guard that names no tool gates nothing: AUD-202 says so, AUD-201 stays quiet."""
+    _patch_send_email(
+        py_agent,
+        "def send_email(to: str, subject: str, body: str) -> str:\n"
+        f"    guard = ToolPolicyGuard(require_approval={literal})\n"
+        "    msg = EmailMessage()",
+    )
+    ctx = audit_context(py_agent)
+    assert ctx.pyfacts is not None
+    join = ctx.pyfacts.tool_gate_join["send_email"]
+    assert join is not None and join.inert_reason == "require_approval is empty"
+    assert _eval(IrreversibleUngated, ctx) == []
+    inert = _only(_eval(InertGate, ctx), "AUD-202")
+    assert inert.location == ("tools.py", DEF_LINE + 1)
+    assert inert.notes == "ToolPolicyGuard: require_approval is empty"
+
+
+def test_aud201_star_kwargs_guard_is_no_gate_and_an_unknown(py_agent, audit_context):
+    """`ToolPolicyGuard(**cfg)` cannot vouch for the tool: AUD-201 fires, the UNKNOWN says why."""
+    _patch_send_email(
+        py_agent,
+        "def send_email(to: str, subject: str, body: str) -> str:\n"
+        "    guard = ToolPolicyGuard(**cfg)\n"
+        "    msg = EmailMessage()",
+    )
+    ctx = audit_context(py_agent)
+    assert ctx.pyfacts is not None
+    assert ctx.pyfacts.tool_gate_join["send_email"] is None
+    assert not any(g.file == "tools.py" and g.line == DEF_LINE + 1 for g in ctx.pyfacts.gates)
+    _only(_eval(IrreversibleUngated, ctx), "AUD-201")
+    assert _eval(InertGate, ctx) == []
+    deep = [u for u in ctx.unknown if u.category is UnknownCategory.DEEP and "**cfg" in u.why]
+    assert len(deep) == 1
+    assert deep[0].file == "tools.py" and f"tools.py:{DEF_LINE + 1}" in deep[0].what
+    assert deep[0].rule_ids == ("AUD-201", "AUD-202")
+
+
+def test_aud201_star_kwargs_guard_on_a_later_line_of_a_multi_line_statement(
+    py_agent, audit_context
+):
+    """The same `**cfg` guard nested three lines into a multi-line assignment.
+
+    The outer statement's text used to record a phantom live gate at its own line,
+    which the join then took for a real approval gate: AUD-201 went silent and no
+    UNKNOWN row appeared. The gate literal belongs to the nested call alone.
+    """
+    _patch_send_email(
+        py_agent,
+        "def send_email(to: str, subject: str, body: str) -> str:\n"
+        "    pipeline = GuardrailPipeline(\n"
+        "        processing_guards=[\n"
+        "            ToolPolicyGuard(**cfg),\n"
+        "        ],\n"
+        "    )\n"
+        "    msg = EmailMessage()",
+    )
+    ctx = audit_context(py_agent)
+    assert ctx.pyfacts is not None
+    assert ctx.pyfacts.tool_gate_join["send_email"] is None
+    assert not any(
+        g.file == "tools.py" and DEF_LINE < g.line <= DEF_LINE + 6 for g in ctx.pyfacts.gates
+    )
+    _only(_eval(IrreversibleUngated, ctx), "AUD-201")
+    assert _eval(InertGate, ctx) == []
+    deep = [u for u in ctx.unknown if u.category is UnknownCategory.DEEP and "**cfg" in u.why]
+    assert len(deep) == 1
+    assert deep[0].file == "tools.py" and f"tools.py:{DEF_LINE + 3}" in deep[0].what
+    assert deep[0].rule_ids == ("AUD-201", "AUD-202")
+
+
 # ---------------------------------------------------------------------------
 # AUD-202 inert or bypassed gate
 # ---------------------------------------------------------------------------
@@ -252,7 +325,7 @@ def test_aud202_deep_reports_inert_and_bypassed_gates(tmp_path: Path, audit_cont
     assert inert.confidence.match_kind is MatchKind.AST
     assert inert.confidence.evidence_kind is EvidenceKind.CODE
     assert inert.evidence[0].snippet == "guard = ToolPolicyGuard(require_approval=True)"
-    assert inert.notes == "ToolPolicyGuard: require_approval=True without approval_callback"
+    assert inert.notes == "ToolPolicyGuard: require_approval without approval_callback"
     assert inert.scope.kind == "file"
     assert bypass.evidence[0].snippet == "auto_approve = True"
     assert bypass.notes == "auto_approve: bypass: auto_approve = True"

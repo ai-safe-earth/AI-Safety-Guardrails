@@ -5,10 +5,15 @@
 # `aisg measure` and, when AISG_PROBE_URL is set, `aisg probe`.
 # Nothing runs unless AISG_VERIFY_RUN=1: tests, measure and probe may call model providers.
 # This script never adds --i-have-authorization; a remote probe target needs the user to add it.
+# Reports go under .aisg-audit/ like every other artefact of the flow; the next audit reads
+# them there as evidence (REPORTED <age>) whether or not .gitignore lists the directory.
 set -u
 AISG_VERSION="0.1.0"   # pinned; test_skill_package.py asserts this equals pyproject.toml [project].version
 run="${AISG_VERIFY_RUN:-0}"
 status=0
+report_dir=".aisg-audit"
+measure_report="$report_dir/measure-report.json"
+probe_report="$report_dir/probe-report.json"
 
 # --- 1. Test command, from manifests (first match wins) ---------------------
 test_cmd=""
@@ -74,21 +79,25 @@ if ! have_aisg; then
 fi
 
 # --- 3. aisg measure, when a pipeline config exists -------------------------
+# GuardrailPipeline.from_config builds guards from the top-level stage keys input:,
+# processing:, output: and policy:; `pipeline:` is optional and holds only run settings,
+# and a file with no stage key enables no guards (aisg measure then exits 2 itself).
 pipeline_cfg=""
 for candidate in guardrails.yaml aisg.yaml config/*.yaml config/*.yml; do
   [ -f "$candidate" ] || continue
-  if grep -Eq '^(pipeline|guards):' "$candidate"; then
+  if grep -Eq '^(input|processing|output|policy):' "$candidate"; then
     pipeline_cfg="$candidate"
     break
   fi
 done
 
 if [ -z "$pipeline_cfg" ]; then
-  echo "measure: no pipeline config found (looked for guardrails.yaml, aisg.yaml, config/*.yaml with a top-level pipeline: or guards: key)"
+  echo "measure: no pipeline config found (looked for guardrails.yaml, aisg.yaml, config/*.yaml with a top-level input:, processing:, output: or policy: stage key)"
 else
-  echo "measure: aisg measure --config $pipeline_cfg -o measure-report.json"
+  echo "measure: aisg measure --config $pipeline_cfg -o $measure_report"
   if [ "$run" = "1" ]; then
-    if ! run_aisg measure --config "$pipeline_cfg" -o measure-report.json; then
+    mkdir -p "$report_dir"
+    if ! run_aisg measure --config "$pipeline_cfg" -o "$measure_report"; then
       echo "measure: FAILED (aisg measure exited non-zero)" >&2
       status=1
     fi
@@ -99,15 +108,16 @@ fi
 
 # --- 4. aisg probe, only when AISG_PROBE_URL is set --------------------------
 if [ -n "${AISG_PROBE_URL:-}" ]; then
-  echo "probe: aisg probe $AISG_PROBE_URL -o probe-report.json"
+  echo "probe: aisg probe $AISG_PROBE_URL -o $probe_report"
   echo "probe: a non-loopback target needs --i-have-authorization; this script never adds it"
   if [ "$run" = "1" ]; then
-    if ! run_aisg probe "$AISG_PROBE_URL" -o probe-report.json; then
+    mkdir -p "$report_dir"
+    if ! run_aisg probe "$AISG_PROBE_URL" -o "$probe_report"; then
       echo "probe: exited non-zero (1 = a case got through, 2 = errors/skipped/inconclusive present)" >&2
       status=1
     fi
-    if [ -f probe-report.json ]; then
-      print_probe_summary probe-report.json
+    if [ -f "$probe_report" ]; then
+      print_probe_summary "$probe_report"
     fi
   else
     echo "probe: not run (set AISG_VERIFY_RUN=1 to run)"

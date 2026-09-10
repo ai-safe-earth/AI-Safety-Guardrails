@@ -4,6 +4,13 @@ Language-neutral shapes for when no `apply/<language>.md` matches (Java, Rust, C
 shell, config-only repos). Each is a pattern, not a library; translate it into the idiom the
 codebase already uses and cite only APIs you have checked.
 
+The `recommendation.package.symbols` in the JSON (`ToolPolicyGuard`, `PIIDetector`,
+`RateLimiter`, ...) are Python-only. Outside Python a unit always takes the
+outside-package branch in phase 3, whatever `same_control` says; the control the rule asks
+for applies unchanged, and the shapes below are that control without a library. The
+`aisg audit`, `aisg probe` and `aisg init` verbs still run against any repository; only
+`aisg measure` needs a Python pipeline built from this package.
+
 ## Allowlist (AUD-103, AUD-104, AUD-401, AUD-405)
 
 The model chooses a NAME; the code owns the mapping from name to action.

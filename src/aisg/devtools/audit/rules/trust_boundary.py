@@ -28,6 +28,7 @@ from aisg.devtools.audit.model import (
     Finding,
     Hit,
     MatchKind,
+    Package,
     Recommendation,
     Scope,
     Severity,
@@ -396,6 +397,16 @@ class LethalTrifecta(AuditRule):
             "Per-turn capability tokens: drop the write/send capability once untrusted content "
             "enters the context",
         ),
+        package=Package(
+            mechanism="gate",
+            symbols=("ToolPolicyGuard", "PIIDetector"),
+            same_control=False,
+            leaves_open=(
+                "The control is a structural split between the scope that reads untrusted "
+                "content and the scope that acts. A gate on the action plus a detector on "
+                "ingress lowers the odds of one bad turn; all three legs still meet in one loop."
+            ),
+        ),
     )
     tier = Tier.T3
     related_lint_rules = ("EU-AIA-012a", "EU-AIA-014a", "ALIGN-003")
@@ -702,6 +713,16 @@ class UntrustedIntoPrompt(_PromptRule):
             "LLM Guard PromptInjection scanner or Lakera Guard on the ingress path",
             "Rebuff or a NeMo Guardrails input rail before assembly",
         ),
+        package=Package(
+            mechanism="detector",
+            symbols=("PromptInjectionGuard",),
+            same_control=False,
+            leaves_open=(
+                "Delimiting the untrusted span and keeping it in the user turn is the control. "
+                "The guard lowers the probability that an injection lands; it does not change "
+                "what an injection that lands can do."
+            ),
+        ),
     )
     tier = Tier.T2
     related_lint_rules = ("EU-AIA-015a",)
@@ -730,6 +751,15 @@ class SystemPromptFromRequest(_PromptRule):
             "NeMo Guardrails or Guardrails AI input validation that rejects instruction-like text",
             "Provider-side prompt caching of a fixed system prompt, which makes per-request "
             "system text a visible cache miss",
+        ),
+        package=Package(
+            mechanism="detector",
+            symbols=("PromptInjectionGuard",),
+            same_control=False,
+            leaves_open=(
+                "A static system prompt is the control. Running the guard over the request "
+                "field screens what goes in; the system prompt is still built from it."
+            ),
         ),
     )
     tier = Tier.T3
