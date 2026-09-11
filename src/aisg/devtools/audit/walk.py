@@ -510,8 +510,8 @@ def walk(
     Enumerate `root`. Never raises on an unreadable entry; see the module docstring.
 
     `own_output_skipped`, when given, receives the POSIX relpath of every file skipped as
-    the audit's own report (`is_own_report`, `is_own_html`), so the caller can put the
-    list in the inventory; those files get no UNKNOWN row, they are named there instead.
+    the audit's own report (`is_own_report`, `is_own_html`), sorted, so the caller can put
+    the list in the inventory; those files get no UNKNOWN row, they are named there instead.
 
     `oversize_skipped`, when given, receives the POSIX relpath of every file over
     `options.max_size`. Those files always get one UNKNOWN row (count, limit, first few
@@ -642,6 +642,10 @@ def walk(
         if oversize_skipped is not None:
             oversize_skipped.extend(sorted(oversize))
         unknown.append(_oversize_item(oversize, opts.max_size))
+    # Filename visit order from os.walk is OS-dependent; sort so inventory/SARIF lists
+    # match across Windows and Linux (same invariant as oversize_skipped and records).
+    if own_output_skipped is not None:
+        own_output_skipped[:] = sorted(own_output_skipped)
     return records, units, unknown
 
 

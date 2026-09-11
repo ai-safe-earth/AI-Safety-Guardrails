@@ -668,6 +668,17 @@ class TestOwnOutput:
         assert _rels(records) == []
         assert skipped == ["loose.json", "tight.json"]
 
+    def test_own_output_skipped_is_sorted(self, tmp_path: Path) -> None:
+        # Create in reverse alpha order so a creation-order sink would fail the assert.
+        _touch(tmp_path, "z.json", _report_head())
+        _touch(tmp_path, "m.json", _report_head())
+        _touch(tmp_path, "a.json", _report_head())
+        skipped: list[str] = []
+
+        walk(tmp_path, own_output_skipped=skipped)
+
+        assert skipped == ["a.json", "m.json", "z.json"]
+
     def test_only_json_names_are_own_output(self, tmp_path: Path) -> None:
         _touch(tmp_path, "report.txt", _report_head())
         _touch(tmp_path, "report.py", "x = " + _report_head())
