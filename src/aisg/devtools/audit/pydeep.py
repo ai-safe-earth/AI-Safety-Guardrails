@@ -303,6 +303,66 @@ class _FuncInfo:
     calls: tuple[str, ...]
 
 
+class CallIndex:
+    """
+    Which definitions a bare callee name may bind to.
+
+    The call graph records bare names (`self.retriever.call(...)` is recorded as
+    `call`), so a name has to be resolved back to definitions before it is an edge.
+    Resolving it to *every* definition of that name is what a library punishes: in
+    AdalFlow `__init__` is defined 187 times and `call` 99 times, so following those
+    names linked every function to every other and AUD-301 reported 179 critical
+    trifecta scopes, each assembled from three unrelated files. Every one was an
+    artefact of the index; under this policy the same repository reports 5.
+
+    So an edge is followed only when the name is defined in the caller's own file, or
+    when it resolves to exactly one definition anywhere. An ambiguous cross-file name
+    is not a call edge. That is a deliberate under-approximation: real dispatch
+    through a common method name is missed, which is a false negative in a rule whose
+    findings are already `[UNMEASURED]`. A missed leg is visible in the unit-level
+    finding (all three legs in one unit, reported with `_UNIT_NOTE`); 179 fabricated
+    criticals are not visible as anything.
+    """
+
+    def __init__(self, functions: dict[str, _FuncInfo]) -> None:
+        self.functions = functions
+        self.by_file: dict[tuple[str, str], list[str]] = {}
+        self.by_name: dict[str, list[str]] = {}
+        for key, info in functions.items():
+            name = getattr(info, "name", None)
+            if not name:
+                continue
+            bare = str(name).rsplit(".", 1)[-1]
+            self.by_file.setdefault((str(getattr(info, "file", "")), bare), []).append(key)
+            self.by_name.setdefault(bare, []).append(key)
+
+    def resolve(self, caller: str, callee: str) -> list[str]:
+        """Definitions `callee` may bind to when called from `caller`; [] when ambiguous."""
+        bare = str(callee).rsplit(".", 1)[-1]
+        info = self.functions.get(caller)
+        local = self.by_file.get((str(getattr(info, "file", "")), bare)) if info else None
+        if local:
+            return local
+        keys = self.by_name.get(bare, [])
+        return keys if len(keys) == 1 else []
+
+    def reach(self, key: str, depth: int = 3) -> list[str]:
+        """Keys reachable from `key` through resolvable calls, `key` first, depth-bounded."""
+        seen, queue, order = {key}, deque([(key, 0)]), []
+        while queue:
+            cur, d = queue.popleft()
+            order.append(cur)
+            info = self.functions.get(cur)
+            if info is None or d >= depth:
+                continue
+            for callee in getattr(info, "calls", ()) or ():
+                for k in self.resolve(cur, callee):
+                    if k not in seen:
+                        seen.add(k)
+                        queue.append((k, d + 1))
+        return order
+
+
 @dataclass
 class PyFacts:
     llm_calls: list[CallSite] = field(default_factory=list)
@@ -340,29 +400,21 @@ class PyFacts:
             self.tool_funcs.setdefault(name, keys)
         self.tool_gate_join.update(other.tool_gate_join)
 
-    def _by_name(self) -> dict[str, list[str]]:
-        """Bare function name -> keys defining it; an index for one join pass."""
-        by_name: dict[str, list[str]] = {}
-        for k, info in self.functions.items():
-            if info.name is not None:
-                by_name.setdefault(info.name.rsplit(".", 1)[-1], []).append(k)
-        return by_name
+    def _by_name(self) -> CallIndex:
+        """The call-name index behind every join pass; see `CallIndex`."""
+        return CallIndex(self.functions)
 
-    def _reach(self, key: str, by_name: dict[str, list[str]], depth: int = 3) -> list[str]:
-        """Keys reachable from `key` through same-unit calls, `key` first, depth-bounded."""
-        seen, queue, order = {key}, deque([(key, 0)]), []
-        while queue:
-            cur, d = queue.popleft()
-            order.append(cur)
-            info = self.functions.get(cur)
-            if info is None or d >= depth:
-                continue
-            for callee in info.calls:
-                for k in by_name.get(callee, ()):
-                    if k not in seen:
-                        seen.add(k)
-                        queue.append((k, d + 1))
-        return order
+    def _reach(self, key: str, by_name: CallIndex, depth: int = 3) -> list[str]:
+        """Keys reachable from `key` through resolvable calls, `key` first, depth-bounded."""
+        return by_name.reach(key, depth=depth)
+
+    def reach(self, key: str, depth: int = 3) -> list[str]:
+        """
+        Keys reachable from `key`, `key` first. The public entry: AUD-301 assembles a
+        scope's evidence over the same walk that chose the scope, so the two cannot
+        disagree about what a call reaches.
+        """
+        return self._by_name().reach(key, depth=depth)
 
     def _leg_set(self, key: str) -> set[str]:
         return {leg for leg in _LEGS if self.legs.get(key, {}).get(leg)}

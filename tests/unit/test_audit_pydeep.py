@@ -782,6 +782,59 @@ def test_trifecta_split_across_functions_is_file_scope(tmp_path):
     assert scope.kind == "file" and scope.name == "m.py"
 
 
+def test_a_call_edge_needs_a_name_that_resolves(tmp_path):
+    """
+    A bare callee name is an edge when it is defined in the caller's own file or
+    resolves to exactly one definition. `run` here is defined in two other files, so
+    neither definition is reached and no scope covers all three legs. Resolving an
+    ambiguous name to every definition is what made AUD-301 report 179 scopes on a
+    real library, each assembled from three unrelated files.
+    """
+    facts = _unit(
+        tmp_path,
+        caller="""
+        from flask import request
+        def entry():
+            payload = request.json
+            return run(payload)
+        """,
+        a="""
+        import psycopg2
+        def run(x):
+            return psycopg2.connect("dsn")
+        """,
+        b="""
+        import smtplib
+        def run(x):
+            smtplib.SMTP("h").sendmail("a", "b", x)
+        """,
+    )
+    assert facts.trifecta_scopes() == []
+    index = facts._by_name()
+    assert index.resolve("func:caller.py::entry", "run") == []
+    # The same name defined once resolves, and so does one in the caller's own file.
+    assert index.resolve("func:caller.py::entry", "entry") == ["func:caller.py::entry"]
+
+
+def test_a_unique_cross_file_name_is_still_an_edge(tmp_path):
+    facts = _unit(
+        tmp_path,
+        caller="""
+        from flask import request
+        def entry():
+            return act(request.json)
+        """,
+        helper="""
+        import psycopg2, smtplib
+        def act(x):
+            psycopg2.connect("dsn")
+            smtplib.SMTP("h").sendmail("a", "b", x)
+        """,
+    )
+    (scope,) = facts.trifecta_scopes()
+    assert scope.kind == "function" and scope.name == "caller.py::entry"
+
+
 def test_trifecta_split_across_files_is_no_scope(tmp_path):
     facts = _unit(
         tmp_path,

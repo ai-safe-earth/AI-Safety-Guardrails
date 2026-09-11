@@ -15,7 +15,6 @@ grep hit is never emitted next to an AST verdict on the same file.
 from __future__ import annotations
 
 import re
-from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
@@ -203,30 +202,21 @@ def _sorted(findings: Iterable[Finding]) -> list[Finding]:
 # ---------------------------------------------------------------------------
 
 
-def _reach(functions: dict[str, Any], root: str, by_name: dict[str, list[str]]) -> list[str]:
-    """Keys reachable from `root` through bare-name calls, depth-bounded, root first."""
-    seen, queue, order = {root}, deque([(root, 0)]), []
-    while queue:
-        cur, depth = queue.popleft()
-        order.append(cur)
-        info = functions.get(cur)
-        if info is None or depth >= _REACH_DEPTH:
-            continue
-        for callee in getattr(info, "calls", ()) or ():
-            for key in by_name.get(str(callee).rsplit(".", 1)[-1], ()):
-                if key not in seen:
-                    seen.add(key)
-                    queue.append((key, depth + 1))
-    return order
+def _reach(functions: dict[str, Any], root: str, by_name: Any) -> list[str]:
+    """
+    Keys reachable from `root`, depth-bounded, root first.
+
+    The resolution policy lives in `pydeep.CallIndex` and is shared with the pass that
+    chose the scope: the evidence a finding shows must come from the same walk that
+    found it, or the document names files the scope cannot reach.
+    """
+    return by_name.reach(root, depth=_REACH_DEPTH)
 
 
-def _by_name(functions: dict[str, Any]) -> dict[str, list[str]]:
-    index: dict[str, list[str]] = {}
-    for key, info in functions.items():
-        name = getattr(info, "name", None)
-        if name:
-            index.setdefault(str(name).rsplit(".", 1)[-1], []).append(key)
-    return index
+def _by_name(functions: dict[str, Any]) -> Any:
+    from aisg.devtools.audit.pydeep import CallIndex
+
+    return CallIndex(functions)
 
 
 def _scope_keys(pyfacts: Any, scope: Scope) -> list[str]:
@@ -367,7 +357,9 @@ class LethalTrifecta(AuditRule):
     known_failure_modes = (
         "unit-level scope over-approximates in monorepos",
         "MCP legs implied by package name",
-        "call-graph reach is depth-3 and by bare name; dynamic dispatch is not followed",
+        "call-graph reach is depth-3; a call is an edge only when the name is defined in "
+        "the caller's file or resolves to one definition, so dispatch through a name a "
+        "library defines many times (`call`, `forward`, `__init__`) is not followed",
     )
     controls = (
         "ASI01",
