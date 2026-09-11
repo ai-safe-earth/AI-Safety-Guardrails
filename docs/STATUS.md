@@ -123,15 +123,17 @@ Left open by the review, on purpose and small:
 
 ## Head
 
-`main` at `c06d810`, the two-document round in one commit on top of
-`0acc0db`. **Not pushed yet**: `origin`
-(`github.com/ai-safe-earth/AI-Safety-Guardrails`) is still at `0acc0db`, so
-CI has not seen the round; push, then `gh run list --limit 4`.
+`main` at `f96086c`, pushed to `origin`
+(`github.com/ai-safe-earth/AI-Safety-Guardrails`) on 2026-09-11. Both
+workflows green on it (Tests run 34624633198, EU AI Act Compliance run
+34624633209).
 
 Recent history, newest first:
 
 | commit | what |
 | --- | --- |
+| `f96086c` | `own_output_skipped` sorted in `walk`: `os.walk` name order is OS-dependent |
+| `d97fae6` | Status point for the round |
 | `c06d810` | The two-document audit flow: html documents, baseline as a record, the five-phase skill, two review rounds |
 | `0acc0db` | docs: the audit and the portable skill explained |
 | `de78fd3` | The `explain-doc` project skill |
@@ -152,6 +154,14 @@ misalign` no issues on the changed modules, self-audit
 exit 0 with `baseline: 0 new, 23 unchanged, 0 no longer reported`,
 `scripts/sync_skill.py --check` in sync (version 0.1.0, 13 files, 2 mirrors),
 `scripts/controls_md.py --check` in sync (46 rules).
+
+On CI, the round first failed on Linux and passed on Windows: two new walk
+tests compared `own_output_skipped` to a sorted list, and `os.walk` returns
+names in directory order, which is sorted on NTFS but not on ext4. `walk` now
+sorts the sink itself (`f96086c`), so every caller gets the same list on every
+OS -- `main.py` sorted it before putting it in the inventory, but the tests
+read the sink directly. A local pass on Windows alone does not clear a list
+that came from the filesystem.
 
 The last CI runs are from `6d7f7e7` (both workflows passed: Tests run
 33847197716, EU AI Act Compliance run 33847197641, SARIF accepted by Code
