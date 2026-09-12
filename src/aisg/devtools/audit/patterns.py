@@ -438,46 +438,71 @@ _PRIVATE_ENV_BARE = (
 )
 _PRIVATE_ENV_NAME = rf"""['"]{_PRIVATE_ENV_BARE}['"]"""
 
+# A library is the private-data leg when it is USED, not when its name appears. `_SYM`
+# refuses a match that follows a dot or a quote, so `import faiss` and `faiss.Index(...)`
+# count while `field(default='index.faiss')` and
+# `from acme.database.sqlalchemy.manager import X` do not -- there the word is a string
+# fragment or someone else's attribute path, and the audit was reading it as a data source.
+# One character wide, so it is a legal lookbehind. Python only: TypeScript and Go name
+# their modules in quoted specifiers (`require('mysql2')`, `import "database/sql"`), so
+# refusing a quote there would refuse the import itself.
+_SYM = r"(?<![\w.'\"])"
+
+# Reading a file is not by itself private data: an agent opens prompt templates, model
+# configs and images. The path is the signal, the same way the variable's name is the
+# signal for an environment read. `open('customers.csv')`, `open(user_records_path)` and
+# `open('.env')` are the leg; `open(filepath, 'rb')` and `open(image_path)` are not.
+# A path assembled at runtime has no name to read, so it is missed -- AUD-301 says so.
+_PRIVATE_DATA_WORDS = (
+    r"(?:customers?|users?|clients?|accounts?|persons?|people|employees?|patients?"
+    r"|members?|subscribers?|contacts?|profiles?|records?|transactions?|invoices?"
+    r"|orders?|payroll|salar(?:y|ies)|medical|health|resumes?|passports?|ssn|pii"
+    r"|secrets?|credentials?|passw(?:or)?ds?|tokens?|keys?|auth|session|cookie"
+    r"|private|confidential|personal)"
+)
+_PRIVATE_PATH = rf"(?i:{_PRIVATE_DATA_WORDS}|\.(?:csv|jsonl|parquet|db|sqlite3?|pem|env)\b)"
+
 PRIVATE_DATA_SOURCES: LangTable = {
     "python": _t(
         [
-            ("db:psycopg", r"\bpsycopg2?\b"),
-            ("db:asyncpg", r"\basyncpg\b"),
-            ("db:pymysql", r"\bpymysql\b"),
-            ("db:sqlite3", r"\bsqlite3\b"),
-            ("db:sqlalchemy", r"\bsqlalchemy\b"),
-            ("db:pymongo", r"\bpymongo\b"),
-            ("db:redis", r"\bredis\b"),
+            ("db:psycopg", rf"{_SYM}\bpsycopg2?\b"),
+            ("db:asyncpg", rf"{_SYM}\basyncpg\b"),
+            ("db:pymysql", rf"{_SYM}\bpymysql\b"),
+            ("db:sqlite3", rf"{_SYM}\bsqlite3\b"),
+            ("db:sqlalchemy", rf"{_SYM}\bsqlalchemy\b"),
+            ("db:pymongo", rf"{_SYM}\bpymongo\b"),
+            ("db:redis", rf"{_SYM}\bredis\b"),
             ("fs:s3", r"""boto3\.client\(\s*['"]s3"""),
             ("fs:google_cloud", r"\bgoogle\.cloud\.(?:storage|bigquery|firestore)\b"),
-            ("fs:open", r"""(?<![.\w])open\((?![^)\n]*['"][wax])"""),
-            ("fs:path_read", r"\bPath\([^)\n]*\)\.read_(?:text|bytes)\("),
-            ("vector:chromadb", r"\bchromadb\b"),
-            ("vector:pinecone", r"\bpinecone\b"),
-            ("vector:weaviate", r"\bweaviate\b"),
-            ("vector:qdrant", r"\bqdrant\b"),
-            ("vector:faiss", r"\bfaiss\b"),
-            ("vector:pgvector", r"\bpgvector\b"),
+            ("fs:open", rf"""(?<![.\w])open\((?![^)\n]*['"][wax])[^)\n]*{_PRIVATE_PATH}"""),
+            ("fs:path_read", rf"\bPath\([^)\n]*{_PRIVATE_PATH}[^)\n]*\)\.read_(?:text|bytes)\("),
+            ("vector:chromadb", rf"{_SYM}\bchromadb\b"),
+            ("vector:pinecone", rf"{_SYM}\bpinecone\b"),
+            ("vector:weaviate", rf"{_SYM}\bweaviate\b"),
+            ("vector:qdrant", rf"{_SYM}\bqdrant\b"),
+            ("vector:faiss", rf"{_SYM}\bfaiss\b"),
+            ("vector:pgvector", rf"{_SYM}\bpgvector\b"),
             ("env:os.environ", rf"\bos\.environ\b(?:\.get)?\s*[\[(]\s*{_PRIVATE_ENV_NAME}"),
             ("env:getenv", rf"\bgetenv\(\s*{_PRIVATE_ENV_NAME}"),
             # The call that reads the file, not `import dotenv`: an import moves no data.
             ("env:dotenv", r"\bload_dotenv\s*\("),
-            ("secrets:secretsmanager", r"\bsecretsmanager\b"),
-            ("secrets:SecretClient", r"\bSecretClient\b"),
+            ("secrets:secretsmanager", rf"{_SYM}\bsecretsmanager\b"),
+            ("secrets:SecretClient", rf"{_SYM}\bSecretClient\b"),
             (
                 "secrets:vault",
-                r"\bhvac\b|\bVaultClient\b|\bvault\.(?:secrets|read|kv)\b|\bhashicorp\b",
+                rf"{_SYM}\bhvac\b|{_SYM}\bVaultClient\b|{_SYM}\bvault\.(?:secrets|read|kv)\b"
+                rf"|{_SYM}\bhashicorp\b",
             ),
-            ("mail:imaplib", r"\bimaplib\b"),
-            ("mail:gmail", r"\bgmail\b"),
-            ("mail:googleapiclient", r"\bgoogleapiclient\b"),
-            ("mail:msgraph", r"\bmsgraph\b"),
-            ("crm:salesforce", r"(?i)\b(?:simple_)?salesforce\b"),
-            ("crm:hubspot", r"\bhubspot\b"),
-            ("crm:zendesk", r"\bzendesk\b"),
-            ("crm:jira", r"\bjira\b"),
-            ("crm:notion_client", r"\bnotion_client\b"),
-            ("crm:slack_sdk", r"\bslack_sdk\b"),
+            ("mail:imaplib", rf"{_SYM}\bimaplib\b"),
+            ("mail:gmail", rf"{_SYM}\bgmail\b"),
+            ("mail:googleapiclient", rf"{_SYM}\bgoogleapiclient\b"),
+            ("mail:msgraph", rf"{_SYM}\bmsgraph\b"),
+            ("crm:salesforce", rf"(?i){_SYM}\b(?:simple_)?salesforce\b"),
+            ("crm:hubspot", rf"{_SYM}\bhubspot\b"),
+            ("crm:zendesk", rf"{_SYM}\bzendesk\b"),
+            ("crm:jira", rf"{_SYM}\bjira\b"),
+            ("crm:notion_client", rf"{_SYM}\bnotion_client\b"),
+            ("crm:slack_sdk", rf"{_SYM}\bslack_sdk\b"),
         ]
     ),
     "typescript": _t(

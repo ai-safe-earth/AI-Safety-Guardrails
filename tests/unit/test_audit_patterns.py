@@ -436,8 +436,10 @@ def test_tool_def_negative(lang: str, text: str) -> None:
         ("python", "import psycopg2", "db:psycopg"),
         ("python", "conn = sqlite3.connect(path)", "db:sqlite3"),
         ("python", "s3 = boto3.client('s3')", "fs:s3"),
-        ("python", "with open(path) as fh:", "fs:open"),
-        ("python", "text = Path(p).read_text()", "fs:path_read"),
+        ("python", "with open('customers.csv') as fh:", "fs:open"),
+        ("python", "with open(user_records_path) as fh:", "fs:open"),
+        ("python", "text = Path(customer_file).read_text()", "fs:path_read"),
+        ("python", "import faiss", "vector:faiss"),
         ("python", "client = chromadb.Client()", "vector:chromadb"),
         ("python", "key = os.environ['OPENAI_API_KEY']", "env:os.environ"),
         ("python", "dsn = os.environ.get('DATABASE_URL')", "env:os.environ"),
@@ -481,6 +483,15 @@ def test_private_data_positive(lang: str, line: str, key: str) -> None:
         ("python", "from dotenv import load_dotenv"),
         ("typescript", "const port = process.env.PORT"),
         ("go", 'region := os.Getenv("AWS_REGION")'),
+        # Reading a file is not private data by itself: the path is the signal.
+        ("python", "with open(path) as fh:"),
+        ("python", "open(image_path, 'rb')"),
+        ("python", "text = Path(p).read_text()"),
+        ("python", "tpl = Path('prompts/system.md').read_text()"),
+        # A library name inside a string, or as someone else's attribute, is not a use.
+        ("python", "field(default='index.faiss')"),
+        ("python", "RAG(index_file='hotpot_qa_index.faiss')"),
+        ("python", "from acme.database.sqlalchemy.manager import DatabaseManager"),
     ],
 )
 def test_private_data_negative(lang: str, line: str) -> None:
