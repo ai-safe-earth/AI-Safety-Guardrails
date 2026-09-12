@@ -409,6 +409,35 @@ TOOL_DEF_PATTERNS: LangTable = {
 # Trifecta legs: private data, untrusted ingress, external action
 # ---------------------------------------------------------------------------
 
+# An environment read is the private-data leg when the variable's NAME says it
+# carries a credential, a connection or personal data. Reading the environment as
+# such is not: `APPDATA`, `OLLAMA_HOST`, `AWS_REGION_NAME` and `RUN_LOCAL_TESTS`
+# are configuration, and counting them made every module that reads its own
+# settings hold "private data". One `_`-separated token of the name has to be a
+# word below, so `ANTHROPIC_API_KEY`, `HF_TOKEN`, `CUSTOMER_DB` and
+# `DATABASE_URL` match while `APPDATA` does not.
+#
+# A read whose key is not a literal (`os.getenv(var)`) is not matched at all: the
+# name is the whole signal and there is none. That is an under-approximation, and
+# AUD-301 says so in `known_failure_modes`.
+_PRIVATE_ENV_TOKENS = (
+    r"(?:keys?|secrets?|passw(?:or)?ds?|pwd|tokens?|credentials?|auth|dsn|db|database"
+    r"|conn|connection|cookie|session|pii|ssn)"
+)
+# `MAX_TOKENS` counts tokens, it does not hold one. Same distinction `SECRET_VAR_NAMES`
+# and `SECRET_VAR_EXCLUDE` draw for AUD-503, applied to the variable's name.
+_TOKEN_COUNTING = (
+    r"(?i:(?:[a-z0-9-]+_)*(?:(?:max|min|num|total|count|limit|usage|chunk)(?:_[a-z0-9-]+)*_tokens?"
+    r"|tokens?_(?:count|limit|usage|size|budget)))"
+)
+# Scoped `(?i:...)`, never a leading `(?i)`: these fragments are concatenated into other
+# patterns, where a global flag mid-expression is an error. `_BARE` is the name as an
+# identifier (`process.env.DATABASE_URL`), `_NAME` the same name quoted as a key.
+_PRIVATE_ENV_BARE = (
+    rf"(?!{_TOKEN_COUNTING}\b)(?i:(?:[a-z0-9-]+_)*{_PRIVATE_ENV_TOKENS}(?:_[a-z0-9-]+)*)"
+)
+_PRIVATE_ENV_NAME = rf"""['"]{_PRIVATE_ENV_BARE}['"]"""
+
 PRIVATE_DATA_SOURCES: LangTable = {
     "python": _t(
         [
@@ -429,9 +458,10 @@ PRIVATE_DATA_SOURCES: LangTable = {
             ("vector:qdrant", r"\bqdrant\b"),
             ("vector:faiss", r"\bfaiss\b"),
             ("vector:pgvector", r"\bpgvector\b"),
-            ("env:os.environ", r"\bos\.environ\b"),
-            ("env:getenv", r"\bgetenv\("),
-            ("env:dotenv", r"\bdotenv\b"),
+            ("env:os.environ", rf"\bos\.environ\b(?:\.get)?\s*[\[(]\s*{_PRIVATE_ENV_NAME}"),
+            ("env:getenv", rf"\bgetenv\(\s*{_PRIVATE_ENV_NAME}"),
+            # The call that reads the file, not `import dotenv`: an import moves no data.
+            ("env:dotenv", r"\bload_dotenv\s*\("),
             ("secrets:secretsmanager", r"\bsecretsmanager\b"),
             ("secrets:SecretClient", r"\bSecretClient\b"),
             (
@@ -459,8 +489,11 @@ PRIVATE_DATA_SOURCES: LangTable = {
             ("db:ioredis", r"\bioredis\b"),
             ("fs:s3", r"@aws-sdk/client-s3"),
             ("fs:google_cloud", r"@google-cloud/"),
-            ("env:process.env", r"\bprocess\.env\b"),
-            ("env:dotenv", r"\bdotenv\b"),
+            (
+                "env:process.env",
+                rf"\bprocess\.env(?:\.{_PRIVATE_ENV_BARE}\b|\s*\[\s*{_PRIVATE_ENV_NAME})",
+            ),
+            ("env:dotenv", r"\bdotenv\.config\s*\(|\brequire\(['\"]dotenv['\"]\)\.config"),
             ("mail:googleapis", r"\bgoogleapis\b"),
             ("crm:slack", r"@slack/web-api"),
         ]
@@ -470,7 +503,7 @@ PRIVATE_DATA_SOURCES: LangTable = {
             ("db:database/sql", r"\bdatabase/sql\b"),
             ("db:pgx", r"\bpgx\b"),
             ("db:gorm", r"\bgorm\b"),
-            ("env:os.Getenv", r"\bos\.Getenv\("),
+            ("env:os.Getenv", rf"\bos\.Getenv\(\s*{_PRIVATE_ENV_NAME}"),
             ("fs:aws-sdk-go", r"\baws-sdk-go\b"),
         ]
     ),

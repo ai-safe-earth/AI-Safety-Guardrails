@@ -439,7 +439,11 @@ def test_tool_def_negative(lang: str, text: str) -> None:
         ("python", "with open(path) as fh:", "fs:open"),
         ("python", "text = Path(p).read_text()", "fs:path_read"),
         ("python", "client = chromadb.Client()", "vector:chromadb"),
-        ("python", "key = os.environ['X']", "env:os.environ"),
+        ("python", "key = os.environ['OPENAI_API_KEY']", "env:os.environ"),
+        ("python", "dsn = os.environ.get('DATABASE_URL')", "env:os.environ"),
+        ("python", "key = os.getenv('ANTHROPIC_API_KEY')", "env:getenv"),
+        ("python", "db = os.environ.get('CUSTOMER_DB', 'customers.db')", "env:os.environ"),
+        ("python", "load_dotenv(dotenv_path='.env')", "env:dotenv"),
         ("python", "client = hvac.Client()", "secrets:vault"),
         ("python", "M = imaplib.IMAP4_SSL(host)", "mail:imaplib"),
         ("python", "from simple_salesforce import Salesforce", "crm:salesforce"),
@@ -462,6 +466,21 @@ def test_private_data_positive(lang: str, line: str, key: str) -> None:
         ("python", "vault = Vault(door)  # the bank vault in the game"),
         ("python", "f.open()"),
         ("go", "os.Getpid()"),
+        # Configuration, not private data: the name is the whole signal, and these say
+        # nothing about a credential, a connection or a person.
+        ("python", "root = os.getenv('APPDATA')"),
+        ("python", "host = os.getenv('OLLAMA_HOST')"),
+        ("python", "region = os.getenv('AWS_REGION_NAME')"),
+        ("python", "level = os.environ.get('LOG_LEVEL', 'info')"),
+        ("python", "cap = os.getenv('MAX_TOKENS')"),
+        ("python", "env = os.environ"),
+        # The key is not a literal, so there is no name to read.
+        ("python", "value = os.getenv(var)"),
+        # An import moves no data; `load_dotenv()` is the read.
+        ("python", "import dotenv"),
+        ("python", "from dotenv import load_dotenv"),
+        ("typescript", "const port = process.env.PORT"),
+        ("go", 'region := os.Getenv("AWS_REGION")'),
     ],
 )
 def test_private_data_negative(lang: str, line: str) -> None:
