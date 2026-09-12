@@ -886,25 +886,55 @@ SECRET_PATTERNS: Table = _t(
 )
 
 # Variable names that carry a secret when bound into a prompt (AUD-503) ...
-SECRET_VAR_NAMES = re.compile(
-    r"(?i)(?:access_token|auth_token|api_token|refresh_token|api_key|secret|passw(?:or)?d"
-    r"|ssn|social_security|card_number|credit_card|cvv)"
+#
+# Each word is a whole token of the name, never a substring of one. Without the
+# boundaries `ssn` matched the middle of `className`, so every JSX attribute with a
+# 16-character value -- `className="vv-label vv-label-hazard"` -- was reported as a
+# critical secret literal: 48 of the 50 criticals in one audit of a React frontend.
+# `_` `-` `.` and a lower-to-upper case change are token boundaries, so
+# `OPENAI_API_KEY`, `my_password_hash` and `apiSecret` still match; a letter or digit
+# on either side is not, so `className`, `assessment` and `passwordless` do not.
+_SECRET_NAME_WORDS = (
+    r"(?:access[-_]tokens?|auth[-_]tokens?|api[-_]tokens?|refresh[-_]tokens?|api[-_]keys?"
+    r"|secrets?|passw(?:or)?ds?|ssns?|social[-_]security|card[-_]numbers?|credit[-_]cards?"
+    r"|cvv)"
 )
-# ... unless the name is about token COUNTING, which is not a secret.
+# The word is case-insensitive, the boundaries are not: under a global `(?i)` the class
+# `[a-z]` matches capitals too, which would undo the camelCase boundary.
+SECRET_VAR_NAMES = re.compile(
+    r"(?:(?<![A-Za-z0-9])|(?<=[a-z0-9])(?=[A-Z]))"  # name start, separator, or camel hump
+    rf"(?i:{_SECRET_NAME_WORDS})"
+    r"(?![a-z0-9])"  # a following capital is the next token, a lowercase letter is not
+)
+# ... unless the name is about token COUNTING, which is not a secret, or the name says
+# the value NAMES a secret rather than being one: `GATEWAY_SECRET_HEADER = "x-gateway-secret"`
+# is an HTTP header name, and an audit that calls it a leaked credential is wrong twice --
+# it is not a secret, and it crowds out the ones that are.
 SECRET_VAR_EXCLUDE = re.compile(
-    r"(?i)(?:max_tokens|num_tokens|token_count|tokeni[sz]|tokens\b|token_limit|token_usage)"
+    r"(?i)(?:max_tokens|num_tokens|token_count|tokeni[sz]|tokens\b|token_limit|token_usage"
+    r"|[-_](?:header|headers|name|names|prefix|suffix|field|label|param|env|var)s?$)"
 )
 
 # Placeholder values: a secret or PII hit whose text matches one of these is skipped.
 SECRET_PLACEHOLDERS: Table = _t(
     [
-        ("env_ref", r"\$\{[^}]*\}|\$[A-Z_]{3,}\b"),
+        # `${VAR}`, `$VAR`, and the `env(VAR)` interpolation Supabase and several
+        # config formats use: the value is a reference to a secret, not the secret.
+        ("env_ref", r"\$\{[^}]*\}|\$[A-Z_]{3,}\b|(?i:\benv\(\s*[A-Za-z_][A-Za-z0-9_]*\s*\))"),
         ("angle", r"<[^>]{2,}>"),
         ("your", r"(?i)\byour[-_ ]"),
         ("xxx", r"(?i)x{3,}"),
         ("changeme", r"(?i)change[-_ ]?me"),
         ("example", r"(?i)example"),
-        ("placeholder", r"(?i)placeholder|dummy|sample|fake|test[-_]?key|redacted|\btodo\b"),
+        (
+            "placeholder",
+            r"(?i)placeholder|dummy|sample|fake|redacted|\btodo\b"
+            # A value that announces itself as a test fixture: `test-shared-secret`,
+            # `test_key`, `secret-fixture`. Not a credential, and saying it is buries
+            # the ones that are.
+            r"|^test[-_]|(?<![a-z0-9])test[-_]?(?:key|secret|token|password|value|credential)"
+            r"|(?:key|secret|token|password|value|credential)[-_]?fixture",
+        ),
         ("example_email", r"(?i)@(?:example|test)\.(?:com|org|net)\b"),
         ("phone_555", r"\b555[-. ]?01\d{2}\b"),
         ("ssn_sample", r"\b000-00-0000\b|\b123-45-6789\b"),

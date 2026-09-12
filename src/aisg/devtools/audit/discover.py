@@ -182,6 +182,13 @@ _SECRET_ASSIGN_RE = re.compile(
     r"""(?<![A-Za-z0-9])([A-Za-z_][A-Za-z0-9_.\-]*)\s*[:=]\s*["']([^"'\n]{16,})["']"""
 )
 
+# A model id used as a mapping key whose value is a number -- `"claude-opus-5": (5.00,
+# 25.00)` in a price table, `"gpt-4o": 128000` in a context-window table -- is data about
+# the model, not a deployment of it. One cost script put seven ids in a table and the audit
+# asked the operator to pin all seven. A key whose value is not numeric (`gpt-4o:
+# {temperature: 0.2}`) is left alone: that one does configure a deployment.
+_MODEL_TABLE_KEY_RE = re.compile(r"""^["']?\s*:\s*[\(\[\{]?\s*[-+]?\d""")
+
 _DICT_REGISTRY_RE = re.compile(
     r"(?i)^\s*(?:[A-Za-z_]*tools?|tool_registry|tool_map|tool_handlers)\s*(?::\s*[^=\n]+)?=\s*(?:dict\()?\{"
 )
@@ -614,6 +621,8 @@ def _scan_model_ids(ctx: _FileCtx, config: bool) -> None:
                 span = (match.start(), match.end())
                 if any(s < span[1] and span[0] < e for s, e in spans):
                     continue
+                if _MODEL_TABLE_KEY_RE.match(line[span[1] :]):
+                    continue
                 spans.append(span)
                 ctx.add("model_id", _model_key(key, ident), number, span[0] + 1, line, ident)
         for key, rx in active_other:
@@ -625,6 +634,8 @@ def _scan_model_ids(ctx: _FileCtx, config: bool) -> None:
                 continue
             ident = match.group(1)
             if config and any(rx2.search(ident) for _k, rx2 in patterns.SECRET_PLACEHOLDERS):
+                continue
+            if _MODEL_TABLE_KEY_RE.match(line[span[1] :]):
                 continue
             ctx.add("model_id", _model_key(key, ident), number, span[0] + 1, line, ident)
 

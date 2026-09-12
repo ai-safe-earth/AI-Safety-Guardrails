@@ -865,6 +865,46 @@ def test_secret_var_names_negative() -> None:
 
 
 @pytest.mark.parametrize(
+    "name",
+    [
+        "className",  # cla-ssN-ame: `ssn` in the middle of a word
+        "classNames",
+        "assessment",
+        "possession",
+        "lesson",
+        "passwordless",
+        "turn-label",
+    ],
+)
+def test_secret_var_name_is_a_whole_token_not_a_substring(name: str) -> None:
+    """
+    `ssn` used to match inside `className`, so every JSX attribute with a 16-character
+    value was a critical secret literal -- 48 of the 50 criticals in one audit of a
+    React frontend. The word has to be a whole token of the name.
+    """
+    assert not p.SECRET_VAR_NAMES.search(name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "GATEWAY_SECRET_HEADER",  # separator on both sides
+        "my_password_hash",
+        "apiSecret",  # camel hump is a boundary
+        "userPassword",
+        "secretValue",
+        "api-key",  # hyphen, as in YAML
+        "x-api-key",
+        "passwords",  # plural
+        "client.secret",
+        "user_ssn",
+    ],
+)
+def test_secret_var_name_boundaries_keep_real_names(name: str) -> None:
+    assert p.SECRET_VAR_NAMES.search(name)
+
+
+@pytest.mark.parametrize(
     "value",
     [
         "${OPENAI_API_KEY}",
