@@ -389,12 +389,15 @@ def test_503_skipped_without_ai_surface(tmp_path: Path, audit_context):
 def test_504_logging_calls_on_prompt_and_response(deep, tmp_path: Path, audit_context):
     ctx = audit_context(_agent_tree(tmp_path), deep=deep)
     findings = _findings(VerbatimLogging, ctx)
+    # Grouped per (unit, print/logger): redaction goes in at the logging call, so the
+    # two logger lines are one row anchored on the first by path, with the second
+    # riding along as `also` evidence. `print` is a separate row: a separate change.
     rows = [(f.evidence[0].file, f.evidence[0].line, f.sub) for f in findings]
-    assert rows == [
-        ("agent.py", 11, "logger"),
-        ("agent.py", 12, "print"),
-        ("agent.py", 13, "logger"),
-    ]
+    assert rows == [("agent.py", 11, "logger"), ("agent.py", 12, "print")]
+    logger_finding = _at(findings, "agent.py", 11)[0]
+    also = [(e.file, e.line) for e in logger_finding.evidence if e.role == "also"]
+    assert also == [("agent.py", 13)]
+    assert [e.line for e in _at(findings, "agent.py", 12)[0].evidence] == [12]
     assert _at(findings, "agent.py", 14) == []  # `response.usage.total_tokens` is not verbatim
     for finding in findings:
         assert finding.id == "AUD-504"

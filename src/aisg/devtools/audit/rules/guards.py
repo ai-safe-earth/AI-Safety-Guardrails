@@ -58,7 +58,19 @@ from aisg.devtools.audit.patterns import (
     comment_spans,
     in_comment,
 )
-from aisg.devtools.audit.rules import AuditRule, file_text, unit_of
+from aisg.devtools.audit.rules import (
+    ALSO_CAP,
+    ALSO_ROLE,
+    AuditRule,
+    Candidate,
+    SiteRef,
+    emit_groups,
+    file_text,
+    group_scope,
+    grouped_evidence,
+    more_sites,
+    unit_of,
+)
 
 __all__ = [
     "RULES",
@@ -101,10 +113,8 @@ _TIMEOUT_RE = re.compile(r"timeout", re.I)
 _QUOTED_RE = re.compile(r"""["'][^"'\n]+["']""")
 _MIN_KEYWORDS = 5
 _LITERAL_WINDOW = 200
-# Sites after the anchor that a grouped finding lists as `also` evidence; the rest
-# are counted in the notes so the reader knows the list is cut, not complete.
-_ALSO_CAP = 8
-_ALSO_ROLE = "also"
+_ALSO_CAP = ALSO_CAP
+_ALSO_ROLE = ALSO_ROLE
 
 
 @dataclass(frozen=True)
@@ -115,93 +125,14 @@ class _GuardSite:
     enabled: bool
 
 
-@dataclass(frozen=True)
-class _SiteRef:
-    """One location of a grouped finding: the anchor or an `also` entry."""
-
-    file: str
-    line: int
-    snippet: str
-
-
-@dataclass(frozen=True)
-class _Candidate:
-    """A site plus what the finding built from it would say; the group's anchor decides."""
-
-    site: _SiteRef
-    unit: Unit | None
-    evidence_kind: EvidenceKind
-    match_kind: MatchKind
-    notes: str
-    sub: str | None = None
-
-    @property
-    def order(self) -> tuple[str, int, str]:
-        return (self.site.file, self.site.line, self.site.snippet)
-
-
-def _grouped_evidence(sites: list[_SiteRef]) -> tuple[list[Evidence], int]:
-    """
-    The anchor as `match` evidence plus up to `_ALSO_CAP` further sites as `also`
-    evidence, in the order given. Returns the evidence and how many sites were cut.
-    """
-    anchor, extra = sites[0], sites[1:]
-    evidence = [Evidence(role="match", file=anchor.file, line=anchor.line, snippet=anchor.snippet)]
-    evidence.extend(
-        Evidence(role=_ALSO_ROLE, file=site.file, line=site.line, snippet=site.snippet)
-        for site in extra[:_ALSO_CAP]
-    )
-    return evidence, max(0, len(extra) - _ALSO_CAP)
-
-
-def _more_sites(notes: str, overflow: int) -> str:
-    if overflow <= 0:
-        return notes
-    return f"{notes}; +{overflow} more site{'s' if overflow != 1 else ''}"
-
-
-def _group_scope(unit: Unit | None, anchor_file: str) -> Scope:
-    """A grouped finding is about a unit; without one it falls back to the anchor file."""
-    if unit is None:
-        return Scope(kind="file", name=anchor_file)
-    return Scope(kind="unit", unit=unit.id, name=unit.root or ".")
-
-
-def _emit_groups(rule: AuditRule, groups: dict[Any, list[_Candidate]]) -> list[Finding]:
-    """
-    One finding per group. Candidates are sorted by (file, line, snippet) so the anchor,
-    and with it the fingerprint, is the first site by path regardless of insertion
-    order; a site seen twice for the same group is listed once.
-    """
-    findings: list[Finding] = []
-    for candidates in groups.values():
-        ordered: list[_Candidate] = []
-        seen: set[tuple[str, int]] = set()
-        for candidate in sorted(candidates, key=lambda c: c.order):
-            key = (candidate.site.file, candidate.site.line)
-            if key in seen:
-                continue
-            seen.add(key)
-            ordered.append(candidate)
-        anchor = ordered[0]
-        evidence, overflow = _grouped_evidence([c.site for c in ordered])
-        findings.append(
-            rule.finding(
-                file=anchor.site.file,
-                line=anchor.site.line,
-                snippet=anchor.site.snippet,
-                evidence=evidence,
-                scope=_group_scope(anchor.unit, anchor.site.file),
-                sub=anchor.sub,
-                evidence_kind=anchor.evidence_kind,
-                match_kind=anchor.match_kind,
-                notes=_more_sites(anchor.notes, overflow),
-            )
-        )
-    return sorted(
-        findings,
-        key=lambda f: (f.evidence[0].file, f.evidence[0].line, f.sub or "", f.notes or ""),
-    )
+# The grouping machinery moved to `rules/__init__.py` when AUD-601 and AUD-504 needed
+# it too; these names are the local spelling of the shared helpers.
+_SiteRef = SiteRef
+_Candidate = Candidate
+_grouped_evidence = grouped_evidence
+_more_sites = more_sites
+_group_scope = group_scope
+_emit_groups = emit_groups
 
 
 def _entries(ctx: AuditContext, section: str) -> list[dict[str, Any]]:

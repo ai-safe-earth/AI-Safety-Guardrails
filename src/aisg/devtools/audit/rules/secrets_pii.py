@@ -29,7 +29,15 @@ from aisg.devtools.audit.model import (
     Severity,
     Tier,
 )
-from aisg.devtools.audit.rules import AuditRule, file_text, hits_in
+from aisg.devtools.audit.rules import (
+    AuditRule,
+    Candidate,
+    SiteRef,
+    emit_groups,
+    file_text,
+    hits_in,
+    unit_of,
+)
 
 __all__ = [
     "RULES",
@@ -528,7 +536,10 @@ class VerbatimLogging(AuditRule):
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
-        out: list[Finding] = []
+        # One group per (unit, print/logger): redaction goes in at the logging call,
+        # and a unit that logs model output verbatim in 40 places has one thing to
+        # change, not 40. `print` and `logger` stay apart because they are fixed apart.
+        groups: dict[tuple[str | None, str], list[Candidate]] = {}
         presidio_units = {
             hit.unit for hit in hits_in(ctx, "guardrail") if hit.key == "presidio" and hit.unit
         }
@@ -552,16 +563,16 @@ class VerbatimLogging(AuditRule):
                 name = _verbatim_name(match.group("arg"))
                 if name is None:
                     continue
-                out.append(
-                    self.finding(
-                        file=relpath,
-                        line=number,
-                        snippet=line.rstrip("\r"),
-                        sub="print" if match.group(0).lstrip().startswith("print") else "logger",
+                sub = "print" if match.group(0).lstrip().startswith("print") else "logger"
+                groups.setdefault((unit_id, sub), []).append(
+                    Candidate(
+                        site=SiteRef(file=relpath, line=number, snippet=line.rstrip("\r")),
+                        unit=unit_of(ctx, relpath),
+                        sub=sub,
                         notes=f"logs `{name}` with no redaction symbol in {relpath}",
                     )
                 )
-        return _sorted(out)
+        return emit_groups(self, groups)
 
 
 def _verbatim_name(arg: str) -> str | None:

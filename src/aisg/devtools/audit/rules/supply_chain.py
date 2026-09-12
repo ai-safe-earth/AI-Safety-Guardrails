@@ -32,7 +32,15 @@ from aisg.devtools.audit.model import (
     Severity,
     Tier,
 )
-from aisg.devtools.audit.rules import AuditRule, file_text, hits_in
+from aisg.devtools.audit.rules import (
+    AuditRule,
+    Candidate,
+    SiteRef,
+    emit_groups,
+    file_text,
+    hits_in,
+    unit_of,
+)
 
 __all__ = [
     "RULES",
@@ -200,7 +208,10 @@ class UnpinnedModel(AuditRule):
     )
 
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
-        out: list[Finding] = []
+        # One group per (unit, provider, model id): naming `gpt-4o` in 180 places is
+        # one pin to decide, not 180 findings, and two different ids stay two rows
+        # because they are two decisions. The count of sites is kept in the notes.
+        groups: dict[tuple[str | None, str, str], list[Candidate]] = {}
         seen: set[tuple[str, int, str]] = set()
         for entry in ctx.inventory.models or []:
             if not isinstance(entry, dict) or entry.get("pinned") is not False:
@@ -214,11 +225,11 @@ class UnpinnedModel(AuditRule):
                 continue
             seen.add(stamp)
             snippet = _line_text(ctx, relpath, line) or f"{provider}: {model}"
-            out.append(
-                self.finding(
-                    file=relpath,
-                    line=line,
-                    snippet=snippet,
+            unit = unit_of(ctx, relpath)
+            groups.setdefault((unit.id if unit else None, provider, model), []).append(
+                Candidate(
+                    site=SiteRef(file=relpath, line=line, snippet=snippet),
+                    unit=unit,
                     sub=provider or None,
                     notes=(
                         f"{provider} id {model} is a floating alias "
@@ -231,7 +242,7 @@ class UnpinnedModel(AuditRule):
                     ),
                 )
             )
-        return _sorted(out)
+        return emit_groups(self, groups)
 
 
 # ---------------------------------------------------------------------------

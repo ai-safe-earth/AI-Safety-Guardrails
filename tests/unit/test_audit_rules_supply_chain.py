@@ -219,6 +219,57 @@ def test_601_pinned_snapshot_is_silent_and_config_sources_are_config(tmp_path, a
     assert "(source: config)" in (findings[1].notes or "")
 
 
+def test_601_groups_one_row_per_model_id(tmp_path: Path):
+    """
+    Naming one floating id in many places is one pin to decide. A library that says
+    `gpt-4o` in 180 files produced 180 findings and an unreadable plan; it is now one
+    row per (unit, provider, id), anchored on the first site by path, with up to
+    ALSO_CAP further sites as `also` evidence and the rest counted in the notes.
+    A second id stays a second row: a second decision.
+    """
+    inventory = Inventory()
+    inventory.models = [
+        {
+            "id": f"m{i}",
+            "pinned": False,
+            "model": "gpt-4o",
+            "provider": "openai",
+            "file": f"pkg/f{i:02d}.py",
+            "line": i,
+        }
+        for i in range(1, 13)
+    ] + [
+        {
+            "id": "other",
+            "pinned": False,
+            "model": "gpt-3.5-turbo",
+            "provider": "openai",
+            "file": "pkg/a.py",
+            "line": 1,
+        },
+        {
+            "id": "claude",
+            "pinned": False,
+            "model": "claude-sonnet-4-5",
+            "provider": "anthropic",
+            "file": "pkg/a.py",
+            "line": 2,
+        },
+    ]
+    findings = UnpinnedModel().evaluate(AuditContext(root=tmp_path, inventory=inventory))
+    assert len(findings) == 3
+    by_model = {f.notes.split(" id ")[1].split(" ")[0]: f for f in findings}
+    assert set(by_model) == {"gpt-4o", "gpt-3.5-turbo", "claude-sonnet-4-5"}
+    grouped = by_model["gpt-4o"]
+    # Anchor is the first site by path, so the fingerprint does not depend on the
+    # order the inventory happened to list them in.
+    assert (grouped.evidence[0].file, grouped.evidence[0].line) == ("pkg/f01.py", 1)
+    assert [e.role for e in grouped.evidence] == ["match"] + ["also"] * 8
+    assert "+3 more sites" in grouped.notes
+    # A single site says nothing about further sites.
+    assert "more site" not in (by_model["claude-sonnet-4-5"].notes or "")
+
+
 def test_601_ignores_malformed_inventory_rows(tmp_path: Path):
     inventory = Inventory()
     inventory.models = [

@@ -1,7 +1,7 @@
 {
   "schema": "aisg/1",
   "kind": "audit-baseline",
-  "generated_at": "2026-09-06T19:36:34Z",
+  "generated_at": "2026-09-12T11:29:14Z",
   "tool": {
     "name": "aisg-audit",
     "version": "0.1.0"
@@ -10,7 +10,6 @@
     "06a9a7d4f40e98f5",
     "08b0e1380a7102bd",
     "0d2cdc732e6ea080",
-    "1bb1add015c24db4",
     "287c0a092b452b24",
     "3128013255a8f070",
     "37a89e88c61c038a",
@@ -84,13 +83,7 @@
       "fingerprint": "08b0e1380a7102bd",
       "rule": "AUD-601/openai",
       "file": "config/nemo_rails/config.yml:15",
-      "reason": "the shipped NeMo Guardrails example config names a floating OpenAI mini alias as its placeholder main model (the comment above it says to replace it); a template, not a deployment (local-dev copy)"
-    },
-    {
-      "fingerprint": "1bb1add015c24db4",
-      "rule": "AUD-601/openai",
-      "file": "src/aisg/config/nemo_rails/config.yml:15",
-      "reason": "the shipped NeMo Guardrails example config names a floating OpenAI mini alias as its placeholder main model (the comment above it says to replace it); a template, not a deployment (packaged copy)"
+      "reason": "the shipped NeMo Guardrails example config names a floating OpenAI mini alias as its placeholder main model (the comment above it says to replace it); a template, not a deployment. One row covers both copies of the file: the repo-root one is the anchor, the packaged one rides as also evidence."
     },
     {
       "fingerprint": "bf4da3fcfd2705d9",
@@ -186,11 +179,6 @@
       "rule": "AUD-107/inert",
       "file": "src/aisg/config/settings.py:327",
       "title": "No kill switch"
-    },
-    "1bb1add015c24db4": {
-      "rule": "AUD-601/openai",
-      "file": "src/aisg/config/nemo_rails/config.yml:15",
-      "title": "Unpinned model id"
     },
     "287c0a092b452b24": {
       "rule": "AUD-101/docs",

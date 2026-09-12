@@ -33,19 +33,27 @@ from aisg.devtools.audit.model import (
 
 __all__ = [
     "ALL_RULES",
+    "ALSO_CAP",
+    "ALSO_ROLE",
     "MISSING_RULE_MODULES",
     "NOT_ATTRIBUTED",
     "SUBSYSTEMS",
     "SUBSYSTEM_OF_RULE",
     "AuditRule",
+    "Candidate",
     "Package",
     "Recommendation",
+    "SiteRef",
     "Subsystem",
     "default_rules",
+    "emit_groups",
     "experimental_rules",
     "file_text",
+    "group_scope",
+    "grouped_evidence",
     "hits_in",
     "is_demoted",
+    "more_sites",
     "rule_by_id",
     "run_rules",
     "select_rules",
@@ -297,6 +305,115 @@ def unit_of(ctx: AuditContext, relpath: str) -> Unit | None:
         if unit.id == unit_id:
             return unit
     return None
+
+
+# ---------------------------------------------------------------------------
+# Grouping: one decision is one finding
+# ---------------------------------------------------------------------------
+# A rule that reports every occurrence of a repeated fact buries the document it
+# feeds. A library supporting many providers named a floating model id 282 times in
+# one audit; that is one row of work per id, not 282 rows. So a rule with a natural
+# grouping key emits one finding per group: the first site by path is the anchor and
+# carries the fingerprint, up to ALSO_CAP further sites ride along as `also` evidence,
+# and the rest are counted in the notes so the reader knows the list is cut rather
+# than complete.
+#
+# The count is never dropped silently, and grouping never merges two different
+# decisions: the key always separates what a person would fix separately (the model
+# id, the guard, the credential name).
+ALSO_CAP = 8
+ALSO_ROLE = "also"
+
+
+class SiteRef(NamedTuple):
+    """One location of a grouped finding: the anchor or an `also` entry."""
+
+    file: str
+    line: int
+    snippet: str
+
+
+class Candidate(NamedTuple):
+    """A site plus what the finding built from it would say; the group's anchor decides."""
+
+    site: SiteRef
+    unit: Unit | None
+    notes: str
+    sub: str | None = None
+    evidence_kind: EvidenceKind | None = None
+    match_kind: MatchKind | None = None
+    severity: Severity | None = None
+
+    @property
+    def order(self) -> tuple[str, int, str]:
+        return (self.site.file, self.site.line, self.site.snippet)
+
+
+def grouped_evidence(sites: Sequence[SiteRef]) -> tuple[list[Evidence], int]:
+    """
+    The anchor as `match` evidence plus up to `ALSO_CAP` further sites as `also`
+    evidence, in the order given. Returns the evidence and how many sites were cut.
+    """
+    anchor, extra = sites[0], list(sites[1:])
+    evidence = [Evidence(role="match", file=anchor.file, line=anchor.line, snippet=anchor.snippet)]
+    evidence.extend(
+        Evidence(role=ALSO_ROLE, file=site.file, line=site.line, snippet=site.snippet)
+        for site in extra[:ALSO_CAP]
+    )
+    return evidence, max(0, len(extra) - ALSO_CAP)
+
+
+def more_sites(notes: str, overflow: int) -> str:
+    if overflow <= 0:
+        return notes
+    return f"{notes}; +{overflow} more site{'s' if overflow != 1 else ''}"
+
+
+def group_scope(unit: Unit | None, anchor_file: str) -> Scope:
+    """A grouped finding is about a unit; without one it falls back to the anchor file."""
+    if unit is None:
+        return Scope(kind="file", name=anchor_file)
+    return Scope(kind="unit", unit=unit.id, name=unit.root or ".")
+
+
+def emit_groups(rule: AuditRule, groups: dict) -> list[Finding]:
+    """
+    One finding per group. Candidates are sorted by (file, line, snippet) so the anchor,
+    and with it the fingerprint, is the first site by path regardless of insertion
+    order; a site seen twice for the same group is listed once.
+    """
+    findings: list[Finding] = []
+    for candidates in groups.values():
+        ordered: list[Candidate] = []
+        seen: set[tuple[str, int]] = set()
+        for candidate in sorted(candidates, key=lambda c: c.order):
+            key = (candidate.site.file, candidate.site.line)
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(candidate)
+        if not ordered:
+            continue
+        anchor = ordered[0]
+        evidence, overflow = grouped_evidence([c.site for c in ordered])
+        findings.append(
+            rule.finding(
+                file=anchor.site.file,
+                line=anchor.site.line,
+                snippet=anchor.site.snippet,
+                evidence=evidence,
+                scope=group_scope(anchor.unit, anchor.site.file),
+                sub=anchor.sub,
+                severity=anchor.severity,
+                evidence_kind=anchor.evidence_kind,
+                match_kind=anchor.match_kind,
+                notes=more_sites(anchor.notes, overflow),
+            )
+        )
+    return sorted(
+        findings,
+        key=lambda f: (f.evidence[0].file, f.evidence[0].line, f.sub or "", f.notes or ""),
+    )
 
 
 def hits_in(ctx: AuditContext, table: str, *, unit: str | None = None, file: str | None = None):
