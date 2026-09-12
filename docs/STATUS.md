@@ -1,4 +1,4 @@
-# Status — 2026-09-10
+# Status — 2026-09-12
 
 Where the work stands, what is verified, and what is waiting on a decision.
 Written as a handoff: a fresh session should be able to pick up from here plus
@@ -104,11 +104,6 @@ aisg audit . --no-external --fail-on high --baseline audit-baseline.json     # e
 aisg audit . --format html -o .aisg-audit/audit-before.html                  # line 1 is the marker
 ```
 
-Next: run the flow end to end on one outside repository (survey, before
-document, two or three plan rows, after document) and fix what the html gets
-wrong before anyone else sees it; label a corpus so `measured_precision` stops
-being `None` on every rule; tag `v0.1.0` (see "Settled" below).
-
 Left open by the review, on purpose and small:
 
 - Only `ToolPolicyGuard.setup` refuses unknown options. `PIIDetector`,
@@ -121,17 +116,82 @@ Left open by the review, on purpose and small:
 - `--write-baseline` prefers the compared document's reason over the refreshed
   file's when both hold one for a fingerprint; documented and tested, not a bug.
 
+## The precision round (2026-09-11 / 12), from one run on an outside repository
+
+`aisg audit` was run read-only against AdalFlow, a third-party LLM library
+(428 files) sitting at `C:\Users\OAV\MAIN\AI\ADALFLOW\AdalFlow`. It reported
+563 findings, 182 of them critical: unreadable, and mostly untrue. Four
+commits, each measured on that repository and on this one:
+
+| | findings | criticals | AUD-301 |
+| --- | --- | --- | --- |
+| first run | 563 | 182 | 179 |
+| `3fb58d8` a call is an edge only when the name resolves | 389 | 8 | 5 |
+| `83cf872` the private leg is about the name | 384 | 3 | 0 |
+| `88aaf9c` weak legs: the path, and the use | 384 | 3 | 0 |
+| `df67200` one decision is one finding (grouping) | 49 | 3 | 0 |
+
+What each one says, because the principles now apply to any new rule:
+
+- **A call is an edge only when the name resolves** (`pydeep.CallIndex`). The
+  call graph records bare names; resolving one to every definition of it made
+  `__init__` (187 definitions there) and `call` (99) link everything to
+  everything, and all 179 trifecta findings were artefacts of that index -- each
+  showing the same three evidence lines from three unrelated files. An edge is
+  now the caller's own file, or a name with exactly one definition.
+- **The private-data leg is about the name.** `getenv(` matched anything;
+  `os.getenv('APPDATA')` was "private data". One `_`-separated token of the
+  variable's name has to say credential, connection or person.
+- **Weak legs**: reading a file is the leg when the PATH says so, and a library
+  is the leg when it is USED -- not when its name sits in a string
+  (`'index.faiss'`) or in someone else's attribute path.
+- **One decision is one finding**: the AUD-801 grouping idiom moved to
+  `rules/__init__.py`; AUD-601 groups per (unit, provider, model id) and
+  AUD-504 per (unit, print/logger), anchor first-by-path plus `also` evidence
+  plus a counted remainder.
+
+Every cut was a fabricated finding, a leg that was never evidence, or
+repetition folded into `also` evidence with the rest counted. Nothing was
+hidden to make the number smaller.
+
+Next, in the order they are worth doing:
+
+1. Run the five-phase skill flow end to end on one outside repository now that
+   the document is readable -- survey, first document, two or three plan rows
+   applied one approval at a time, second document. Nothing has exercised the
+   apply phase or the second document against real code.
+2. `AUD-602`, `AUD-605` and `AUD-106` still report per occurrence (5, 6 and 3
+   in that sample); same grouping, same helper.
+3. Two findings can share a fingerprint (`test_multi_hop_retriever` and
+   `..._retriever2` collided: normalisation strips digits from identifiers of
+   three or more characters). Harmless today, but one baseline entry would
+   accept both.
+4. One false-positive critical on that repository: `docs/source/conf.py:83`, a
+   JavaScript `banner.className = '...'` read as a secret assignment
+   (`AUD-501/assignment`).
+5. Label a corpus so `measured_precision` stops being `None` on every rule;
+   tag `v0.1.0` (see "Settled" below).
+
+One thing found that is not about this tool: that AdalFlow checkout has a
+committed-looking `.env` holding live-shaped Groq and Anthropic keys. The audit
+reported them and redacted the values. Worth rotating if the checkout was ever
+shared.
+
 ## Head
 
-`main` at `f96086c`, pushed to `origin`
-(`github.com/ai-safe-earth/AI-Safety-Guardrails`) on 2026-09-11. Both
-workflows green on it (Tests run 34624633198, EU AI Act Compliance run
-34624633209).
+`main` at `df67200`, pushed to `origin`
+(`github.com/ai-safe-earth/AI-Safety-Guardrails`) on 2026-09-12. Both
+workflows green on it, and on every commit of the precision round.
 
 Recent history, newest first:
 
 | commit | what |
 | --- | --- |
+| `df67200` | One decision is one finding: AUD-601 and AUD-504 grouped |
+| `88aaf9c` | Weak private-data legs: a file read is about the path, a library about the use |
+| `83cf872` | The private-data leg is about the name, not about reading the environment |
+| `3fb58d8` | A call is an edge only when the name resolves: AUD-301 on a real library |
+| `13c3db0` | Status: the round is pushed and green |
 | `f96086c` | `own_output_skipped` sorted in `walk`: `os.walk` name order is OS-dependent |
 | `d97fae6` | Status point for the round |
 | `c06d810` | The two-document audit flow: html documents, baseline as a record, the five-phase skill, two review rounds |
@@ -146,14 +206,18 @@ Recent history, newest first:
 
 ## Green
 
-Locally on the round's commit (2026-09-10): **3579 passed, 8 skipped**
-(~3.5 min), `ruff format --check` and `ruff check` on `src tests scripts`
-pass, `aisg lint src examples --errors-only` no issues (81 files), `aisg
-misalign` no issues on the changed modules, self-audit
+Locally on `df67200` (2026-09-12): **3607 passed, 8 skipped** (~7 min),
+`ruff format --check` and `ruff check` on `src tests scripts` pass, `aisg lint
+src examples --errors-only` no issues (81 files), `aisg misalign` no issues on
+the changed modules, self-audit
 (`aisg audit . --no-external --fail-on high --baseline audit-baseline.json`)
-exit 0 with `baseline: 0 new, 23 unchanged, 0 no longer reported`,
+exit 0 with `baseline: 0 new, 22 unchanged, 0 no longer reported`,
 `scripts/sync_skill.py --check` in sync (version 0.1.0, 13 files, 2 mirrors),
 `scripts/controls_md.py --check` in sync (46 rules).
+
+The baseline holds 22 fingerprints, not 23: grouping folded the two
+`AUD-601/openai` rows (the repo-root and packaged copies of one NeMo
+Guardrails example config) into one, and that entry's reason says so.
 
 On CI, the round first failed on Linux and passed on Windows: two new walk
 tests compared `own_output_skipped` to a sorted list, and `os.walk` returns
@@ -163,10 +227,8 @@ OS -- `main.py` sorted it before putting it in the inventory, but the tests
 read the sink directly. A local pass on Windows alone does not clear a list
 that came from the filesystem.
 
-The last CI runs are from `6d7f7e7` (both workflows passed: Tests run
-33847197716, EU AI Act Compliance run 33847197641, SARIF accepted by Code
-Scanning). The round's commit has not been through CI yet; check
-`gh run list --limit 4` after the push.
+CI is green on `df67200` and on every commit of the precision round; `gh run
+list --limit 4` shows the latest.
 
 ## What the last three commits fixed
 
