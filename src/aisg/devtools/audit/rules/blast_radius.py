@@ -912,6 +912,26 @@ class BroadCredentials(AuditRule):
 # ---------------------------------------------------------------------------
 
 
+def _has_request_path(ctx: AuditContext, unit: Unit) -> bool:
+    """
+    True when the unit has something a per-request control could sit in front of: a
+    model call, an ingress point, or a tool of its own.
+
+    `ai_surface` alone is not that. A unit earns the flag from a model id in a config
+    file, and the repository root is where `.env.example` lives -- so in any project
+    with a root-level env template and the code in subdirectories, the root unit is an
+    AI surface holding no code. Asked for a kill switch "at the top of every request",
+    it served no requests: the only file in it was a one-shot migration script, and
+    the only way to clear the finding would have been to read a flag there, satisfying
+    the rule while building nothing.
+    """
+    for key in ("llm_calls", "ingress", "tools"):
+        for row in getattr(ctx.inventory, key, None) or []:
+            if isinstance(row, dict) and row.get("unit") == unit.id:
+                return True
+    return False
+
+
 class NoKillSwitch(AuditRule):
     id = "AUD-107"
     title = "No kill switch"
@@ -931,6 +951,8 @@ class NoKillSwitch(AuditRule):
         "under a name not in KILL_SWITCH_SYMBOLS) is not seen.",
         "`halt` and `feature_flag` are deliberately not recognised; a project using only those "
         "names is reported.",
+        "A unit with no model call, ingress or tool of its own is skipped: there is no request "
+        "for a per-request control to sit in front of, whatever its config files name.",
     )
     recommendation = Recommendation(
         tier=Tier.T2,
@@ -956,7 +978,7 @@ class NoKillSwitch(AuditRule):
     def evaluate(self, ctx: AuditContext) -> list[Finding]:
         findings: list[Finding] = []
         for unit in sorted(ctx.inventory.units, key=lambda u: (u.root, u.id)):
-            if not unit.ai_surface:
+            if not unit.ai_surface or not _has_request_path(ctx, unit):
                 continue
             reads = hits_in(ctx, "kill_switch_read", unit=unit.id)
             if not reads:

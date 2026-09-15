@@ -517,6 +517,29 @@ def test_aud106_a_credential_value_in_a_comment_is_still_a_leak(tmp_path: Path, 
     assert [f.location for f in findings] == [(".env.example", 2)]
 
 
+def test_aud107_skips_a_unit_with_no_request_path(tmp_path: Path, audit_context):
+    """
+    A unit is an AI surface as soon as a config file names a model, and the repository
+    root is where `.env.example` lives. The root unit of a real application held one
+    one-shot migration script and no request at all, and AUD-107 asked it to read a
+    kill switch "at the top of every request": the only way to clear that would have
+    been to satisfy the rule without building the control. The unit with the model
+    calls still gets the finding.
+    """
+    root = _write_tree(
+        tmp_path / "rootunit",
+        {
+            "pyproject.toml": "[project]\nname = 'r'\n",
+            ".env.example": "INTENT_MODEL=gpt-4o-mini\nOPENAI_API_KEY=your-key-here\n",
+            "migrate.py": "from pathlib import Path\n\ndef main():\n    Path('o').write_text('x')\n",
+            "svc/pyproject.toml": "[project]\nname = 'svc'\n",
+            "svc/app.py": OPENAI_AGENT,
+        },
+    )
+    findings = [f for f in _eval(NoKillSwitch, audit_context(root)) if f.id == "AUD-107"]
+    assert [f.scope.name for f in findings] == ["svc"]
+
+
 def test_aud106_a_placeholder_credential_is_not_a_credential(tmp_path: Path, audit_context):
     """
     `<user>:<password>@` fits the `user:pass@` shape the pattern looks for, so an
