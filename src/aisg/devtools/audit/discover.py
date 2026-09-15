@@ -189,6 +189,10 @@ _SECRET_ASSIGN_RE = re.compile(
 # {temperature: 0.2}`) is left alone: that one does configure a deployment.
 _MODEL_TABLE_KEY_RE = re.compile(r"""^["']?\s*:\s*[\(\[\{]?\s*[-+]?\d""")
 
+# The password segment of a URL credential: `scheme://user:PASSWORD@host`. Group 1 is
+# the password, so a placeholder (`<password>`, `${DB_PASS}`) can be told from a value.
+_EMBEDDED_CRED_RE = re.compile(r"://[^:/\s]+:([^@\s]{3,})@")
+
 _DICT_REGISTRY_RE = re.compile(
     r"(?i)^\s*(?:[A-Za-z_]*tools?|tool_registry|tool_map|tool_handlers)\s*(?::\s*[^=\n]+)?=\s*(?:dict\()?\{"
 )
@@ -516,6 +520,35 @@ def _scan_rows(ctx: _FileCtx, table: str, rows: Table, key_fn: Any = None) -> No
             ctx.add(table, final_key, number, match.start() + 1, line, match.group(0))
 
 
+def _scan_broad_creds(ctx: _FileCtx) -> None:
+    """
+    `broad_cred` matches a credential NAME (`AWS_SECRET_ACCESS_KEY`), and sometimes a
+    name carrying a value (`DATABASE_URL=postgres://user:pass@host/db`). The two need
+    different treatment inside a comment, which is why this table has its own scan
+    instead of `_scan_rows` plus a blanket filter:
+
+    - A bare name in a comment is documentation, not scope. `# Configures
+      AWS_SECRET_ACCESS_KEY for S3 bucket` describes the setting on the next line, and
+      AUD-106 reported it as a broad credential in the agent's environment.
+    - A credential VALUE in a comment is still a leak, and a commented-out
+      `DATABASE_URL` with a live password is a common one. It stays reported -- no
+      other table catches it: `SECRET_PATTERNS` has no connection-string entry.
+    - A commented-out template whose password is a placeholder (`<password>`,
+      `${DB_PASS}`, `env(...)`) is neither.
+    """
+    for key, rx in patterns.BROAD_CRED_NAMES:
+        for number in _candidate_lines(ctx, rx):
+            line = ctx.lines[number - 1]
+            match = rx.search(line)
+            if match is None:
+                continue
+            if patterns.in_comment(ctx.comment_spans(), number, match.start()):
+                embedded = _EMBEDDED_CRED_RE.search(match.group(0))
+                if embedded is None or _is_placeholder(embedded.group(1)):
+                    continue
+            ctx.add("broad_cred", key, number, match.start() + 1, line, match.group(0))
+
+
 def _scan_whole(ctx: _FileCtx, table: str, rows: Table, key_fn: Any = None) -> None:
     """Whole-text search for rows that legitimately span lines (tool schemas, decorators)."""
     for key, rx in rows:
@@ -796,7 +829,7 @@ def _matches(record: FileRecord, text: str) -> list[_Match]:
     _scan_secrets(ctx)
     if _glob_hit(patterns.PII_FILE_GLOBS, relpath):
         _scan_pii(ctx)
-    _scan_rows(ctx, "broad_cred", patterns.BROAD_CRED_NAMES)
+    _scan_broad_creds(ctx)
     _scan_eval_files(ctx)
     _scan_rows(ctx, "eval_tool", patterns.EVAL_TOOLS)
     _scan_rows(ctx, "fail_open", patterns.FAIL_OPEN_PATTERNS)

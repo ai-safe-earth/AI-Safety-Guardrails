@@ -473,6 +473,50 @@ def test_aud106_grep_tier_gives_the_same_answer(tmp_path: Path, audit_context):
     assert finding.gitignored is True
 
 
+def test_aud106_a_name_in_a_comment_is_documentation(tmp_path: Path, audit_context):
+    """
+    `# Configures AWS_SECRET_ACCESS_KEY for S3 bucket` describes the setting below it.
+    An audit of a real application reported three such lines -- a disabled SMTP block
+    and two comments -- as broad credentials in the agent's environment.
+    """
+    root = _write_tree(
+        tmp_path / "commented",
+        {
+            "pyproject.toml": "[project]\nname = 'c'\n",
+            "agent.py": OPENAI_AGENT,
+            "infra.toml": (
+                "# Configures AWS_SECRET_ACCESS_KEY for S3 bucket\n"
+                's3_secret_key = "env(S3_SECRET_KEY)"\n'
+                '# pass = "env(SENDGRID_API_KEY)"\n'
+            ),
+        },
+    )
+    assert _eval(BroadCredentials, audit_context(root)) == []
+
+
+def test_aud106_a_credential_value_in_a_comment_is_still_a_leak(tmp_path: Path, audit_context):
+    """
+    The comment filter is about names, not values: a commented-out connection string
+    with a live password is exactly the leak this rule is for, and no other table
+    catches it -- SECRET_PATTERNS has no connection-string entry. A placeholder
+    password in the same shape is not a leak.
+    """
+    root = _write_tree(
+        tmp_path / "commented-value",
+        {
+            "pyproject.toml": "[project]\nname = 'cv'\n",
+            "agent.py": OPENAI_AGENT,
+            ".env.example": (
+                "APP_NAME=demo\n"
+                "#DATABASE_URL=postgresql://admin:Tr0ub4dor3xample@db.prod:5432/app\n"
+                "#DATABASE_URL=postgresql://postgres.<ref>:<password>@pooler:5432/postgres\n"
+            ),
+        },
+    )
+    findings = _eval(BroadCredentials, audit_context(root))
+    assert [f.location for f in findings] == [(".env.example", 2)]
+
+
 def test_aud106_narrow_names_are_not_broad(tmp_path: Path, audit_context):
     root = _write_tree(
         tmp_path / "narrow",
