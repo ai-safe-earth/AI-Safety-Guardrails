@@ -154,12 +154,17 @@ Every cut was a fabricated finding, a leg that was never evidence, or
 repetition folded into `also` evidence with the rest counted. Nothing was
 hidden to make the number smaller.
 
+**The end-to-end run started on 2026-09-15 and is half-finished: see
+`docs/handoff.md`.** Phases 1 and 2 are done against a real application
+(VaiVia), phase 3 is two rows into eleven, phases 4 and 5 have not started. It
+produced five more rule fixes (`bc40862`, `90c7192`, `76b5111`, `bbe722d`) and
+took that application's report from 71 findings and 50 criticals to 10 and 0.
+
 Next, in the order they are worth doing:
 
-1. Run the five-phase skill flow end to end on one outside repository now that
-   the document is readable -- survey, first document, two or three plan rows
-   applied one approval at a time, second document. Nothing has exercised the
-   apply phase or the second document against real code.
+1. Finish that walkthrough -- rows 3 to 11, then document 2 and verify. Rows
+   7-8 and 10 are the only ones where the package itself wires the control, and
+   they exercise the last untested branch of phase 3.
 2. `AUD-602`, `AUD-605` and `AUD-106` still report per occurrence (5, 6 and 3
    in that sample); same grouping, same helper.
 3. Two findings can share a fingerprint (`test_multi_hop_retriever` and

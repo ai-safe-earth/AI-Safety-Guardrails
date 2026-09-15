@@ -1,0 +1,462 @@
+<!-- # aisg-audit: ignore-file -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aisg audit: C:/Users/OAV/AppData/Local/Temp/claude/C--Users-OAV-MAIN-AI-AI-SAFE-EARTH-S01-AI-safety-guardrails/c53ba032-2406-437b-b928-1f095424d031/scratchpad/vaivia</title>
+<meta name="aisg-schema" content="aisg/1">
+<meta name="aisg-tool" content="aisguard 0.1.0">
+<style>:root{--bg:#f7f6f2;--panel:#ffffff;--fg:#1d1d1b;--muted:#5a5955;--rule:#d9d6cd;
+--code-bg:#f0eee7;--code-fg:#2a2a27;--infra:#5b6470;--warn:#b7791f;--accent:#2f5d8a;
+color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#161615;--panel:#1f1f1d;--fg:#e8e6df;
+--muted:#a7a49b;--rule:#3a3935;--code-bg:#262523;--code-fg:#e0ddd4;--infra:#9aa3ad;
+--warn:#e0a63a;--accent:#8ab4e8}}
+html{background:var(--bg);color:var(--fg)}
+body{margin:0;font:15px/1.5 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
+main{max-width:980px;margin:0 auto;padding:24px 20px 48px}
+h1{font-size:1.5em;margin:.4em 0}
+h2{font-size:1.2em;margin:1.6em 0 .5em;border-bottom:1px solid var(--rule);padding-bottom:.2em}
+h3{font-size:1.05em;margin:1.2em 0 .4em}
+h4{font-size:1em;margin:.8em 0 .3em}
+p{margin:.35em 0}
+ul,ol{margin:.3em 0 .6em;padding-left:1.4em}
+a{color:var(--accent)}
+.sub{color:var(--muted);margin:.15em 0}
+.take{border-left:4px solid var(--accent);background:var(--panel);padding:10px 14px;margin:1em 0}
+.banner{border:1px dashed var(--warn);padding:10px 14px;margin:1em 0}
+.fig{background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:8px;
+overflow-x:auto}
+.fig svg{display:block;max-width:calc(100vw - 80px);height:auto}
+.figcap{color:var(--muted);font-size:.9em}
+table{border-collapse:collapse;font-size:.9em;margin:.5em 0}
+th,td{border:1px solid var(--rule);padding:4px 8px;text-align:left;vertical-align:top}
+code{background:var(--code-bg);color:var(--code-fg);padding:1px 4px;border-radius:3px;
+font:.92em ui-monospace,Menlo,Consolas,monospace}
+.finding{border:1px solid var(--rule);border-radius:6px;padding:6px 12px;margin:.6em 0;
+background:var(--panel)}
+.finding h4{margin:.2em 0 .4em}
+.status{font:.9em ui-monospace,Menlo,Consolas,monospace;color:var(--muted)}
+.svgt{font:600 11.5px -apple-system,"Segoe UI",Helvetica,Arial,sans-serif;fill:var(--fg)}
+.svgs{font:10px ui-monospace,Menlo,Consolas,monospace;fill:var(--muted)}
+.svgf{font:9px ui-monospace,Menlo,Consolas,monospace;fill:var(--muted)}
+.svgm{font:10px ui-monospace,Menlo,Consolas,monospace;fill:var(--fg)}
+.svgl{font:11px -apple-system,"Segoe UI",Helvetica,Arial,sans-serif;fill:var(--muted)}
+footer{margin-top:2em;border-top:1px solid var(--rule);padding-top:1em;color:var(--muted);
+font-size:.9em}</style>
+</head>
+<body>
+<main>
+<header class="doc">
+<h1>AI safety audit: C:/Users/OAV/AppData/Local/Temp/claude/C--Users-OAV-MAIN-AI-AI-SAFE-EARTH-S01-AI-safety-guardrails/c53ba032-2406-437b-b928-1f095424d031/scratchpad/vaivia</h1>
+<p class="sub">Document 1 of 2: the first survey. A later run with --baseline produces document 2, the comparison.</p>
+<p class="sub">commit 9cdceed0c16e86aa6df45030cbc058bd1d67775f -- uncommitted changes: yes -- generated 2026-09-12T20:29:59Z -- aisguard 0.1.0</p>
+<p class="sub">Compared against: none -- this is the first survey</p>
+<p class="sub">fail-on: low</p>
+</header>
+<div class="take">
+<h4>Read this first</h4>
+<p>This report lists observations about a codebase. Not an assessment of compliance with any regulation. Risk classification under the EU AI Act is a legal determination made by the operator, not a tool output. Every rule in this report is UNMEASURED: no precision figure exists for it yet. Absence of a finding is not evidence of safety.</p>
+<p><strong>Absence of a finding is not evidence of safety.</strong></p>
+<p>UNKNOWN: 5 items the audit could not establish (listed in section 4)</p>
+</div>
+<h2 id="map">1. System map</h2>
+<div class="fig">
+<svg viewBox="0 0 960 422" width="940" height="413" role="img" aria-labelledby="fig1-title">
+<title id="fig1-title">Fig. 1: system map of C:/Users/OAV/AppData/Local/Temp/claude/C--Users-OAV-MAIN-AI-AI-SAFE-EARTH-S01-AI-safety-guardrails/c53ba032-2406-437b-b928-1f095424d031/scratchpad/vaivia</title>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--infra)"/></marker></defs>
+<text x="12" y="24" class="svgl">flow, left to right</text>
+<text x="12" y="180" class="svgl">foundations</text>
+<text x="12" y="336" class="svgl">everything else</text>
+<rect x="12" y="34" width="176" height="118" rx="10" fill="var(--panel)" stroke="var(--infra)" stroke-width="1.2"/>
+<text x="20" y="54" class="svgt">Data in</text>
+<text x="20" y="72" class="svgf">32 data sources: asyncpg, +31</text>
+<text x="20" y="88" class="svgf">31 ingress: @app.get, +30</text>
+<text x="20" y="110" class="svgm">reported 0 | UNKNOWN 0</text>
+<text x="20" y="126" class="svgm">rules ran 1/1</text>
+<text x="20" y="142" class="svgs">[UNMEASURED]</text>
+<line x1="188" y1="93" x2="202" y2="93" stroke="var(--infra)" stroke-width="1.2" marker-end="url(#ar)"/>
+<rect x="202" y="34" width="176" height="118" rx="10" fill="var(--panel)" stroke="var(--infra)" stroke-width="1.2"/>
+<text x="210" y="54" class="svgt">Host and agent runtime</text>
+<text x="210" y="72" class="svgf">hosts: claude</text>
+<text x="210" y="88" class="svgf">loops: loop (no cap found)</text>
+<text x="210" y="110" class="svgm">reported 2 | UNKNOWN 0</text>
+<text x="210" y="126" class="svgm">rules ran 4/4</text>
+<text x="210" y="142" class="svgs">[UNMEASURED]</text>
+<line x1="378" y1="93" x2="392" y2="93" stroke="var(--infra)" stroke-width="1.2" marker-end="url(#ar)"/>
+<rect x="392" y="34" width="176" height="118" rx="10" fill="var(--panel)" stroke="var(--infra)" stroke-width="1.2"/>
+<text x="400" y="54" class="svgt">Model calls and prompts</text>
+<text x="400" y="72" class="svgf">4 llm calls: openai, +3</text>
+<text x="400" y="88" class="svgf">7 models: gpt-4o-mini (unpi...</text>
+<text x="400" y="110" class="svgm">reported 0 | UNKNOWN 0</text>
+<text x="400" y="126" class="svgm">rules ran 2/2</text>
+<text x="400" y="142" class="svgs">[UNMEASURED]</text>
+<line x1="568" y1="93" x2="582" y2="93" stroke="var(--infra)" stroke-width="1.2" marker-end="url(#ar)"/>
+<rect x="582" y="34" width="176" height="118" rx="10" fill="var(--panel)" stroke="var(--infra)" stroke-width="1.2"/>
+<text x="590" y="54" class="svgt">Tools and actions</text>
+<text x="590" y="72" class="svgf">37 external actions: .write...</text>
+<text x="590" y="110" class="svgm">reported 0 | UNKNOWN 1</text>
+<text x="590" y="126" class="svgm">rules ran 11/11</text>
+<text x="590" y="142" class="svgs">[UNMEASURED]</text>
+<line x1="758" y1="93" x2="772" y2="93" stroke="var(--infra)" stroke-width="1.2" marker-end="url(#ar)"/>
+<rect x="772" y="34" width="176" height="118" rx="10" fill="var(--panel)" stroke="var(--infra)" stroke-width="1.2"/>
+<text x="780" y="54" class="svgt">Output sinks</text>
+<text x="780" y="72" class="svgf">35 sinks: .write_text(, +34</text>
+<text x="780" y="110" class="svgm">reported 0 | UNKNOWN 1</text>
+<text x="780" y="126" class="svgm">rules ran 1/1</text>
+<text x="780" y="142" class="svgs">[UNMEASURED]</text>
+<rect x="12" y="190" width="176" height="118" rx="10" fill="var(--panel)" stroke="var(--infra)" stroke-width="1.2"/>
+<text x="20" y="210" class="svgt">Secrets and personal data</text>
+<text x="20" y="228" class="svgf">no surface found</text>
+<text x="20" y="266" class="svgm">reported 5 | UNKNOWN 2</text>
+<text x="20" y="282" class="svgm">rules ran 6/6</text>
+<text x="20" y="298" class="svgs">[UNMEASURED]</text>
+<rect x="202" y="190" width="176" height="118" rx="10" fill="var(--panel)" stroke="var(--infra)" stroke-width="1.2"/>
+<text x="210" y="210" class="svgt">Supply chain</text>
+<text x="210" y="228" class="svgf">7 models: gpt-4o-mini (unpi...</text>
+<text x="210" y="244" class="svgf">ci: .github/workflows/ci.ym...</text>
+<text x="210" y="266" class="svgm">reported 3 | UNKNOWN 2</text>
+<text x="210" y="282" class="svgm">rules ran 6/6</text>
+<text x="210" y="298" class="svgs">[UNMEASURED]</text>
+<rect x="392" y="190" width="176" height="118" rx="10" fill="var(--panel)" stroke="var(--infra)" stroke-width="1.2"/>
+<text x="400" y="210" class="svgt">Guardrails</text>
+<text x="400" y="228" class="svgf">no surface found</text>
+<text x="400" y="266" class="svgm">reported 0 | UNKNOWN 0</text>
+<text x="400" y="282" class="svgm">rules ran 4/4</text>
+<text x="400" y="298" class="svgs">[UNMEASURED]</text>
+<rect x="582" y="190" width="176" height="118" rx="10" fill="var(--panel)" stroke="var(--infra)" stroke-width="1.2"/>
+<text x="590" y="210" class="svgt">Observability</text>
+<text x="590" y="228" class="svgf">no surface found</text>
+<text x="590" y="266" class="svgm">reported 2 | UNKNOWN 0</text>
+<text x="590" y="282" class="svgm">rules ran 2/2</text>
+<text x="590" y="298" class="svgs">[UNMEASURED]</text>
+<rect x="772" y="190" width="176" height="118" rx="10" fill="var(--panel)" stroke="var(--infra)" stroke-width="1.2"/>
+<text x="780" y="210" class="svgt">Evals and governance</text>
+<text x="780" y="228" class="svgf">no surface found</text>
+<text x="780" y="266" class="svgm">reported 3 | UNKNOWN 0</text>
+<text x="780" y="282" class="svgm">rules ran 9/9</text>
+<text x="780" y="298" class="svgs">[UNMEASURED]</text>
+<rect x="12" y="346" width="936" height="62" rx="10" fill="var(--panel)" stroke="var(--warn)" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="20" y="368" class="svgt">Not attributed / UNKNOWN</text>
+<text x="20" y="390" class="svgm">UNKNOWN not attributed to a rule: 0 | reported 0 | rules ran 0/0 [UNMEASURED]</text>
+</svg>
+</div>
+<p class="figcap">Fig. 1 -- drawn from the inventory, not traced at runtime. 46 of 46 rules ran. Deliberately omitted: data flow between tools, third-party services, anything the walk skipped.</p>
+<h2 id="subsystems">2. Subsystems</h2>
+<h3 id="sec-data_in">2.1 Data in <span class="status">-- reported 0 | UNKNOWN 0 | rules ran 1/1 [UNMEASURED]</span></h3>
+<p>From the inventory</p>
+<ul>
+<li>data sources: asyncpg -- backend/api/main.py:49</li>
+<li>data sources: asyncpg -- backend/api/main.py:56</li>
+<li>data sources: asyncpg -- backend/core/pg.py:38</li>
+<li>data sources: asyncpg -- backend/scripts/apply_migrations.py:5</li>
+<li>data sources: asyncpg -- backend/scripts/apply_migrations.py:26</li>
+<li>data sources: os.environ.get(&quot;DATABASE_URL&quot; -- backend/scripts/apply_migrations.py:35</li>
+<li>data sources: asyncpg -- backend/scripts/apply_migrations.py:71</li>
+<li>data sources: asyncpg -- backend/scripts/dump_conversation.py:30</li>
+<li>+55 more in the JSON</li>
+</ul>
+<p>Findings placed here</p>
+<p>(none)</p>
+<h3 id="sec-runtime">2.2 Host and agent runtime <span class="status">-- reported 2 | UNKNOWN 0 | rules ran 4/4 [UNMEASURED]</span></h3>
+<p>From the inventory</p>
+<ul>
+<li>hosts: claude -- .claude/settings.json</li>
+<li>loops: loop (no cap found) -- frontend/lib/sse.ts:75</li>
+</ul>
+<p>Findings placed here</p>
+<article class="finding" id="f-4a967929f06e5b9e">
+<h4>AUD-107 No kill switch -- medium ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[absence] .:0 <code>no kill-switch read (KILL_SWITCH_ENV_READS / KILL_SWITCH_SYMBOLS) in unit u0 (.)</code></li>
+</ul>
+<p>fix (T2): Read an explicit kill-switch flag at the top of every request and refuse to call the model or any tool while it is set.</p>
+<p class="pkg">outside the package: Read an explicit kill-switch flag at the top of every request and refuse to call the model or any tool while it is set.</p>
+</article>
+<article class="finding" id="f-7a182d4c57fcea35">
+<h4>AUD-107 No kill switch -- medium ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[absence] backend:0 <code>no kill-switch read (KILL_SWITCH_ENV_READS / KILL_SWITCH_SYMBOLS) in unit u1 (backend)</code></li>
+</ul>
+<p>fix (T2): Read an explicit kill-switch flag at the top of every request and refuse to call the model or any tool while it is set.</p>
+<p class="pkg">outside the package: Read an explicit kill-switch flag at the top of every request and refuse to call the model or any tool while it is set.</p>
+</article>
+<h3 id="sec-model">2.3 Model calls and prompts <span class="status">-- reported 0 | UNKNOWN 0 | rules ran 2/2 [UNMEASURED]</span></h3>
+<p>From the inventory</p>
+<ul>
+<li>llm calls: openai -- backend/chat/llm.py:55</li>
+<li>llm calls: openai -- backend/chat/llm.py:86</li>
+<li>llm calls: openai -- backend/chat/llm.py:110</li>
+<li>llm calls: openai -- backend/core/embeddings.py:24</li>
+<li>models: gpt-4o-mini (unpinned) -- .env.example:31</li>
+<li>models: text-embedding-3-small -- .env.example:32</li>
+<li>models: gpt-4o-mini (unpinned) -- backend/core/config.py:77</li>
+<li>models: gpt-4o-mini (unpinned) -- backend/core/config.py:78</li>
+<li>+3 more in the JSON</li>
+</ul>
+<p>Findings placed here</p>
+<p>(none)</p>
+<h3 id="sec-tools">2.4 Tools and actions <span class="status">-- reported 0 | UNKNOWN 1 | rules ran 11/11 [UNMEASURED]</span></h3>
+<p>From the inventory</p>
+<ul>
+<li>external actions: .write_text( -- backend/chat/save_route.py:38</li>
+<li>external actions: .write_text( -- backend/ingestion/overpass_client.py:119</li>
+<li>external actions: subprocess -- backend/scripts/cost_by_commit.py:34</li>
+<li>external actions: subprocess -- backend/scripts/cost_by_commit.py:160</li>
+<li>external actions: subprocess -- backend/scripts/eval_golden.py:56</li>
+<li>external actions: subprocess -- backend/scripts/eval_golden.py:235</li>
+<li>external actions: subprocess -- backend/scripts/eval_golden.py:241</li>
+<li>external actions: .write_text( -- backend/tests/test_api_routing.py:203</li>
+<li>+29 more in the JSON</li>
+</ul>
+<p class="sub">UNKNOWN items counted on this box: 1; see section 4</p>
+<p>Findings placed here</p>
+<p>(none)</p>
+<h3 id="sec-sinks">2.5 Output sinks <span class="status">-- reported 0 | UNKNOWN 1 | rules ran 1/1 [UNMEASURED]</span></h3>
+<p>From the inventory</p>
+<ul>
+<li>sinks: .write_text( -- backend/chat/save_route.py:38</li>
+<li>sinks: .write_text( -- backend/ingestion/overpass_client.py:119</li>
+<li>sinks: subprocess.run( -- backend/scripts/cost_by_commit.py:160</li>
+<li>sinks: subprocess.run( -- backend/scripts/eval_golden.py:235</li>
+<li>sinks: .write_text( -- backend/tests/test_api_routing.py:203</li>
+<li>sinks: .write_text( -- backend/tests/test_api_routing.py:489</li>
+<li>sinks: shutil.copy( -- backend/tests/test_contract_fixture.py:24</li>
+<li>sinks: fetch( -- frontend/lib/api.ts:40</li>
+<li>+27 more in the JSON</li>
+</ul>
+<p class="sub">UNKNOWN items counted on this box: 1; see section 4</p>
+<p>Findings placed here</p>
+<p>(none)</p>
+<h3 id="sec-secrets">2.6 Secrets and personal data <span class="status">-- reported 5 | UNKNOWN 2 | rules ran 6/6 [UNMEASURED]</span></h3>
+<p>From the inventory</p>
+<ul>
+<li>no surface found</li>
+</ul>
+<p class="sub">UNKNOWN items counted on this box: 2; see section 4</p>
+<p>Findings placed here</p>
+<article class="finding" id="f-185e67ea6f7ce495">
+<h4>AUD-106 Broad credentials in agent scope -- high ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[match] .env.example:70 <code>DATABASE_URL</code></li>
+</ul>
+<p>fix (T1): Give the agent process its own least-privilege credential and keep the broad one out of its environment.</p>
+<p class="pkg">outside the package: Give the agent process its own least-privilege credential and keep the broad one out of its environment.</p>
+<p class="pkg">this edit needs your approval of the specific diff</p>
+<p class="note">note: bound to a reference or placeholder; the value is not read</p>
+</article>
+<article class="finding" id="f-185e67ea6f7ce495">
+<h4>AUD-106 Broad credentials in agent scope -- high ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[match] .env.example:73 <code>DATABASE_URL</code></li>
+</ul>
+<p>fix (T1): Give the agent process its own least-privilege credential and keep the broad one out of its environment.</p>
+<p class="pkg">outside the package: Give the agent process its own least-privilege credential and keep the broad one out of its environment.</p>
+<p class="pkg">this edit needs your approval of the specific diff</p>
+<p class="note">note: name referenced in a code or config file; the value is not read</p>
+</article>
+<article class="finding" id="f-be61c9d01c64b57e">
+<h4>AUD-106 Broad credentials in agent scope -- high ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[match] infra/supabase/config.toml:249 <code>SENDGRID_API_KEY</code></li>
+</ul>
+<p>fix (T1): Give the agent process its own least-privilege credential and keep the broad one out of its environment.</p>
+<p class="pkg">outside the package: Give the agent process its own least-privilege credential and keep the broad one out of its environment.</p>
+<p class="note">note: name referenced in a code or config file; the value is not read</p>
+</article>
+<article class="finding" id="f-e52a4724329346d2">
+<h4>AUD-106 Broad credentials in agent scope -- high ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[match] infra/supabase/config.toml:413 <code>AWS_SECRET_ACCESS_KEY</code></li>
+</ul>
+<p>fix (T1): Give the agent process its own least-privilege credential and keep the broad one out of its environment.</p>
+<p class="pkg">outside the package: Give the agent process its own least-privilege credential and keep the broad one out of its environment.</p>
+<p class="note">note: name referenced in a code or config file; the value is not read</p>
+</article>
+<article class="finding" id="f-d410fd5b549a33eb">
+<h4>AUD-504/print Verbatim prompt/response logging -- medium ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[match] backend/scripts/dump_conversation.py:131 <code>print(render_conversation(conversation, messages))</code></li>
+</ul>
+<p>fix (T2): Log a hash, length or tokenised form; route prompts and responses through a PII redactor before any sink, and keep the raw text in a purpose-bound store.</p>
+<p class="pkg">aisg: PIIDetector, AuditLogger -- a different control (detector), in addition to, not instead of: Redaction in front of the logger lowers what a log line exposes; the verbatim log call is the control and stays where it is. AuditLogger hashes only the pipeline&#x27;s own records, not your log lines.</p>
+<p class="note">note: logs `messages` with no redaction symbol in backend/scripts/dump_conversation.py</p>
+</article>
+<h3 id="sec-supply">2.7 Supply chain <span class="status">-- reported 3 | UNKNOWN 2 | rules ran 6/6 [UNMEASURED]</span></h3>
+<p>From the inventory</p>
+<ul>
+<li>models: gpt-4o-mini (unpinned) -- .env.example:31</li>
+<li>models: text-embedding-3-small -- .env.example:32</li>
+<li>models: gpt-4o-mini (unpinned) -- backend/core/config.py:77</li>
+<li>models: gpt-4o-mini (unpinned) -- backend/core/config.py:78</li>
+<li>models: claude-sonnet-5 (unpinned) -- backend/scripts/cost_by_commit.py:67</li>
+<li>models: gpt-4o-mini (unpinned) -- backend/scripts/smoke_supabase.py:131</li>
+<li>models: gpt-4o-mini (unpinned) -- backend/scripts/smoke_supabase.py:135</li>
+<li>ci: .github/workflows/ci.yml (0 unsafe steps)</li>
+</ul>
+<p class="sub">UNKNOWN items counted on this box: 2; see section 4</p>
+<p>Findings placed here</p>
+<article class="finding" id="f-66363a43a141aaa0">
+<h4>AUD-601/openai Unpinned model id -- medium ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[match] .env.example:31 <code>INTENT_MODEL=gpt-4o-mini</code></li>
+</ul>
+<p>fix (T1): Pin the dated snapshot (claude-*-YYYYMMDD, gpt-4o-YYYY-MM-DD, gemini-*-NNN) and bump it deliberately with an eval run.</p>
+<p class="pkg">aisg: aisg measure -- a different control (measurement), in addition to, not instead of: Pinning the id is an edit to the call site. `aisg measure` records the id it saw in its report, so a later drift is visible; it does not pin anything.</p>
+<p class="pkg">this edit needs your approval of the specific diff</p>
+<p class="note">note: openai id gpt-4o-mini is a floating alias (source: env)</p>
+</article>
+<article class="finding" id="f-eb762ed9af298e57">
+<h4>AUD-601/openai Unpinned model id -- medium ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[match] backend/core/config.py:77 <code>intent_model: str = &quot;gpt-4o-mini&quot;</code></li>
+<li>[also] backend/core/config.py:78 <code>answer_model: str = &quot;gpt-4o-mini&quot;</code></li>
+<li>[also] backend/scripts/smoke_supabase.py:131 <code>await store.record_usage(user_id, assistant_id, &quot;gpt-4o-mini&quot;, 100, 50)</code></li>
+<li>[also] backend/scripts/smoke_supabase.py:135 <code>await store.record_usage(user_id, assistant_id, &quot;gpt-4o-mini&quot;, 10, 5)</code></li>
+</ul>
+<p>fix (T1): Pin the dated snapshot (claude-*-YYYYMMDD, gpt-4o-YYYY-MM-DD, gemini-*-NNN) and bump it deliberately with an eval run.</p>
+<p class="pkg">aisg: aisg measure -- a different control (measurement), in addition to, not instead of: Pinning the id is an edit to the call site. `aisg measure` records the id it saw in its report, so a later drift is visible; it does not pin anything.</p>
+<p class="note">note: openai id gpt-4o-mini is a floating alias (source: literal)</p>
+</article>
+<article class="finding" id="f-ed71bb11e7c14bf2">
+<h4>AUD-601/anthropic Unpinned model id -- medium ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[match] backend/scripts/cost_by_commit.py:67 <code>if model == &quot;claude-sonnet-5&quot; and when &lt; SONNET_5_INTRO_END:</code></li>
+</ul>
+<p>fix (T1): Pin the dated snapshot (claude-*-YYYYMMDD, gpt-4o-YYYY-MM-DD, gemini-*-NNN) and bump it deliberately with an eval run.</p>
+<p class="pkg">aisg: aisg measure -- a different control (measurement), in addition to, not instead of: Pinning the id is an edit to the call site. `aisg measure` records the id it saw in its report, so a later drift is visible; it does not pin anything.</p>
+<p class="note">note: anthropic id claude-sonnet-5 is a floating alias (source: literal)</p>
+</article>
+<h3 id="sec-guardrails">2.8 Guardrails <span class="status">-- reported 0 | UNKNOWN 0 | rules ran 4/4 [UNMEASURED]</span></h3>
+<p>From the inventory</p>
+<ul>
+<li>no surface found</li>
+</ul>
+<p>Findings placed here</p>
+<p>(none)</p>
+<h3 id="sec-observability">2.9 Observability <span class="status">-- reported 2 | UNKNOWN 0 | rules ran 2/2 [UNMEASURED]</span></h3>
+<p>From the inventory</p>
+<ul>
+<li>no surface found</li>
+</ul>
+<p>Findings placed here</p>
+<article class="finding" id="f-e7eac88080a04be7">
+<h4>AUD-701 No observability on LLM calls -- medium ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[absence] .:0 <code>no LLM observability symbol in unit u0 (langfuse, langsmith, traceloop, gen_ai.*, TelemetryProvider, helicone, phoenix, weave, ...)</code></li>
+</ul>
+<p>fix (T2): Trace every LLM call and tool call with prompt, completion, model id, latency and cost, so incidents can be reconstructed after the fact.</p>
+<p class="pkg">aisg: TelemetryProvider -- implements the control this rule asks for. Leaves open: Only calls that go through `run_full` are traced; an LLM call made outside the pipeline is not. TelemetryProvider sets the process-global tracer and meter providers, so construct it once per process.</p>
+<p class="note">note: unit u0 has an AI surface and none of the LLM observability symbols (langfuse, langsmith, LANGCHAIN_TRACING, traceloop/openllmetry, gen_ai.* OTel attributes, TelemetryProvider, helicone, braintrust, arize/phoenix, wandb, weave) appears in it</p>
+</article>
+<article class="finding" id="f-a8517ba4753d6bf8">
+<h4>AUD-701 No observability on LLM calls -- medium ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[absence] backend:0 <code>no LLM observability symbol in unit u1 (langfuse, langsmith, traceloop, gen_ai.*, TelemetryProvider, helicone, phoenix, weave, ...)</code></li>
+</ul>
+<p>fix (T2): Trace every LLM call and tool call with prompt, completion, model id, latency and cost, so incidents can be reconstructed after the fact.</p>
+<p class="pkg">aisg: TelemetryProvider -- implements the control this rule asks for. Leaves open: Only calls that go through `run_full` are traced; an LLM call made outside the pipeline is not. TelemetryProvider sets the process-global tracer and meter providers, so construct it once per process.</p>
+<p class="note">note: unit u1 has an AI surface and none of the LLM observability symbols (langfuse, langsmith, LANGCHAIN_TRACING, traceloop/openllmetry, gen_ai.* OTel attributes, TelemetryProvider, helicone, braintrust, arize/phoenix, wandb, weave) appears in it</p>
+</article>
+<h3 id="sec-governance">2.10 Evals and governance <span class="status">-- reported 3 | UNKNOWN 0 | rules ran 9/9 [UNMEASURED]</span></h3>
+<p>From the inventory</p>
+<ul>
+<li>no surface found</li>
+</ul>
+<p>Findings placed here</p>
+<article class="finding" id="f-450b9fdefd75170c">
+<h4>AUD-703 No incident path -- low ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[absence] .:0 <code>no incident path; looked for SECURITY.md, INCIDENT*.md, docs/incident*, runbook*, ISSUE_TEMPLATE/*security*</code></li>
+</ul>
+<p>fix (T2): Write down who is paged when the AI system misbehaves, how a user reports harm, and how the system is disabled, and keep that text in the repository.</p>
+<p class="pkg">aisg: aisg init -- a different control (document), in addition to, not instead of: `incident_contact` on the card is a place to write the contact down. The runbook -- who is paged, how harm is reported, how the system is stopped -- is the control and is written by you.</p>
+<p class="note">note: none of SECURITY.md, INCIDENT*.md, docs/incident*, runbook*, .github/ISSUE_TEMPLATE/*security*, or a system-card incident_contact is present</p>
+</article>
+<article class="finding" id="f-c0ecfbcc13ea3d5f">
+<h4>AUD-901 No evals in CI -- high ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[absence] .:0 <code>no eval tool (promptfoo, deepeval, ragas, inspect_ai, garak, pyrit, giskard, lm_eval, evals/, aisg measure, aisg probe) referenced from CI or a task runner</code></li>
+</ul>
+<p>fix (T2): Run an attack-plus-benign eval on every change: add `aisg measure` or `aisg probe` to the CI workflow and fail the job on regressions.</p>
+<p class="pkg">aisg: aisg measure, aisg probe -- implements the control this rule asks for. Leaves open: The CI workflow edit is yours to make, and `aisg probe` needs an endpoint that is being served. A run on every change is the control; what the run reports is a separate question.</p>
+</article>
+<article class="finding" id="f-630654068440d1a8">
+<h4>AUD-1001 No system card -- low ASSERTED [UNMEASURED]</h4>
+<ul class="evidence">
+<li>[absence] .:0 <code>no system card found (ai-system-card.yaml, model_card.md, MODEL_CARD.md, system-card*); the audit has no operator statement of purpose, operator, affected pe...</code></li>
+</ul>
+<p>fix (T2): Write down what the system is for, who operates it, who is affected by it, and how to report an incident: `aisg init` writes ai-system-card.yaml with those fields and the risk-tier caveat.</p>
+<p class="pkg">aisg: aisg init -- implements the control this rule asks for. Leaves open: Every field in the card is the operator&#x27;s own assertion; aisg init writes the file and the risk-tier caveat, nothing more. Whether the entries are true is not something the tool can check.</p>
+</article>
+<h2 id="plan">3. Plan</h2>
+<table>
+<tr><th>#</th><th>id</th><th>severity</th><th>subsystem</th><th>control</th><th>tier</th><th>aisg</th><th>who</th><th>status</th></tr>
+<tr><td>1</td><td><a href="#f-185e67ea6f7ce495">AUD-106</a></td><td>high</td><td>Secrets and personal data</td><td>Give the agent process its own least-privilege credential and keep the broad one out of its environment.</td><td>T1</td><td>none</td><td>you, approval needed</td><td>-</td></tr>
+<tr><td>2</td><td><a href="#f-185e67ea6f7ce495">AUD-106</a></td><td>high</td><td>Secrets and personal data</td><td>Give the agent process its own least-privilege credential and keep the broad one out of its environment.</td><td>T1</td><td>none</td><td>you, approval needed</td><td>-</td></tr>
+<tr><td>3</td><td><a href="#f-be61c9d01c64b57e">AUD-106</a></td><td>high</td><td>Secrets and personal data</td><td>Give the agent process its own least-privilege credential and keep the broad one out of its environment.</td><td>T1</td><td>none</td><td>you</td><td>-</td></tr>
+<tr><td>4</td><td><a href="#f-e52a4724329346d2">AUD-106</a></td><td>high</td><td>Secrets and personal data</td><td>Give the agent process its own least-privilege credential and keep the broad one out of its environment.</td><td>T1</td><td>none</td><td>you</td><td>-</td></tr>
+<tr><td>5</td><td><a href="#f-4a967929f06e5b9e">AUD-107</a></td><td>medium</td><td>Host and agent runtime</td><td>Read an explicit kill-switch flag at the top of every request and refuse to call the model or any tool while it is set.</td><td>T2</td><td>none</td><td>you</td><td>-</td></tr>
+<tr><td>6</td><td><a href="#f-7a182d4c57fcea35">AUD-107</a></td><td>medium</td><td>Host and agent runtime</td><td>Read an explicit kill-switch flag at the top of every request and refuse to call the model or any tool while it is set.</td><td>T2</td><td>none</td><td>you</td><td>-</td></tr>
+<tr><td>7</td><td><a href="#f-d410fd5b549a33eb">AUD-504/print</a></td><td>medium</td><td>Secrets and personal data</td><td>Log a hash, length or tokenised form; route prompts and responses through a PII redactor before any sink, and keep the raw text in a purpose-bound store.</td><td>T2</td><td>PIIDetector, AuditLogger (other control)</td><td>you</td><td>-</td></tr>
+<tr><td>8</td><td><a href="#f-66363a43a141aaa0">AUD-601/openai</a></td><td>medium</td><td>Supply chain</td><td>Pin the dated snapshot (claude-*-YYYYMMDD, gpt-4o-YYYY-MM-DD, gemini-*-NNN) and bump it deliberately with an eval run.</td><td>T1</td><td>aisg measure (other control)</td><td>you, approval needed</td><td>-</td></tr>
+<tr><td>9</td><td><a href="#f-eb762ed9af298e57">AUD-601/openai</a></td><td>medium</td><td>Supply chain</td><td>Pin the dated snapshot (claude-*-YYYYMMDD, gpt-4o-YYYY-MM-DD, gemini-*-NNN) and bump it deliberately with an eval run.</td><td>T1</td><td>aisg measure (other control)</td><td>you</td><td>-</td></tr>
+<tr><td>10</td><td><a href="#f-ed71bb11e7c14bf2">AUD-601/anthropic</a></td><td>medium</td><td>Supply chain</td><td>Pin the dated snapshot (claude-*-YYYYMMDD, gpt-4o-YYYY-MM-DD, gemini-*-NNN) and bump it deliberately with an eval run.</td><td>T1</td><td>aisg measure (other control)</td><td>you</td><td>-</td></tr>
+<tr><td>11</td><td><a href="#f-e7eac88080a04be7">AUD-701</a></td><td>medium</td><td>Observability</td><td>Trace every LLM call and tool call with prompt, completion, model id, latency and cost, so incidents can be reconstructed after the fact.</td><td>T2</td><td>TelemetryProvider (same control)</td><td>package</td><td>-</td></tr>
+<tr><td>12</td><td><a href="#f-a8517ba4753d6bf8">AUD-701</a></td><td>medium</td><td>Observability</td><td>Trace every LLM call and tool call with prompt, completion, model id, latency and cost, so incidents can be reconstructed after the fact.</td><td>T2</td><td>TelemetryProvider (same control)</td><td>package</td><td>-</td></tr>
+<tr><td>13</td><td><a href="#f-450b9fdefd75170c">AUD-703</a></td><td>low</td><td>Evals and governance</td><td>Write down who is paged when the AI system misbehaves, how a user reports harm, and how the system is disabled, and keep that text in the repository.</td><td>T2</td><td>aisg init (other control)</td><td>you</td><td>-</td></tr>
+<tr><td>14</td><td><a href="#f-c0ecfbcc13ea3d5f">AUD-901</a></td><td>high</td><td>Evals and governance</td><td>Run an attack-plus-benign eval on every change: add `aisg measure` or `aisg probe` to the CI workflow and fail the job on regressions.</td><td>T2</td><td>aisg measure, aisg probe (same control)</td><td>package</td><td>-</td></tr>
+<tr><td>15</td><td><a href="#f-630654068440d1a8">AUD-1001</a></td><td>low</td><td>Evals and governance</td><td>Write down what the system is for, who operates it, who is affected by it, and how to report an incident: `aisg init` writes ai-system-card.yaml with those fields and the risk-tier caveat.</td><td>T2</td><td>aisg init (same control)</td><td>package</td><td>-</td></tr>
+</table>
+<h3>Rows the package can implement (walk the table top-down; do not skip a row above)</h3>
+<ol>
+<li>#11 AUD-701 No observability on LLM calls -- TelemetryProvider. Leaves open: Only calls that go through `run_full` are traced; an LLM call made outside the pipeline is not. TelemetryProvider sets the process-global tracer and meter providers, so construct it once per process.</li>
+<li>#12 AUD-701 No observability on LLM calls -- TelemetryProvider. Leaves open: Only calls that go through `run_full` are traced; an LLM call made outside the pipeline is not. TelemetryProvider sets the process-global tracer and meter providers, so construct it once per process.</li>
+<li>#14 AUD-901 No evals in CI -- aisg measure, aisg probe. Leaves open: The CI workflow edit is yours to make, and `aisg probe` needs an endpoint that is being served. A run on every change is the control; what the run reports is a separate question.</li>
+<li>#15 AUD-1001 No system card -- aisg init. Leaves open: Every field in the card is the operator&#x27;s own assertion; aisg init writes the file and the risk-tier caveat, nothing more. Whether the entries are true is not something the tool can check.</li>
+</ol>
+<p><strong>Wiring a control is not evidence the finding is gone: re-run the audit and read document 2.</strong></p>
+<h2 id="unknown">4. UNKNOWN</h2>
+<ol>
+<li>[tools] secrets: regex-only: gitleaks not on PATH
+<ul><li>resolve: install gitleaks (brew install gitleaks, or a release binary on PATH) &amp;&amp; aisg audit .</li><li>rules: AUD-501, AUD-502</li></ul>
+</li>
+<li>[tools] secrets: regex-only: detect-secrets not on PATH
+<ul><li>resolve: pipx install detect-secrets &amp;&amp; aisg audit .</li><li>rules: AUD-501, AUD-502</li></ul>
+</li>
+<li>[tools] dependency vulnerabilities: no environment to audit: no requirements*.txt and the audit is not running inside the target&#x27;s virtualenv
+<ul><li>resolve: aisg audit . --pip-audit-env &lt;path to the target&#x27;s python&gt;</li><li>rules: AUD-606</li></ul>
+</li>
+<li>[tools] dependency vulnerabilities: osv-scanner not on PATH
+<ul><li>resolve: install osv-scanner (a release binary on PATH, or go install github.com/google/osv-scanner/cmd/osv-scanner@v1) &amp;&amp; aisg audit .</li><li>rules: AUD-606</li></ul>
+</li>
+<li>[tools] non-Python sink taint: semgrep not on PATH
+<ul><li>resolve: pipx install semgrep &amp;&amp; aisg audit .</li><li>rules: AUD-401, AUD-402, AUD-403, AUD-404, AUD-405, AUD-406</li></ul>
+</li>
+</ol>
+<h2 id="external">5. External tools and reports read</h2>
+<table>
+<tr><th>name</th><th>status</th><th>network</th><th>version</th><th>argv</th></tr>
+<tr><td>gitleaks</td><td>not_on_path</td><td>no</td><td>-</td><td>-</td></tr>
+<tr><td>detect-secrets</td><td>not_on_path</td><td>no</td><td>-</td><td>-</td></tr>
+<tr><td>pip-audit</td><td>skipped_needs_flag</td><td>yes</td><td>-</td><td>-</td></tr>
+<tr><td>npm-audit</td><td>not_applicable</td><td>yes</td><td>-</td><td>-</td></tr>
+<tr><td>osv-scanner</td><td>not_on_path</td><td>yes</td><td>-</td><td>-</td></tr>
+<tr><td>mcp-scan</td><td>not_applicable</td><td>no</td><td>-</td><td>-</td></tr>
+<tr><td>semgrep</td><td>not_on_path</td><td>no</td><td>-</td><td>-</td></tr>
+<tr><td>promptfoo</td><td>not_applicable</td><td>yes</td><td>-</td><td>-</td></tr>
+</table>
+<h3>Reports read from disk</h3>
+<p>(none)</p>
+<h3>Inventory counts</h3>
+<ul><li>units: 6</li><li>languages: 4 (go 0, other 107, python 183, typescript 59)</li><li>llm_calls: 4</li><li>tools: 0</li><li>mcp servers: 0</li><li>hosts: 1</li><li>own output skipped: .aisg-audit/audit-report.json</li><li>oversize files skipped: 0</li></ul>
+<footer>
+<p>15 findings (0 below --fail-on low, not counted in exit code); 5 unknown items</p>
+<p>exit code: 1</p>
+<p><strong>Absence of a finding is not evidence of safety.</strong></p>
+<p>generated by aisguard 0.1.0; the JSON report is authoritative</p>
+</footer>
+</main>
+</body>
+</html>
