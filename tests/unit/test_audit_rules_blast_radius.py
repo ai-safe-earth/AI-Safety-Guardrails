@@ -517,6 +517,28 @@ def test_aud106_a_credential_value_in_a_comment_is_still_a_leak(tmp_path: Path, 
     assert [f.location for f in findings] == [(".env.example", 2)]
 
 
+def test_aud106_a_placeholder_credential_is_not_a_credential(tmp_path: Path, audit_context):
+    """
+    `<user>:<password>@` fits the `user:pass@` shape the pattern looks for, so an
+    example file rewritten to hold only placeholders still reported a broad credential
+    in agent scope. A real pair on the line above it still does.
+    """
+    root = _write_tree(
+        tmp_path / "placeholder-cred",
+        {
+            "pyproject.toml": "[project]\nname = 'pc'\n",
+            "agent.py": OPENAI_AGENT,
+            ".env.example": (
+                "DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres\n"
+                "PIPELINE_DATABASE_URL=postgresql://<user>:<password>@<host>:<port>/<db>\n"
+                "OTHER_DATABASE_URL=postgresql://admin:${DB_PASS}@db:5432/app\n"
+            ),
+        },
+    )
+    findings = _eval(BroadCredentials, audit_context(root))
+    assert [f.location for f in findings] == [(".env.example", 1)]
+
+
 def test_aud106_narrow_names_are_not_broad(tmp_path: Path, audit_context):
     root = _write_tree(
         tmp_path / "narrow",

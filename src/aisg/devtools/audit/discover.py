@@ -535,17 +535,25 @@ def _scan_broad_creds(ctx: _FileCtx) -> None:
       other table catches it: `SECRET_PATTERNS` has no connection-string entry.
     - A commented-out template whose password is a placeholder (`<password>`,
       `${DB_PASS}`, `env(...)`) is neither.
+
+    A placeholder is not a credential on a LIVE line either. An operator who replaced
+    `postgres:postgres@` with `<user>:<password>@` in an example file was told the
+    finding still stood, because the placeholder pair fits the `user:pass@` shape the
+    pattern looks for. The value carries no credential in either position, so the test
+    is the same one; only the comment case adds "and a bare name does not count".
     """
+    spans = ctx.comment_spans()
     for key, rx in patterns.BROAD_CRED_NAMES:
         for number in _candidate_lines(ctx, rx):
             line = ctx.lines[number - 1]
             match = rx.search(line)
             if match is None:
                 continue
-            if patterns.in_comment(ctx.comment_spans(), number, match.start()):
-                embedded = _EMBEDDED_CRED_RE.search(match.group(0))
-                if embedded is None or _is_placeholder(embedded.group(1)):
-                    continue
+            embedded = _EMBEDDED_CRED_RE.search(match.group(0))
+            if embedded is not None and _is_placeholder(embedded.group(1)):
+                continue
+            if embedded is None and patterns.in_comment(spans, number, match.start()):
+                continue
             ctx.add("broad_cred", key, number, match.start() + 1, line, match.group(0))
 
 
