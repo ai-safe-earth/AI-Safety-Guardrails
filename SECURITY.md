@@ -29,6 +29,15 @@ those as ordinary issues with the payload, or add a case to the probe corpus.
 - What happens and what you expected; a stack trace or report excerpt if any.
 - Which external scanners were on `PATH`, if `aisg audit` is involved.
 
+## How releases are published
+
+A `vX.Y.Z` tag runs `.github/workflows/release.yml`: the suite, the self-audit
+and `scripts/bump_version.py --check` gate it, the wheel and sdist are built, and
+PyPI publishing uses trusted publishing (OpenID Connect) behind a GitHub
+environment with a required reviewer. No long-lived PyPI credential exists in the
+repository or its secrets. A release you cannot trace to a tag, a workflow run
+and that approval is not one of ours.
+
 ## What the tooling sends
 
 `aisg audit` and `aisg lint` never send anything anywhere: no model calls, no

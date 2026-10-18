@@ -1,0 +1,150 @@
+# Release: tag `vX.Y.Z` -> gate -> build -> publish to PyPI (trusted publishing,
+# approved by a reviewer on the `pypi` environment) -> GitHub release -> smoke test
+# of the published package through `uvx`, the path the agent skill's bootstrap uses.
+#
+# Nothing here holds a PyPI credential. Publishing uses OpenID Connect
+# (`id-token: write`) and a pending publisher configured once on pypi.org for the
+# project `aisguard`: owner ai-safe-earth, repository AI-Safety-Guardrails,
+# workflow release.yml, environment pypi. A `workflow_dispatch` run with dry-run
+# set runs the gate and the build only.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Run the gate and the build; skip publish, release and smoke
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: every version site agrees, suite and self-audit green
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -e ".[dev,devtools,settings,otel,metrics]"
+      - name: Version sites equal pyproject and the tag
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            python scripts/bump_version.py --check --tag "${GITHUB_REF_NAME}"
+          else
+            python scripts/bump_version.py --check
+          fi
+      - run: python scripts/sync_skill.py --check
+      - run: python scripts/controls_md.py --check
+      - run: pytest -q
+      - name: Self-audit against the committed baseline
+        run: aisg audit . --no-external --fail-on high --baseline audit-baseline.json
+
+  build:
+    name: sdist and wheel
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install build==1.2.2.post1
+      - run: python -m build
+      - name: The wheel exposes only `aisg`
+        run: |
+          python - <<'PY'
+          import glob, sys, zipfile
+          whl = glob.glob("dist/*.whl")[0]
+          top = {n.split("/")[0] for n in zipfile.ZipFile(whl).namelist()}
+          pkgs = {t for t in top if not t.endswith(".dist-info")}
+          print("top-level in wheel:", sorted(pkgs))
+          if pkgs != {"aisg"}:
+              sys.exit(f"wheel exposes more than `aisg`: {sorted(pkgs)}")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: publish to PyPI (trusted publishing)
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # The environment carries a required reviewer: the run pauses here until a
+    # maintainer approves, and that approval is the release decision.
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          print-hash: true
+
+  github-release:
+    name: GitHub release with the changelog section
+    needs: publish
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Release notes from CHANGELOG.md
+        run: python scripts/bump_version.py --changelog-section "${GITHUB_REF_NAME}" > release-notes.md
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --title "${GITHUB_REF_NAME}" --notes-file release-notes.md
+
+  smoke:
+    name: the published package runs through uvx
+    needs: publish
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Wait for the index, then run the skill's bootstrap path
+        env:
+          VERSION: ${{ github.ref_name }}
+          FIXTURES: ${{ github.workspace }}/tests/fixtures/audit
+        run: |
+          set -u
+          V="${VERSION#v}"
+          # Run from an empty directory so this repo's [tool.aisg-audit] never leaks in.
+          cd "$(mktemp -d)"
+          for attempt in $(seq 1 10); do
+            if uvx --from "aisguard==${V}" aisg --version > version.txt 2>/dev/null; then
+              break
+            fi
+            echo "attempt ${attempt}: aisguard==${V} not resolvable yet; waiting 60 s"
+            sleep 60
+          done
+          cat version.txt
+          grep -qx "aisg ${V}" version.txt
+          rc=0; uvx --from "aisguard==${V}" aisg audit "${FIXTURES}/clean_py" --no-external || rc=$?
+          [ "$rc" -eq 0 ] || { echo "clean_py: expected exit 0, got $rc"; exit 1; }
+          rc=0; uvx --from "aisguard==${V}" aisg audit "${FIXTURES}/py_agent" --no-external || rc=$?
+          [ "$rc" -eq 1 ] || { echo "py_agent: expected exit 1, got $rc"; exit 1; }
+          echo "smoke: aisguard==${V} audits as expected"

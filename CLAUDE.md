@@ -52,6 +52,7 @@ aisg lint src/                                            # EU AI Act compliance
 aisg misalign src/                                        # ALIGN-001..008 rule set
 aisg audit .                                              # AI-surface audit, AUD-101..1003 (see below)
 aisg skill list                                           # where each agent host keeps skills
+python scripts/bump_version.py --check                    # every version site equals pyproject; CHANGELOG has the heading
 ```
 
 `aisg` is not on PATH in a bare checkout; `PYTHONPATH=src python -m aisg.cli <verb> ...` is
@@ -593,3 +594,13 @@ unregistered name.
 
 Commit directly to `main` — no branch/PR ceremony. `gh` is installed. CI triggers reference
 `develop` and `release/**`, but neither branch exists on the remote.
+
+**Releases.** The version lives in seven places plus the skill's bootstrap scripts and
+mirrors; `python scripts/bump_version.py X.Y.Z` rewrites all of them, retitles the
+`CHANGELOG.md` Unreleased section and runs `sync_skill.py`, and `--check` is part of the
+verify gate. A `vX.Y.Z` tag pushed to `origin` runs `.github/workflows/release.yml`:
+gate (version sites equal the tag, sync checks, pytest, self-audit), build, publish to
+PyPI through trusted publishing on the `pypi` environment (a required reviewer approves;
+no token exists anywhere), a GitHub release with the CHANGELOG section, and a smoke job
+that runs the published wheel through `uvx` the way the skill's bootstrap does. Tagging
+is the user's act, never done unasked: it publishes.

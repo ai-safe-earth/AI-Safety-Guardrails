@@ -1,4 +1,4 @@
-<img src="./.github/brand/mark.svg" alt="AI SAFE EARTH" width="72">
+<img src="https://raw.githubusercontent.com/ai-safe-earth/AI-Safety-Guardrails/main/.github/brand/mark.svg" alt="AI SAFE EARTH" width="72">
 
 # AI Safety Guardrails
 
@@ -82,7 +82,7 @@ ai-safety-guardrails/
 │
 ├── src/aisg/
 │   ├── __init__.py              # Public API surface
-│   ├── cli.py                   # `aisg` entry point (lint / misalign)
+│   ├── cli.py                   # `aisg` entry point: lint, misalign, init, probe, measure, audit, skill
 │   │
 │   ├── core/
 │   │   ├── base.py              # GuardrailBase, CheckResult, PipelineResult, Severity, Action
@@ -138,29 +138,33 @@ ai-safety-guardrails/
 │   │       ├── config.yml       # NeMo model + rail declarations
 │   │       └── rails.co         # Colang dialog flows
 │   │
-│   └── devtools/
-│       ├── euaiact_lint.py      # EU AI Act compliance linter  (aisg lint)
-│       ├── misalignment_check.py# AI alignment static analysis (aisg misalign)
-│       └── _config.py           # Reads [tool.*] defaults from pyproject.toml
+│   ├── devtools/
+│   │   ├── euaiact_lint.py      # EU AI Act compliance linter  (aisg lint)
+│   │   ├── misalignment_check.py# AI alignment static analysis (aisg misalign)
+│   │   ├── system_card.py       # ai-system-card.yaml writer    (aisg init)
+│   │   ├── probe.py             # Attack corpus against a live endpoint (aisg probe)
+│   │   ├── measure.py           # What each guard catches, breaks and costs (aisg measure)
+│   │   ├── skill.py             # Install the agent skill into host dirs (aisg skill)
+│   │   ├── audit/               # The AI-surface audit, 46 rules (aisg audit)
+│   │   └── _config.py           # Reads [tool.*] defaults from pyproject.toml
+│   ├── probes/                  # Attack and benign corpora (YAML, ship in the wheel)
+│   └── skills/ai-safety-audit/  # The agent skill (canonical copy; mirrored below)
 │
 ├── config/                      # Same YAML presets, for local development
 │   ├── default.yaml
 │   ├── eu_high_risk.yaml
 │   └── nemo_rails/
 │
+├── .claude/skills/, .agents/skills/   # Byte-identical mirrors of the skill (scripts/sync_skill.py)
+├── bench/                       # Precision bench: SHA-pinned corpus, labelled findings
+├── docs/                        # STATUS.md (handoff), PLAN.md, plan/, explain/
 ├── tests/
 │   ├── conftest.py              # Puts src/ on sys.path for uninstalled runs
-│   ├── test_advanced_injection.py
-│   └── unit/
-│       ├── test_guardrails.py
-│       ├── test_judges.py
-│       ├── test_nemo_rails.py
-│       ├── test_nist_ai_rmf.py
-│       ├── test_otel.py
-│       ├── test_pii_tokenization.py
-│       └── test_settings.py
+│   ├── fixtures/                # Deliberately non-compliant linter input; audit fixture trees
+│   └── unit/                    # ~45 files: test_<area>.py, test_audit_<module>.py, test_audit_rules_<family>.py
 │
 ├── .env.example                 # All environment variables documented
+├── audit-baseline.json          # Accepted findings of the self-audit, each with a reason
 ├── pyproject.toml
 └── README.md
 ```
@@ -179,33 +183,36 @@ text = load_preset("eu_high_risk.yaml")
 
 ## Installation
 
-**Minimum (core + YAML config, no external deps):**
+**Minimum (runtime guards + YAML presets; `pyyaml` and `aiohttp` come with it):**
 ```bash
-pip install pyyaml aiohttp
+pip install aisguard
 ```
 
-**Recommended for most projects:**
+**With the developer tools (`aisg lint|misalign|init|probe|measure|audit|skill`):**
 ```bash
-pip install pyyaml aiohttp pydantic-settings
+pip install "aisguard[devtools]"
 ```
 
 **Install optional extras as needed:**
 ```bash
-# LLM judge providers
-pip install "aisguard[settings]"      # .env file support (pydantic-settings)
-pip install "aisguard[anthropic]"     # Claude judge
-pip install "aisguard[llamaguard]"    # LlamaGuard local (HuggingFace)
+# Settings and judges
+pip install "aisguard[settings]"          # .env file support (pydantic-settings)
+pip install "aisguard[anthropic]"         # Claude judge (anthropic SDK)
+pip install "aisguard[llamaguard-local]"  # LlamaGuard through transformers + torch (~2 GB)
 
 # Integrations
-pip install "aisguard[fastapi]"       # FastAPI middleware
-pip install "aisguard[langchain]"     # LangChain callback
-pip install "aisguard[nemo]"          # NVIDIA NeMo Guardrails
+pip install "aisguard[fastapi]"           # FastAPI middleware
+pip install "aisguard[langchain]"         # LangChain callback
+pip install "aisguard[nemo]"              # NVIDIA NeMo Guardrails
 
 # Observability
-pip install "aisguard[otel]"          # OpenTelemetry
-pip install "aisguard[metrics]"       # Prometheus
+pip install "aisguard[otel]"              # OpenTelemetry
+pip install "aisguard[metrics]"           # Prometheus
 
-# Everything
+# Pre-commit companions (pre-commit, detect-secrets)
+pip install "aisguard[precommit]"
+
+# Everything except the local LlamaGuard weights
 pip install "aisguard[all]"
 ```
 
@@ -214,7 +221,14 @@ pip install "aisguard[all]"
 > `aisg audit .`). `aisg` on PyPI is an unrelated project — do not install it
 > expecting this one.
 
-> **Note:** LlamaGuard via Groq or Together AI only needs `aiohttp` (already a core dep) — no extra package required. Only local HuggingFace inference needs the `llamaguard` extra.
+> **Releases** are published to PyPI from `v*` tags by `.github/workflows/release.yml`
+> (trusted publishing; a maintainer approves each release). Until the first tag is
+> on PyPI, install from the repository instead:
+> `pip install "aisguard[devtools] @ git+https://github.com/ai-safe-earth/AI-Safety-Guardrails"`.
+
+> **Note:** LlamaGuard via Groq, Together, Ollama or OpenAI needs nothing beyond the core
+> `aiohttp` dependency (the `llamaguard` extra is empty and exists for discoverability).
+> Only local HuggingFace inference needs `llamaguard-local`.
 
 ---
 
@@ -1025,15 +1039,16 @@ aisg skill diff --host all             # exit 1 when an installed copy has drift
 ```
 
 The skill (`ai-safety-audit`, shipped inside the wheel) is what an agent host
-adds on top of the CLI: a five-phase procedure -- discover, diagnose,
-prescribe, apply, verify -- in which the agent runs `aisg audit` through a
-bootstrap script pinned to this package's version, presents findings in
-report order with their `[UNMEASURED]` label and the UNKNOWN list verbatim,
-proposes the recommended control from a per-language guide, applies one
-change per user approval, and re-audits against the baseline written in
-phase 1. The intelligence stays in the CLI; the skill adds explanation and a
-gated change workflow, and it never edits permission files, CI or secrets
-without a per-diff approval.
+adds on top of the CLI: a five-phase procedure -- survey, document 1, apply,
+document 2, verify -- in which the agent runs `aisg audit` through a
+bootstrap script pinned to this package's version, renders a before document
+of the system (`--format html`), walks the plan one row per user approval
+with the finding's `recommendation.package` as the decision source,
+re-audits after every diff against the baseline written in phase 1, renders
+the after document, and only then runs tests, `aisg measure` or `aisg probe`.
+Every artefact lands under `.aisg-audit/`. The intelligence stays in the CLI;
+the skill adds explanation and a gated change workflow, and it never edits
+permission files, CI or secrets without a per-diff approval.
 
 The audit is evidence, not a compliance verdict: it lists what it found and
 what it could not check. Absence of a finding is not evidence of safety.
@@ -1190,8 +1205,8 @@ input:
 ## Running Tests
 
 ```bash
-pip install pytest pytest-asyncio
-pytest                        # run all ~2700 tests (about two minutes)
+pip install -e ".[dev,devtools,settings,otel,metrics]"
+pytest                        # run all ~3650 tests (about three minutes)
 pytest tests/unit/            # unit tests only
 pytest -v -k "nemo"           # filter by name
 pytest -v -k "pii"            # PII tokenization + restoration tests
