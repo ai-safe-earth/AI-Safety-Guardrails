@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -24,6 +25,7 @@ from .base import (
     PipelineResult,
 )
 from .exceptions import GuardrailBlockedError, GuardrailConfigError
+from .measurement import Thresholds
 from .registry import REGISTRY
 
 _nullcontext = contextlib.nullcontext
@@ -63,6 +65,7 @@ class GuardrailPipeline:
         audit_logger=None,
         telemetry_provider=None,
         request_timeout: float | None = None,
+        thresholds: Thresholds | None = None,
     ):
         self.input_guards: list[GuardrailBase] = input_guards or []
         self.processing_guards: list[GuardrailBase] = processing_guards or []
@@ -73,6 +76,41 @@ class GuardrailPipeline:
         self._audit_logger = audit_logger
         self._telemetry = telemetry_provider
         self.request_timeout = request_timeout  # Per-request wall-clock timeout (seconds)
+        # Opt-in demotion: with thresholds set, a guard whose measured Profile fails
+        # them does not run (`GuardrailBase.fires_by_default`). None keeps every
+        # enabled guard running, which is what an unmeasured guard always does: an
+        # empty Profile cannot fail a threshold, so nothing demotes until a Profile
+        # measured by `aisg measure` is pasted onto the guard.
+        self.thresholds = thresholds
+        self.demoted: list[tuple[str, list[str]]] = []
+        if thresholds is not None:
+            for guard in self._all_guards():
+                reasons = guard.demotion_reasons(thresholds)
+                if reasons:
+                    self.demoted.append((guard.name, reasons))
+                    print(
+                        f"[GuardrailPipeline] {guard.name} demoted by thresholds: "
+                        + "; ".join(reasons),
+                        file=sys.stderr,
+                    )
+
+    def _all_guards(self) -> list[GuardrailBase]:
+        seen: set[int] = set()
+        out: list[GuardrailBase] = []
+        for group in (
+            self.input_guards,
+            self.processing_guards,
+            self.output_guards,
+            self.policy_guards,
+        ):
+            for guard in group:
+                if id(guard) not in seen:
+                    seen.add(id(guard))
+                    out.append(guard)
+        return out
+
+    def _fires(self, guard: GuardrailBase) -> bool:
+        return self.thresholds is None or guard.fires_by_default(self.thresholds)
 
     # ------------------------------------------------------------------
     # Public API
@@ -246,7 +284,7 @@ class GuardrailPipeline:
         blocked = False
         rejection_message = None
 
-        enabled_guards = [g for g in guards if g.enabled]
+        enabled_guards = [g for g in guards if g.enabled and self._fires(g)]
 
         with (
             self._telemetry.pipeline_stage_span(stage_str, run_id)
@@ -343,6 +381,7 @@ class GuardrailPipeline:
         fail_open = pipeline_cfg.get("fail_open", False)
         request_timeout_raw = pipeline_cfg.get("request_timeout", 0)
         request_timeout = float(request_timeout_raw) if request_timeout_raw else None
+        thresholds = _thresholds_from_config(pipeline_cfg.get("thresholds"), path)
 
         def build_guards(stage_key: str) -> list[GuardrailBase]:
             stage_cfg = cfg.get(stage_key)
@@ -381,4 +420,51 @@ class GuardrailPipeline:
             parallel=parallel,
             fail_open=fail_open,
             request_timeout=request_timeout,
+            thresholds=thresholds,
         )
+
+
+_THRESHOLD_KEYS = (
+    "min_precision",
+    "max_false_positive_rate",
+    "max_p99_latency_ms",
+    "max_usd_per_request",
+    "max_human_rate",
+)
+
+
+def _thresholds_from_config(raw: object, path: Path) -> Thresholds | None:
+    """
+    `pipeline.thresholds:` as a Thresholds, or None when the block is absent. Only
+    the five known keys are accepted; a typo would otherwise silently keep every
+    guard running, which is the opposite of what the block is for.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise GuardrailConfigError(f"{path}: pipeline.thresholds must be a mapping")
+    unknown = sorted(set(raw) - set(_THRESHOLD_KEYS))
+    if unknown:
+        raise GuardrailConfigError(
+            f"{path}: unknown pipeline.thresholds key(s) {unknown}; known: {list(_THRESHOLD_KEYS)}"
+        )
+    values: dict[str, float | None] = {}
+    for key, value in raw.items():
+        if value is None:
+            values[key] = None
+        elif isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise GuardrailConfigError(f"{path}: pipeline.thresholds.{key} must be a number")
+        else:
+            values[key] = float(value)
+    base = Thresholds()
+    return Thresholds(
+        min_precision=values.get("min_precision", base.min_precision)
+        if values.get("min_precision") is not None
+        else base.min_precision,
+        max_false_positive_rate=values.get("max_false_positive_rate")
+        if values.get("max_false_positive_rate") is not None
+        else base.max_false_positive_rate,
+        max_p99_latency_ms=values.get("max_p99_latency_ms"),
+        max_usd_per_request=values.get("max_usd_per_request"),
+        max_human_rate=values.get("max_human_rate"),
+    )

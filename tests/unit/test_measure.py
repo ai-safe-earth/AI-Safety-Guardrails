@@ -558,7 +558,12 @@ class TestReportProvenance:
         from aisg.config import preset_path
 
         keys = list(self._report(preset_path("default.yaml")))
-        tail = [k for k in keys if k not in ("generated_at", "models", "config_digest")]
+        assert keys[:3] == ["schema", "generated_at", "measured_on"]
+        tail = [
+            k
+            for k in keys
+            if k not in ("generated_at", "measured_on", "models", "config_digest", "pipeline")
+        ]
         assert tail == ["schema", "config", "corpus", "thresholds", "disclaimer", "guards"]
 
     def test_keyless_config_names_no_model(self):

@@ -43,6 +43,7 @@ Commands:
   measure     Report what each guard catches, what it breaks, and what it costs
   audit       Static AI-safety audit of a repository: findings describe evidence, never verdicts
   skill       Install the packaged ai-safety-audit agent skill into host skill directories
+  decide      What each proposed control costs (latency, tokens, usd, human load) against the declared budgets
 
 Run `aisg <command> --help` for a command's own options.
 
@@ -59,6 +60,7 @@ Examples:
   aisg audit . --baseline audit-baseline.json --fail-on high
   aisg skill install --host all
   aisg skill diff --host all
+  aisg decide --requests-per-day 20000 --p99-budget-ms 250 --monthly-budget-usd 300
 """
 
 
@@ -104,6 +106,12 @@ def _skill(argv: Sequence[str]) -> int:
     return skill_main(list(argv))
 
 
+def _decide(argv: Sequence[str]) -> int:
+    from aisg.devtools.decide import main as decide_main
+
+    return decide_main(list(argv))
+
+
 COMMANDS: dict[str, Callable[[Sequence[str]], int]] = {
     "lint": _lint,
     "misalign": _misalign,
@@ -112,6 +120,7 @@ COMMANDS: dict[str, Callable[[Sequence[str]], int]] = {
     "measure": _measure,
     "audit": _audit,
     "skill": _skill,
+    "decide": _decide,
 }
 
 

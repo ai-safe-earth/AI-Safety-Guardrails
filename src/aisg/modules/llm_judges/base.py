@@ -20,7 +20,69 @@ from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
+
+from aisg.core.measurement import LLMUsage
+
+# ---------------------------------------------------------------------------
+# Usage readers: what a provider says a call cost, in tokens
+# ---------------------------------------------------------------------------
+
+
+def _int_or_none(value: Any) -> int | None:
+    """An int, or None. A bool is not a count, and neither is a test's MagicMock."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def usage_from_anthropic(response: Any, model: str) -> LLMUsage:
+    """`response.usage.input_tokens` / `.output_tokens` of an Anthropic Messages response."""
+    usage = getattr(response, "usage", None)
+    tokens_in = _int_or_none(getattr(usage, "input_tokens", None))
+    tokens_out = _int_or_none(getattr(usage, "output_tokens", None))
+    measured = tokens_in is not None and tokens_out is not None
+    return LLMUsage(
+        tokens_in, tokens_out, model, "anthropic", "measured" if measured else "unavailable"
+    )
+
+
+def usage_from_openai_compatible(data: Any, model: str, provider: str) -> LLMUsage:
+    """`usage.prompt_tokens` / `usage.completion_tokens` of a chat-completions body."""
+    usage = data.get("usage") if isinstance(data, dict) else None
+    usage = usage if isinstance(usage, dict) else {}
+    tokens_in = _int_or_none(usage.get("prompt_tokens"))
+    tokens_out = _int_or_none(usage.get("completion_tokens"))
+    measured = tokens_in is not None and tokens_out is not None
+    return LLMUsage(
+        tokens_in, tokens_out, model, provider, "measured" if measured else "unavailable"
+    )
+
+
+def usage_from_ollama(data: Any, model: str) -> LLMUsage:
+    """`prompt_eval_count` / `eval_count` of an Ollama chat response."""
+    body = data if isinstance(data, dict) else {}
+    tokens_in = _int_or_none(body.get("prompt_eval_count"))
+    tokens_out = _int_or_none(body.get("eval_count"))
+    measured = tokens_in is not None and tokens_out is not None
+    return LLMUsage(
+        tokens_in, tokens_out, model, "ollama", "measured" if measured else "unavailable"
+    )
+
+
+def usage_metadata(verdict: Any, judge: Any) -> dict[str, Any]:
+    """
+    The `metadata["llm_usage"]` dict for a guard that consumed `verdict` from `judge`.
+
+    A verdict with no usage (the fallback `judge()` returns on an exception, or a
+    judge that predates usage recording) is `unavailable` for the judge's model: a
+    call was attempted and nothing says what it cost.
+    """
+    usage = getattr(verdict, "usage", None)
+    if not isinstance(usage, LLMUsage):
+        usage = LLMUsage.unavailable_for(
+            str(getattr(judge, "model", "") or ""), str(getattr(judge, "provider", "") or "")
+        )
+    return usage.as_metadata()
+
 
 # ---------------------------------------------------------------------------
 # Verdict dataclass
@@ -47,6 +109,8 @@ class JudgeVerdict:
         reason:             The judge's own explanation, when it gives one.
                             Empty for judges that return no rationale.
         error:              Set if the call failed and the verdict is a fallback.
+        usage:              Tokens the call spent and how that is known
+                            (`LLMUsage`); None when the judge did not record it.
     """
 
     safe: bool
@@ -57,6 +121,7 @@ class JudgeVerdict:
     judge_name: str = ""
     latency_ms: float = 0.0
     error: str | None = None
+    usage: LLMUsage | None = None
 
     @property
     def failed(self) -> bool:

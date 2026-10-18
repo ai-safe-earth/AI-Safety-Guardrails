@@ -131,6 +131,7 @@ SUBSYSTEM_OF_RULE: dict[str, str] = {
     "AUD-803": "guardrails",
     "AUD-804": "guardrails",
     "AUD-805": "guardrails",
+    "AUD-806": "guardrails",
     "AUD-701": "observability",
     "AUD-702": "observability",
     "AUD-703": "governance",

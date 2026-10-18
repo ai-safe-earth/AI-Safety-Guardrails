@@ -112,6 +112,9 @@ def _make_otel_test_provider():
     provider._finding_counter = None
     provider._stage_latency = None
     provider._guard_latency = None
+    provider._llm_calls = None
+    provider._llm_tokens = None
+    provider._llm_tokens_per_call = None
     provider._init_instruments()
 
     return provider, span_exporter, metric_reader

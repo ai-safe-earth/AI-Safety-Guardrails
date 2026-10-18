@@ -20,7 +20,7 @@ import pytest
 from aisg import __version__, cli
 from aisg.devtools._config import find_pyproject
 
-EXPECTED_COMMANDS = ("lint", "misalign", "init", "probe", "measure", "audit", "skill")
+EXPECTED_COMMANDS = ("lint", "misalign", "init", "probe", "measure", "audit", "skill", "decide")
 
 # The subcommand parsers keep their own prog names; `--help` output starts with it.
 PROG_BY_COMMAND = {
@@ -31,6 +31,7 @@ PROG_BY_COMMAND = {
     "measure": "aisg measure",
     "audit": "aisg audit",
     "skill": "aisg skill",
+    "decide": "aisg decide",
 }
 
 SRC_DIR = Path(__file__).resolve().parents[2] / "src"

@@ -258,7 +258,7 @@ _TOOL_BODY_LINES = 30
 _GATE_WINDOW = 60
 _LOOP_WINDOW = 40
 _REPORT_HEAD = 2048
-_REPORT_NAME_RE = re.compile(r"^(?:measure|probe)[-_]?report.*\.json$", re.I)
+_REPORT_NAME_RE = re.compile(r"^(?:measure|probe|decision)[-_]?report.*\.json$", re.I)
 # Any aisg schema marks a report candidate: a version other than aisg/1 must surface
 # as UNKNOWN (reports), not vanish because the file looked unfamiliar.
 _REPORT_SCHEMA_RE = re.compile(r'"schema"\s*:\s*"aisg/[0-9]+"')
@@ -853,7 +853,10 @@ def _matches(record: FileRecord, text: str) -> list[_Match]:
     if _glob_hit(patterns.ANNEX_III_FILE_GLOBS, relpath):
         _scan_rows(ctx, "annex_iii", patterns.ANNEX_III_KEYWORDS)
     if klass == "config":
-        _scan_model_ids(ctx, config=True)
+        # An aisg price table lists model ids in order to price them; it configures no
+        # call, so its ids are not deployments and AUD-601 has nothing to say about them.
+        if not _is_price_table(text):
+            _scan_model_ids(ctx, config=True)
         _scan_rows(ctx, "kill_switch_symbol", _KILL_SWITCH_SYMBOL_ROWS)
         _scan_aisg_preset(ctx)
         if PurePosixPath(relpath).suffix.lower() in _STRUCTURED_EXTS:
@@ -1145,7 +1148,21 @@ def _load_json(path: Path) -> tuple[dict[str, Any] | None, str | None]:
     return body, None
 
 
+_PRICE_TABLE_RE = re.compile(r"^kind:\s*prices\s*$", re.M)
+_SCHEMA_LINE_RE = re.compile(r"^schema:\s*aisg/1\s*$", re.M)
+
+
+def _is_price_table(text: str) -> bool:
+    """A `prices.yaml` document: `schema: aisg/1` and `kind: prices` at the top level."""
+    head = text[:4096]
+    return _PRICE_TABLE_RE.search(head) is not None and _SCHEMA_LINE_RE.search(head) is not None
+
+
 def _report_kind(body: dict[str, Any]) -> str | None:
+    # `aisg decide` output is evidence about the pipeline's declared budgets (AUD-806
+    # reads it), so it is a report like measure and probe, not the audit's own output.
+    if body.get("kind") == "decision" and isinstance(body.get("controls"), list):
+        return "decision"
     if isinstance(body.get("guards"), (list, dict)):
         return "measure"
     summary = body.get("summary")
@@ -1232,6 +1249,14 @@ def read_probe_report(path: Path, root: Path) -> ReportRecord | None:
     if body is None or body.get("schema") != SCHEMA_VERSION or _report_kind(body) != "probe":
         return None
     return _build_report("probe", Path(path), root, body)
+
+
+def read_decision_report(path: Path, root: Path) -> ReportRecord | None:
+    """An `aisg decide` document, or None when the file is not an aisg/1 decision."""
+    body, _error = _load_json(Path(path))
+    if body is None or body.get("schema") != SCHEMA_VERSION or _report_kind(body) != "decision":
+        return None
+    return _build_report("decision", Path(path), root, body)
 
 
 def read_system_card(path: Path) -> dict[str, Any] | None:

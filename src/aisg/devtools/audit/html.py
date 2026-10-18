@@ -204,6 +204,41 @@ _T_PLAN_ROW = "#{n} {id} {title} -- {symbols}. Leaves open: {leaves_open}"
 _T_PLAN_WIRING = (
     "Wiring a control is not evidence the finding is gone: re-run the audit and read document 2."
 )
+_T_TRADE = "Trade table"
+_T_TRADE_INTRO = (
+    "What each proposed control costs against the budgets the operator declared, from the "
+    "`aisg decide` document named below. Latency and catch rates are measured against the "
+    "shipped corpora; tokens are measured on a real call or estimated from the prompt, as "
+    "each row's provenance says; dollars are tokens priced against a dated table. An "
+    "unknown budget never counts as exceeded. The decision JSON is authoritative; this "
+    "table repeats it."
+)
+_T_TRADE_HEADERS: tuple[str, ...] = (
+    "control",
+    "rules",
+    "catch",
+    "benign broken",
+    "human",
+    "p50/p99 ms",
+    "tokens in/out",
+    "usd/request",
+    "usd/month",
+    "fail mode",
+    "provenance",
+    "recommendation",
+)
+_T_TRADE_TOTALS = (
+    "Selected controls together ({mode}): p50 {p50} ms, p99 upper bound {p99} ms (the sum of "
+    "per-guard p99s bounds the pipeline p99; it is not the pipeline p99), usd/request {usd_req}, "
+    "usd/month {usd_month}, human reviews/day {human}."
+)
+_T_TRADE_OVER = "Over budget: {budgets}."
+_T_TRADE_EXCLUDED = "Excluded from the totals, no figure: {controls}."
+_T_TRADE_UNMEASURED = "UNMEASURED (no figure exists; nothing here is a pass)"
+_T_TRADE_FROM = (
+    "From {file}, generated {generated_at}; prices as of {as_of}{stale}; month = {days} days."
+)
+_T_TRADE_STALE = ", STALE"
 _T_REMAINING = "Remaining actions"
 _T_GROUP_OUTSIDE = "Outside the package"
 _T_GROUP_PACKAGE = "Package control wired or available, but leaves open"
@@ -354,6 +389,15 @@ TEMPLATES: tuple[str, ...] = (
     _T_PLAN_ROWS,
     _T_PLAN_ROW,
     _T_PLAN_WIRING,
+    _T_TRADE,
+    _T_TRADE_INTRO,
+    *_T_TRADE_HEADERS,
+    _T_TRADE_TOTALS,
+    _T_TRADE_OVER,
+    _T_TRADE_EXCLUDED,
+    _T_TRADE_UNMEASURED,
+    _T_TRADE_FROM,
+    _T_TRADE_STALE,
     _T_REMAINING,
     _T_GROUP_OUTSIDE,
     _T_GROUP_PACKAGE,
@@ -860,17 +904,129 @@ def _svg(report: Report, boxes: dict[str, _Box], inv: dict[str, Any] | None) -> 
 # ---------------------------------------------------------------------------
 
 
-def _numbering(doc2: bool, ran_any: bool) -> dict[str, int]:
+def _numbering(doc2: bool, ran_any: bool, trade: bool = False) -> dict[str, int]:
     keys: list[str] = []
     if doc2:
         keys.append("since")
     keys += ["map", "subsystems"]
     if ran_any:
         keys.append("plan")
+    if trade:
+        keys.append("trade")
     if doc2:
         keys.append("remaining")
     keys += ["unknown", "external"]
     return {key: i for i, key in enumerate(keys, 1)}
+
+
+def _fmt_rate(value: Any) -> str:
+    return (
+        f"{value:.0%}"
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+        else _T_DASH
+    )
+
+
+def _fmt_num(value: Any, digits: int) -> str:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return _T_DASH
+    return f"{value:.{digits}f}"
+
+
+def _fmt_pair(a: Any, b: Any, digits: int) -> str:
+    if not isinstance(a, (int, float)) and not isinstance(b, (int, float)):
+        return _T_DASH
+    return f"{_fmt_num(a, digits)}/{_fmt_num(b, digits)}"
+
+
+def _trade_table(numbers: dict[str, int], decision: dict[str, Any]) -> list[str]:
+    """The `aisg decide` document as a section: one row per candidate control."""
+    out = [_h2(numbers["trade"], _T_TRADE, "trade")]
+    out.append(f"<p>{_esc(_T_TRADE_INTRO)}</p>")
+    controls = decision.get("controls") if isinstance(decision.get("controls"), list) else []
+    if not controls:
+        out.append(f"<p>{_esc(_T_NONE)}</p>")
+    else:
+        out.append("<table>")
+        out.append("<tr>" + "".join(f"<th>{_esc(h)}</th>" for h in _T_TRADE_HEADERS) + "</tr>")
+        for row in controls:
+            if not isinstance(row, dict):
+                continue
+            rec = row.get("recommendation") if isinstance(row.get("recommendation"), dict) else {}
+            relevant = row.get("catch_rate_relevant") or {}
+            catch = _fmt_rate(row.get("catch_rate"))
+            if isinstance(relevant, dict) and relevant:
+                catch += " (" + ", ".join(f"{k} {_fmt_rate(v)}" for k, v in relevant.items()) + ")"
+            usd_basis = str(row.get("usd_basis") or "")
+            cells = [
+                str(row.get("control") or ""),
+                " ".join(str(r.get("id")) for r in row.get("rules") or [] if isinstance(r, dict)),
+                catch,
+                _fmt_rate(row.get("benign_broken_rate")),
+                _fmt_rate(row.get("human_rate")),
+                _fmt_pair(row.get("p50_ms"), row.get("p99_ms"), 2),
+                _fmt_pair(row.get("tokens_in_per_request"), row.get("tokens_out_per_request"), 0),
+                f"{_fmt_num(row.get('usd_per_request'), 5)} ({usd_basis})",
+                f"{_fmt_num(row.get('usd_per_month'), 2)} ({usd_basis})",
+                str(row.get("fail_mode") or _T_DASH),
+                str(row.get("provenance") or "UNMEASURED"),
+                str(rec.get("verdict") or ""),
+            ]
+            out.append("<tr>" + "".join(f"<td>{_esc(c)}</td>" for c in cells) + "</tr>")
+        out.append("</table>")
+    totals = decision.get("totals") if isinstance(decision.get("totals"), dict) else {}
+    out.append(
+        "<p>"
+        + _esc(
+            _T_TRADE_TOTALS.format(
+                mode=totals.get("mode") or _T_DASH,
+                p50=_fmt_num(totals.get("p50_ms"), 2),
+                p99=_fmt_num(totals.get("p99_ms_upper_bound"), 2),
+                usd_req=_fmt_num(totals.get("usd_per_request"), 5),
+                usd_month=_fmt_num(totals.get("usd_per_month"), 2),
+                human=_fmt_num(totals.get("human_per_day"), 1),
+            )
+        )
+        + "</p>"
+    )
+    over = totals.get("over_budget") or []
+    if over:
+        out.append(
+            f"<p><strong>{_esc(_T_TRADE_OVER.format(budgets=', '.join(map(str, over))))}</strong></p>"
+        )
+    excluded = totals.get("excluded_unmeasured") or []
+    if excluded:
+        out.append(
+            f"<p>{_esc(_T_TRADE_EXCLUDED.format(controls=', '.join(map(str, excluded))))}</p>"
+        )
+    out.append(f"<h3>{_esc(_T_TRADE_UNMEASURED)}</h3>")
+    unmeasured = decision.get("unmeasured") if isinstance(decision.get("unmeasured"), list) else []
+    if not unmeasured:
+        out.append(f"<p>{_esc(_T_NONE)}</p>")
+    else:
+        out.append("<ul>")
+        for item in unmeasured:
+            if isinstance(item, dict):
+                out.append(
+                    f"<li>{_esc(str(item.get('control') or ''))}: {_esc(str(item.get('why') or ''))}</li>"
+                )
+        out.append("</ul>")
+    inputs = decision.get("inputs") if isinstance(decision.get("inputs"), dict) else {}
+    prices = inputs.get("prices") if isinstance(inputs.get("prices"), dict) else {}
+    out.append(
+        "<p>"
+        + _esc(
+            _T_TRADE_FROM.format(
+                file=decision.get("_file") or _T_DASH,
+                generated_at=decision.get("generated_at") or _T_DASH,
+                as_of=prices.get("as_of") or _T_DASH,
+                stale=_T_TRADE_STALE if prices.get("stale") else "",
+                days=30,
+            )
+        )
+        + "</p>"
+    )
+    return out
 
 
 def _h2(number: int, title: str, anchor: str) -> str:
@@ -1274,15 +1430,18 @@ def _footer(report: Report, tool_label: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def render_html(report: Report, quiet: bool = False) -> str:
+def render_html(report: Report, quiet: bool = False, decision: dict[str, Any] | None = None) -> str:
     """
     The page. `quiet` is accepted so `render()` can pass it through unconditionally and
-    ignored: a page is read, not tailed, and every section is always present.
+    ignored: a page is read, not tailed, and every section is always present. `decision`
+    is an `aisg decide` document (`--decision`); with it the page gains the Trade table
+    section after the plan, and without it the page is byte-identical to before.
     """
     del quiet
     doc2 = report.baseline is not None
     ran_any = any(isinstance(r, dict) and r.get("ran") for r in (report.rules or ()))
-    numbers = _numbering(doc2, ran_any)
+    trade = isinstance(decision, dict) and decision.get("kind") == "decision"
+    numbers = _numbering(doc2, ran_any, trade)
     inv = _as_dict(report.inventory)
     inv = inv if isinstance(inv, dict) and inv else None
     boxes = _place(report)
@@ -1319,6 +1478,8 @@ def render_html(report: Report, quiet: bool = False) -> str:
     out.extend(_subsystems(numbers, boxes, inv, languages, accepted_index))
     if ran_any:
         out.extend(_plan(numbers, rows))
+    if trade:
+        out.extend(_trade_table(numbers, decision))  # type: ignore[arg-type]
     if doc2:
         out.extend(_remaining(report, numbers))
     out.extend(_unknown_section(report, numbers))

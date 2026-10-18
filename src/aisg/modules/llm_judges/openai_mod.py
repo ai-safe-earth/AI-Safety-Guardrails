@@ -36,6 +36,7 @@ from __future__ import annotations
 import os
 from typing import Literal
 
+from aisg.core.measurement import LLMUsage
 from aisg.modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
 
 # OpenAI moderation categories that map to our higher severity findings
@@ -76,6 +77,7 @@ class OpenAIModerationJudge(LLMJudgeBase):
     """
 
     name = "openai_moderation"
+    provider = "openai"
 
     def __init__(
         self,
@@ -143,4 +145,7 @@ class OpenAIModerationJudge(LLMJudgeBase):
             confidence=confidence,
             reason=("flagged by the moderation endpoint" if flagged else ""),
             raw_response=json.dumps(result),
+            # The moderation endpoint reports no token usage. The call happened, so
+            # this is `unavailable`; the price table marks the model `free`.
+            usage=LLMUsage.unavailable_for(self.model, "openai"),
         )

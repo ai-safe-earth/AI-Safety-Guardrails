@@ -76,6 +76,7 @@ How to read this file:
 | AUD-803 | measurement | no | `PromptInjectionGuard`, `aisg measure` |
 | AUD-804 | gate | yes | `LLMJudgeBase` |
 | AUD-805 | detector | no | `LLMOutputFilter`, `aisg measure` |
+| AUD-806 | measurement | no | `aisg decide`, `aisg measure` |
 | AUD-901 | measurement | yes | `aisg measure`, `aisg probe` |
 | AUD-902 | measurement | no | `aisg probe`, `aisg measure` |
 | AUD-903 | measurement | yes | `aisg measure`, `aisg probe` |
@@ -524,6 +525,19 @@ code before proposing a change.
   (AUD-804) before it adds anything. toxicity_output is a pattern list like the one reported
   here, not a classifier.
 - Mapping: ASI01, LLM01, LLM05, EU:Art.15, NIST:MEASURE-2.7.
+
+### AUD-806 Reported guard over the declared budget (high, `REPORTED <age>`)
+
+- Control (T1): apply the configuration change the `aisg decide` document names for the
+  guard (judge off, a cache, stage order, flag instead of block), or raise the budget in
+  the system card with a reason; then re-run `aisg measure` and `aisg decide` so the
+  figures describe the new configuration. The finding is as old as the decision it came
+  from, and the budgets it compares against are the operator's own declarations.
+- Package: measurement, same control: no, `aisg decide`, `aisg measure`. Leaves open: The
+  budgets come from the operator's card and traffic profile; the tool compares, it does not
+  set them. A changed configuration needs a new measure run and a new decide run before the
+  figures describe it.
+- Mapping: ASI01, LLM10, EU:Art.15, NIST:MEASURE-2.7, NIST:MANAGE-1.3.
 
 ## P9 Evaluation loop
 

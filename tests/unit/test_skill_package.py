@@ -667,10 +667,15 @@ class TestScripts:
         assert stage_keys, "from_config: no build_guards calls found"
         assert keys == stage_keys, (keys, stage_keys)
         assert "guards):" not in text and "(pipeline|" not in text, name
-        # Every shipped preset carries at least one of those keys, so the detection
-        # would find a preset copied into the target.
+        # Every shipped pipeline preset carries at least one of those keys, so the
+        # detection would find a preset copied into the target. Other packaged YAML
+        # (the price table, the attestation levels) is not a pipeline and is not read
+        # by `from_config`, so `aisg.config.PRESETS` is the list, not a glob.
+        from aisg.config import PRESETS
+
         pattern = re.compile(r"^(?:" + "|".join(sorted(stage_keys)) + r"):", re.MULTILINE)
-        for preset in sorted((REPO / "src" / "aisg" / "config").glob("*.yaml")):
+        for name_ in PRESETS:
+            preset = REPO / "src" / "aisg" / "config" / name_
             assert pattern.search(preset.read_text(encoding="utf-8")), preset.name
 
     @needs_sh

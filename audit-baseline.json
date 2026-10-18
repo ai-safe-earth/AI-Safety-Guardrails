@@ -1,7 +1,7 @@
 {
   "schema": "aisg/1",
   "kind": "audit-baseline",
-  "generated_at": "2026-09-12T11:29:14Z",
+  "generated_at": "2026-10-18T23:40:28Z",
   "tool": {
     "name": "aisg-audit",
     "version": "0.1.0"
@@ -10,6 +10,8 @@
     "06a9a7d4f40e98f5",
     "08b0e1380a7102bd",
     "0d2cdc732e6ea080",
+    "10293589c3096cd4",
+    "250a3ae263861265",
     "287c0a092b452b24",
     "3128013255a8f070",
     "37a89e88c61c038a",
@@ -17,17 +19,18 @@
     "4a967929f06e5b9e",
     "630654068440d1a8",
     "78fb1a3c4007a491",
+    "80af32970a9c7027",
+    "80f7938a43ad8826",
     "80fa4b2f73752472",
-    "a3285f3844224e17",
-    "a5bc7c520b00255b",
+    "9f548b6a204e00cf",
+    "a6efa9a9b5d3a84a",
     "a7550f41ecd36285",
     "bc65de5b165e9ed0",
-    "bf4da3fcfd2705d9",
     "c264651cc03bd5e7",
-    "c2d3f96f75c092c5",
     "c8de003db6557853",
     "cd0a20265f703b75",
     "d13c38c0e5c8d27f",
+    "f9320ce6578817f6",
     "ff45027259024d0a"
   ],
   "accepted": [
@@ -64,19 +67,19 @@
     {
       "fingerprint": "287c0a092b452b24",
       "rule": "AUD-101/docs",
-      "file": ".agents/skills/ai-safety-audit/references/controls.md:115",
+      "file": ".agents/skills/ai-safety-audit/references/controls.md:116",
       "reason": "the packaged skill's controls reference names the Claude Code permission-bypass flag as a literal to remove from CI and hooks: a documentation mention, not a grant (byte-identical mirror of the canonical copy)"
     },
     {
       "fingerprint": "c264651cc03bd5e7",
       "rule": "AUD-101/docs",
-      "file": ".claude/skills/ai-safety-audit/references/controls.md:115",
+      "file": ".claude/skills/ai-safety-audit/references/controls.md:116",
       "reason": "the packaged skill's controls reference names the Claude Code permission-bypass flag as a literal to remove from CI and hooks: a documentation mention, not a grant (byte-identical mirror of the canonical copy)"
     },
     {
       "fingerprint": "398588db744fc780",
       "rule": "AUD-101/docs",
-      "file": "src/aisg/skills/ai-safety-audit/references/controls.md:115",
+      "file": "src/aisg/skills/ai-safety-audit/references/controls.md:116",
       "reason": "the packaged skill's controls reference names the Claude Code permission-bypass flag as a literal to remove from CI and hooks: a documentation mention, not a grant (canonical copy)"
     },
     {
@@ -84,18 +87,6 @@
       "rule": "AUD-601/openai",
       "file": "config/nemo_rails/config.yml:15",
       "reason": "the shipped NeMo Guardrails example config names a floating OpenAI mini alias as its placeholder main model (the comment above it says to replace it); a template, not a deployment. One row covers both copies of the file: the repo-root one is the anchor, the packaged one rides as also evidence."
-    },
-    {
-      "fingerprint": "bf4da3fcfd2705d9",
-      "rule": "AUD-802",
-      "file": "src/aisg/modules/input/prompt_injection.py:353",
-      "reason": "PromptInjectionGuard._llm_judge_check: the LLM judge is an optional second layer, its exception is swallowed and the guard falls back to its pattern detection; CLAUDE.md documents this layered judge fail-open and `aisg measure` reports its cost"
-    },
-    {
-      "fingerprint": "c2d3f96f75c092c5",
-      "rule": "AUD-802",
-      "file": "src/aisg/modules/output/toxicity.py:142",
-      "reason": "ToxicityFilter._llm_judge: the LLM judge is an optional second layer, its exception is swallowed and the guard falls back to its pattern detection; CLAUDE.md documents this layered judge fail-open and `aisg measure` reports its cost"
     },
     {
       "fingerprint": "ff45027259024d0a",
@@ -112,19 +103,19 @@
     {
       "fingerprint": "d13c38c0e5c8d27f",
       "rule": "AUD-801",
-      "file": "src/aisg/__init__.py:37",
+      "file": "src/aisg/__init__.py:39",
       "reason": "top-level package re-export of PIIDetector and PIIRestorer (grouped with the pii_restorer register_guard line and the input package re-export); the library defines guards, deployments measure them"
     },
     {
       "fingerprint": "06a9a7d4f40e98f5",
       "rule": "AUD-801",
-      "file": "src/aisg/__init__.py:49",
+      "file": "src/aisg/__init__.py:47",
       "reason": "top-level package re-export of LLMOutputFilter (grouped with the guard's own register_guard line and the output package re-export); the library defines guards, deployments measure them"
     },
     {
       "fingerprint": "c8de003db6557853",
       "rule": "AUD-801",
-      "file": "src/aisg/__init__.py:63",
+      "file": "src/aisg/__init__.py:61",
       "reason": "package re-export of NISTAIRMFCompliance (grouped with the policy package re-export and the guard's own register_guard line); the library defines guards, deployments measure them"
     },
     {
@@ -134,22 +125,10 @@
       "reason": "Field description string naming LlamaGuard on the default judge provider setting, grouped with the default model-id table inside the LlamaGuard judge's own source; string literals in the library, not a wired guard"
     },
     {
-      "fingerprint": "a5bc7c520b00255b",
-      "rule": "AUD-801",
-      "file": "src/aisg/integrations/__init__.py:6",
-      "reason": "package re-export of the NemoRailsGuard integration (grouped with its register_guard line); the library defines guards, deployments measure them"
-    },
-    {
       "fingerprint": "80fa4b2f73752472",
       "rule": "AUD-801",
-      "file": "src/aisg/integrations/nemo_rails.py:60",
+      "file": "src/aisg/integrations/nemo_rails.py:61",
       "reason": "optional import of nemoguardrails inside the NemoRailsGuard integration's own source; the library defines guards, deployments measure them"
-    },
-    {
-      "fingerprint": "a3285f3844224e17",
-      "rule": "AUD-801",
-      "file": "src/aisg/modules/input/__init__.py:1",
-      "reason": "package re-export of LLMInputFilter (grouped with the guard's own register_guard line); the library defines guards, deployments measure them"
     },
     {
       "fingerprint": "bc65de5b165e9ed0",
@@ -162,12 +141,54 @@
       "rule": "AUD-1001",
       "file": ".:0",
       "reason": "no system card because this repository is a guardrails library, not an AI system; `aisg init` writes the card for the deployments that use it"
+    },
+    {
+      "fingerprint": "a6efa9a9b5d3a84a",
+      "rule": "AUD-801",
+      "file": "config/default.yaml:30",
+      "reason": "pii_detector wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset, the examples and the guard's own module); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+    },
+    {
+      "fingerprint": "10293589c3096cd4",
+      "rule": "AUD-801",
+      "file": "config/default.yaml:42",
+      "reason": "prompt_injection wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset, the examples and the guard's own module); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+    },
+    {
+      "fingerprint": "f9320ce6578817f6",
+      "rule": "AUD-801",
+      "file": "config/default.yaml:62",
+      "reason": "rate_limiter wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset and the package re-export); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+    },
+    {
+      "fingerprint": "9f548b6a204e00cf",
+      "rule": "AUD-801",
+      "file": "config/default.yaml:71",
+      "reason": "tool_policy wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset, the examples and the guard's own module); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+    },
+    {
+      "fingerprint": "80af32970a9c7027",
+      "rule": "AUD-801",
+      "file": "config/default.yaml:107",
+      "reason": "toxicity_output wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset, the examples and the guard's own module); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+    },
+    {
+      "fingerprint": "80f7938a43ad8826",
+      "rule": "AUD-801",
+      "file": "src/aisg/devtools/decide.py:95",
+      "reason": "guard-family table of aisg decide naming llm_input_filter (anchor; grouped with the input package re-export and the guard's own register_guard line); a devtool classifies the guard here, nothing wires it; the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+    },
+    {
+      "fingerprint": "250a3ae263861265",
+      "rule": "AUD-801",
+      "file": "src/aisg/devtools/decide.py:98",
+      "reason": "guard-family table of aisg decide naming nemo_rails (anchor; grouped with aisg measure's offline branch, the integrations package re-export and the guard's own register_guard line); a devtool classifies the guard here, nothing wires it; the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
     }
   ],
   "index": {
     "06a9a7d4f40e98f5": {
       "rule": "AUD-801",
-      "file": "src/aisg/__init__.py:49",
+      "file": "src/aisg/__init__.py:47",
       "title": "Guard present but unmeasured"
     },
     "08b0e1380a7102bd": {
@@ -180,9 +201,19 @@
       "file": "src/aisg/config/settings.py:327",
       "title": "No kill switch"
     },
+    "10293589c3096cd4": {
+      "rule": "AUD-801",
+      "file": "config/default.yaml:42",
+      "title": "Guard present but unmeasured"
+    },
+    "250a3ae263861265": {
+      "rule": "AUD-801",
+      "file": "src/aisg/devtools/decide.py:98",
+      "title": "Guard present but unmeasured"
+    },
     "287c0a092b452b24": {
       "rule": "AUD-101/docs",
-      "file": ".agents/skills/ai-safety-audit/references/controls.md:115",
+      "file": ".agents/skills/ai-safety-audit/references/controls.md:116",
       "title": "Host permission over-grant"
     },
     "3128013255a8f070": {
@@ -197,7 +228,7 @@
     },
     "398588db744fc780": {
       "rule": "AUD-101/docs",
-      "file": "src/aisg/skills/ai-safety-audit/references/controls.md:115",
+      "file": "src/aisg/skills/ai-safety-audit/references/controls.md:116",
       "title": "Host permission over-grant"
     },
     "4a967929f06e5b9e": {
@@ -215,19 +246,29 @@
       "file": ".env.example:163",
       "title": "No kill switch"
     },
+    "80af32970a9c7027": {
+      "rule": "AUD-801",
+      "file": "config/default.yaml:107",
+      "title": "Guard present but unmeasured"
+    },
+    "80f7938a43ad8826": {
+      "rule": "AUD-801",
+      "file": "src/aisg/devtools/decide.py:95",
+      "title": "Guard present but unmeasured"
+    },
     "80fa4b2f73752472": {
       "rule": "AUD-801",
-      "file": "src/aisg/integrations/nemo_rails.py:60",
+      "file": "src/aisg/integrations/nemo_rails.py:61",
       "title": "Guard present but unmeasured"
     },
-    "a3285f3844224e17": {
+    "9f548b6a204e00cf": {
       "rule": "AUD-801",
-      "file": "src/aisg/modules/input/__init__.py:1",
+      "file": "config/default.yaml:71",
       "title": "Guard present but unmeasured"
     },
-    "a5bc7c520b00255b": {
+    "a6efa9a9b5d3a84a": {
       "rule": "AUD-801",
-      "file": "src/aisg/integrations/__init__.py:6",
+      "file": "config/default.yaml:30",
       "title": "Guard present but unmeasured"
     },
     "a7550f41ecd36285": {
@@ -240,24 +281,14 @@
       "file": "src/aisg/modules/input/pii_detector.py:130",
       "title": "Guard present but unmeasured"
     },
-    "bf4da3fcfd2705d9": {
-      "rule": "AUD-802",
-      "file": "src/aisg/modules/input/prompt_injection.py:353",
-      "title": "Guard configured fail-open"
-    },
     "c264651cc03bd5e7": {
       "rule": "AUD-101/docs",
-      "file": ".claude/skills/ai-safety-audit/references/controls.md:115",
+      "file": ".claude/skills/ai-safety-audit/references/controls.md:116",
       "title": "Host permission over-grant"
-    },
-    "c2d3f96f75c092c5": {
-      "rule": "AUD-802",
-      "file": "src/aisg/modules/output/toxicity.py:142",
-      "title": "Guard configured fail-open"
     },
     "c8de003db6557853": {
       "rule": "AUD-801",
-      "file": "src/aisg/__init__.py:63",
+      "file": "src/aisg/__init__.py:61",
       "title": "Guard present but unmeasured"
     },
     "cd0a20265f703b75": {
@@ -267,7 +298,12 @@
     },
     "d13c38c0e5c8d27f": {
       "rule": "AUD-801",
-      "file": "src/aisg/__init__.py:37",
+      "file": "src/aisg/__init__.py:39",
+      "title": "Guard present but unmeasured"
+    },
+    "f9320ce6578817f6": {
+      "rule": "AUD-801",
+      "file": "config/default.yaml:62",
       "title": "Guard present but unmeasured"
     },
     "ff45027259024d0a": {

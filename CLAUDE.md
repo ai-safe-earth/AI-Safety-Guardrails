@@ -287,16 +287,73 @@ it breaks, and what it costs. Rules that hold:
   lands in `errors` as `<case>/t<pass>`, and only verdict-pass (`t0`) failures
   count towards `unavailable`.
 - Populate a Profile from `aisg measure` output. Never by hand.
+- **Cost is the third column, measured honestly or not at all.** `aisg measure` runs
+  OFFLINE by default: a judge-backed guard's provider is not called, its regex path is
+  timed, its tokens are ESTIMATED from the exact prompt it would send
+  (`modules/llm_judges/estimate.py` renders the hoisted prompt constants of
+  `prompt_injection`, `toxicity`, `ClaudeJudge`, `LlamaGuardJudge`, `OpenAIModerationJudge`)
+  and the guard is `llm_exercised: false`, which renders UNMEASURED, never 0%.
+  `--allow-provider-calls` runs the judges for real (money, credentials) and then
+  tokens are MEASURED from the providers' usage fields; a `CachedJudge` is cleared
+  before every timing pass so the figure is the judge's. The report carries
+  `measured_on` (the mode is in the string), a `pipeline` block, and per guard
+  `llm_configured`, `llm_exercised`, `llm_site`, `model`, `llm_calls_per_case`,
+  `tokens_in/out_per_call`, `cost_basis`, `human_rate`, `fail_mode`,
+  `benign_modified_rate` (beside the ratchet's FPR, whose definition is unchanged).
+  Policy-stage guards are measured only with `--include-policy`. A judge the estimator
+  cannot render is `unavailable`, not estimated; NeMo offline is `unavailable`.
+- **Tokens in the runtime, dollars only offline.** Every judge call records
+  `metadata["llm_usage"]` (`LLMUsage`: tokens in/out, model, provider, `cost_basis` in
+  `COST_BASIS = none|measured|estimated|unavailable`, `cache_hit`, `calls`);
+  `GuardrailBase.__call__` stamps `metadata["guard_name"]`; `PipelineResult.llm_usage`
+  sums a stage; the audit logger and the otel instruments read the same key. No module
+  under `src/` prices anything except `devtools/decide.py`, which joins tokens with the
+  dated table `config/prices.yaml` (mirrored in `src/aisg/config/`, `as_of`, `sources`,
+  `stale_after_days`); a model not in the table renders `unavailable` and names
+  itself, never a guess, and nothing ever fetches a price.
 
 Two findings this produced, both still true of the shipped code: the
 `prompt_injection` guard breaks ~14% of benign traffic (it blocks security
 engineers asking how to defend against injection), and with `llm_judge: true`
-and no credentials it costs seconds per request while silently swallowing the
-failure at `prompt_injection.py:123`.
+and no credentials it costs seconds per request; since wave 1 the failure is
+recorded (`metadata["judge_error"]`, usage `unavailable`) instead of swallowed,
+and `aisg measure` reports it as `fail_mode: open` with the judge not exercised.
 
 Every shipped preset must load: `eu_high_risk.yaml` enabled seven guards that
 do not exist and had never been loadable. Tests pin that both presets build a
 pipeline and that `config/` and `src/aisg/config/` stay identical.
+
+## `aisg decide`: the trade, priced against declared budgets
+
+`aisg decide` (`devtools/decide.py`) reads the audit report, the measure report, the
+price table and a traffic profile (flags, or the system card's `traffic:` and
+`budgets:` blocks that `aisg init` writes; `deployment` stays the scalar it was) and
+gives every candidate control (one row per `recommendation.package` symbol, guard rows
+joined to measure rows through the registry) one of four verdicts, a deterministic
+function of the declared budgets: `apply`, `apply with <config change>`, `defer (over
+budget: <which>)`, `unmeasured (run aisg measure first)`. Rules that hold:
+
+- An unknown budget never counts as exceeded; an unknown figure never counts as zero;
+  the UNMEASURED list prints in every format.
+- `Budget.thresholds()` derives `max_usd_per_request` and `max_human_rate` from the
+  monthly ceiling and the review capacity; `Thresholds.failures()` judges a dollar
+  figure only when its tokens were `measured` (an estimate is not evidence for
+  demotion; decide still reports estimated overruns, labelled).
+- Totals: sequential stages sum guard latencies, parallel stages take the max; the
+  pipeline p99 is an upper bound and says so; month = 30 days, stated.
+- The decision document (`"schema": "aisg/1"`, `"kind": "decision"`) is EVIDENCE: the
+  walker reads it as a report (`REPORTED <age>`), not as own output; AUD-806 "Reported
+  guard over the declared budget" (`guardrails`, subs `latency|cost|human|benign`)
+  reads its over-budget rows, and AUD-801/cost marks a judge the measure report never
+  exercised. `aisg audit --format html --decision FILE` adds the Trade table after the
+  plan (numbering shifts by one, every other format ignores the flag; a non-decision
+  file is refused with exit 2); the page is byte-identical without it.
+- `[tool.aisg-decide]` in pyproject defaults every flag except `select`
+  (`NOT_CONFIGURABLE`); `prices` there, `AISG_PRICES` or `--prices` point at another
+  table. Exit 0 rendered, 1 a selected control or the total exceeds a budget, 2 fatal.
+- `GuardrailPipeline(thresholds=...)` / `pipeline.thresholds:` is the opt-in runtime
+  demotion: a guard whose MEASURED Profile fails the bar does not run and is announced
+  on stderr; an unmeasured guard always runs.
 
 ## Mention vs use
 
@@ -355,9 +412,9 @@ orphans a labelled row; tests pin both properties. See `bench/README.md`.
 ## aisg audit and the skill
 
 `aisg audit <path>` (`src/aisg/devtools/audit/`) is walk -> discover -> pydeep ->
-rules -> adapters -> baseline -> report. 46 rules, `AUD-<priority><NN>` from
-AUD-101 to AUD-1003, ordered by blast radius; the registry lists them all and
-`--list-rules` prints them. Invariants the tests pin:
+rules -> adapters -> baseline -> report. 47 rules, `AUD-<priority><NN>` from
+AUD-101 to AUD-1003 (AUD-806 reads the decision document), ordered by blast radius;
+the registry lists them all and `--list-rules` prints them. Invariants the tests pin:
 
 - **Three buckets, all counted.** MEASURED = an adapter ran *during this
   audit*. ASSERTED = one of our own regex/AST rules, a system-card claim, or
@@ -527,6 +584,21 @@ AUD-101 to AUD-1003, ordered by blast radius; the registry lists them all and
   bypass literal in a non-vocabulary file as a finding. `guards._python_guards`
   scans a file once with one alternation over all registry and class names,
   anchored on the first code occurrence.
+- **AUD-801's eval evidence is a harness, not prose.** An `evals[]` entry silences
+  "guard present but unmeasured" for the guards it names only when its file is an
+  eval tool's config or data file, or a test module (`test_*.py`, `*_test.py`,
+  `conftest.py`, or any `.py` under a `tests`/`evals` directory;
+  `rules/guards._eval_evidence_file`). A README that says `aisg measure` and lists
+  the guards measures nothing, and neither does a tool's own source: this repo's
+  `decide.py` and `measure.py` name every guard and had silenced the rule for all
+  of them. The self-audit baseline therefore accepts AUD-801 for the five guards the
+  default preset wires: CI measures them on every push but keeps the report as a
+  build artifact, which an audit of the tree cannot read (the rule's first known
+  failure mode). Committing `.aisg-audit/measure-report.json` is the alternative.
+- **A price table is not a deployment.** `discover._is_price_table` (`schema: aisg/1`
+  and `kind: prices` in the first 4 KiB) skips the model-id scan for `prices.yaml`,
+  so AUD-601 does not report the ids it lists in order to price them; every other
+  config file is scanned as before.
 - **pydeep reads the approval gate literally.** `ToolPolicyGuard(
   require_approval=[])`, `None` or `()` is an inert gate ("require_approval
   is empty") and `approval_callback=None` is no callback, so AUD-201 fires;
@@ -543,9 +615,10 @@ AUD-101 to AUD-1003, ordered by blast radius; the registry lists them all and
   anyone; the AUD-703 snippet then reads `has an unfilled incident_contact`,
   and a card with no contact key at all reads `has no incident_contact`. The
   card's fields are the system id, name and purpose, role, `risk_tier` (with
-  its caveat), `annex_iii_category`, `affected_persons`, deployment and
-  `incident_contact`; there is no model or data field, and the skill docs
-  must not invent one.
+  its caveat), `annex_iii_category`, `affected_persons`, deployment,
+  `incident_contact`, and the `traffic:` / `budgets:` blocks `aisg decide` reads
+  (null = unknown, never assumed); there is no model or data field, and the skill
+  docs must not invent one.
 - **Three flags are per-invocation actions, never pyproject defaults.**
   `main.NOT_CONFIGURABLE` (`write_baseline`, `inventory_only`, `list_rules`,
   with `amend_baseline` and `accept`) is excluded from `[tool.aisg-audit]`

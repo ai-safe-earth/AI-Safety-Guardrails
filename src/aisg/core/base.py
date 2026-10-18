@@ -156,6 +156,38 @@ class PipelineResult:
     def all_findings(self) -> list[Finding]:
         return [f for c in self.checks for f in c.findings]
 
+    @property
+    def llm_usage(self) -> dict:
+        """
+        Tokens the guards of this stage spent on model calls, summed over every
+        check that recorded `metadata["llm_usage"]`: `calls`, `tokens_in`,
+        `tokens_out`, `cost_basis` (the weakest basis among the contributors) and
+        the sorted `models`. A guard whose usage was `unavailable` still adds its
+        call, and the basis says the token sum is incomplete.
+        """
+        from aisg.core.measurement import LLMUsage, weakest_basis
+
+        calls = tokens_in = tokens_out = 0
+        bases: list[str] = []
+        models: set[str] = set()
+        for check in self.checks:
+            usage = LLMUsage.from_metadata(check.metadata.get("llm_usage"))
+            if usage is None:
+                continue
+            calls += usage.calls
+            tokens_in += usage.tokens_in or 0
+            tokens_out += usage.tokens_out or 0
+            bases.append(usage.cost_basis)
+            if usage.model:
+                models.add(usage.model)
+        return {
+            "calls": calls,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "cost_basis": weakest_basis(bases),
+            "models": sorted(models),
+        }
+
 
 # ---------------------------------------------------------------------------
 # Base class
@@ -241,6 +273,9 @@ class GuardrailBase(ABC):
 
         if result.sanitized_content is None:
             result.sanitized_content = content
+        # CheckResult carries no guard identity of its own; the audit logger and the
+        # telemetry read this key, and a guard that set it itself keeps its value.
+        result.metadata.setdefault("guard_name", self.name)
 
         return result
 

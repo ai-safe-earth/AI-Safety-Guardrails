@@ -20,9 +20,13 @@ from contextlib import ExitStack
 from importlib import resources
 from pathlib import Path
 
-__all__ = ["PRESETS", "preset_path", "load_preset"]
+__all__ = ["PRESETS", "PRICES_FILE", "ATTEST_LEVELS_FILE", "preset_path", "load_preset"]
 
+# Pipeline presets: each builds a GuardrailPipeline.
 PRESETS = ("default.yaml", "eu_high_risk.yaml")
+# Other packaged data read through `preset_path()`; not pipelines, so not in PRESETS.
+PRICES_FILE = "prices.yaml"  # the dated price table `aisg decide` joins tokens with
+ATTEST_LEVELS_FILE = "attest-levels.yaml"  # the level criteria `aisg attest` checks
 
 # Keeps extracted resources alive for the process lifetime. Needed when the
 # package is loaded from a zip, where as_file() materialises a temp copy.

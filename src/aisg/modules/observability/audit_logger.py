@@ -31,7 +31,38 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from aisg.core.base import PipelineResult
+from aisg.core.base import CheckResult, PipelineResult
+from aisg.core.measurement import LLMUsage
+
+
+def _guard_name_of(check: CheckResult) -> str:
+    """The guard that produced `check`: the pipeline's stamp, else its first finding."""
+    name = check.metadata.get("guard_name")
+    if isinstance(name, str) and name:
+        return name
+    if check.findings:
+        return check.findings[0].guard_name
+    return "unknown"
+
+
+def _usage_fields(raw: object) -> dict:
+    """The per-check token columns; zeros and `none` when the guard made no call."""
+    usage = LLMUsage.from_metadata(raw)
+    if usage is None:
+        return {
+            "llm_calls": 0,
+            "tokens_in": None,
+            "tokens_out": None,
+            "model": "",
+            "cost_basis": "none",
+        }
+    return {
+        "llm_calls": usage.calls,
+        "tokens_in": usage.tokens_in,
+        "tokens_out": usage.tokens_out,
+        "model": usage.model,
+        "cost_basis": usage.cost_basis,
+    }
 
 
 @dataclass
@@ -70,6 +101,13 @@ class AuditRecord:
     blocked_by: str = ""
     finding_categories: list[str] = field(default_factory=list)
     highest_severity: str = ""
+
+    # Model calls the guards themselves made (judges), in tokens. Never dollars:
+    # prices change, and a price frozen into a log is wrong within months.
+    llm_calls: int = 0
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cost_basis: str = "none"
 
     # Checks run
     checks_run: list[dict] = field(default_factory=list)
@@ -158,14 +196,20 @@ class AuditLogger:
 
         checks_run = [
             {
-                "guard": c.check_id[:8],
+                # The guard's NAME. `GuardrailBase.__call__` stamps it; a check built
+                # outside the pipeline falls back to its first finding, never to a
+                # check-id prefix, which named nothing.
+                "guard": _guard_name_of(c),
+                "check_id": c.check_id,
                 "passed": c.passed,
                 "action": c.action.value,
                 "latency_ms": round(c.latency_ms, 2),
                 "findings": len(c.findings),
+                **_usage_fields(c.metadata.get("llm_usage")),
             }
             for c in result.checks
         ]
+        totals = result.llm_usage
 
         blocked_by = ""
         if result.blocked:
@@ -195,6 +239,10 @@ class AuditLogger:
             blocked_by=blocked_by,
             finding_categories=finding_categories,
             highest_severity=highest,
+            llm_calls=int(totals["calls"]),
+            tokens_in=int(totals["tokens_in"]),
+            tokens_out=int(totals["tokens_out"]),
+            cost_basis=str(totals["cost_basis"]),
             checks_run=checks_run,
         )
 

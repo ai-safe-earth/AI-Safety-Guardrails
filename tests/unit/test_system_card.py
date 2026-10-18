@@ -155,15 +155,19 @@ class TestInitCLI:
         assert data["incident_contact"].startswith("TODO")
 
     def test_interactive_prompts_for_incident_contact(self, tmp_path, monkeypatch):
-        """Every prompt takes its default except the contact, which we answer."""
+        """Every prompt takes its default except the contact, which we answer, and the
+        first traffic figure; the other seven numeric prompts are left unknown."""
         monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-        answers = iter(["", "", "", "", "", "", "", "pager@example.test"])
+        answers = iter(["", "", "", "", "", "", "", "pager@example.test", "1200", *[""] * 7])
         monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
         dest = tmp_path / "c.yaml"
         assert main(["-o", str(dest)]) == 0
         data = yaml.safe_load(dest.read_text(encoding="utf-8"))
         assert data["incident_contact"] == "pager@example.test"
         assert data["risk_tier"] == "unknown"
+        assert data["traffic"]["requests_per_day"] == 1200
+        assert data["traffic"]["avg_input_tokens"] is None
+        assert data["budgets"]["monthly_usd"] is None
 
     def test_defaults_generates_unique_ids(self, tmp_path):
         ids = []

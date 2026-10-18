@@ -1,0 +1,2300 @@
+{
+  "schema": "aisg/1",
+  "kind": "audit",
+  "tool": {
+    "name": "aisg-audit",
+    "version": "0.1.0"
+  },
+  "target": {
+    "path": "tests/fixtures/audit/py_agent",
+    "dirty": true,
+    "exclude": []
+  },
+  "generated_at": "2026-10-18T23:09:15Z",
+  "disclaimer": "This report lists observations about a codebase. Not an assessment of compliance with any regulation. Risk classification under the EU AI Act is a legal determination made by the operator, not a tool output. Every rule in this report is UNMEASURED: no precision figure exists for it yet. Absence of a finding is not evidence of safety.",
+  "summary": {
+    "findings": 21,
+    "by_severity": {
+      "critical": 6,
+      "high": 8,
+      "medium": 5,
+      "low": 1,
+      "info": 1
+    },
+    "by_bucket": {
+      "measured": 0,
+      "asserted": 21,
+      "unknown": 0
+    },
+    "reported": 0,
+    "below_threshold": 21,
+    "fail_on": "never",
+    "unknown_items": 8,
+    "unknown_by_category": {
+      "tools": 8,
+      "deep": 0,
+      "reports": 0,
+      "runtime": 0
+    },
+    "exit_code": 0,
+    "top": "AUD-301",
+    "suppressed": 0,
+    "baseline_new": null
+  },
+  "findings": [
+    {
+      "id": "AUD-301",
+      "rule_id": "AUD-301",
+      "sub": null,
+      "fingerprint": "9abe317814d0af1c",
+      "title": "LETHAL TRIFECTA: private data + untrusted content + external action in one scope",
+      "severity": "critical",
+      "priority": 3,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "code",
+        "match_kind": "ast",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "function",
+        "unit": "u0",
+        "name": "app.py::chat"
+      },
+      "evidence": [
+        {
+          "role": "private",
+          "file": "app.py",
+          "line": 25,
+          "snippet": "os.environ.get('CUSTOMER_DB', 'customers.db')"
+        },
+        {
+          "role": "untrusted",
+          "file": "app.py",
+          "line": 33,
+          "snippet": "@app.post('/chat')"
+        },
+        {
+          "role": "external_action",
+          "file": "app.py",
+          "line": 62,
+          "snippet": "subprocess.run(f'echo {reply}', shell=True)"
+        }
+      ],
+      "controls": [
+        "ASI01",
+        "ASI02",
+        "ASI06",
+        "LLM01",
+        "LLM02",
+        "LLM06",
+        "EU:Art.9",
+        "EU:Art.15",
+        "NIST:MAP-5.1",
+        "NIST:MANAGE-2.2"
+      ],
+      "recommendation": {
+        "tier": "T3",
+        "summary": "Split the loop so no single agent turn holds private data, untrusted content and an external action: route untrusted content through a read-only agent, and gate every external action behind a human approval or a separate, data-free worker.",
+        "alternatives": [
+          "aisg ToolPolicyGuard (approval on external-action tools) + PIIDetector on ingress",
+          "Dual-LLM / CaMeL pattern: a quarantined model reads untrusted content, a privileged model with no tool access to it decides actions",
+          "NeMo Guardrails flows that forbid tool calls in turns that ingested external text",
+          "Guardrails AI validators on tool inputs plus an allowlist of action targets",
+          "Per-turn capability tokens: drop the write/send capability once untrusted content enters the context"
+        ],
+        "package": {
+          "mechanism": "gate",
+          "symbols": [
+            "ToolPolicyGuard",
+            "PIIDetector"
+          ],
+          "same_control": false,
+          "leaves_open": "The control is a structural split between the scope that reads untrusted content and the scope that acts. A gate on the action plus a detector on ingress lowers the odds of one bad turn; all three legs still meet in one loop."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-012a",
+        "EU-AIA-014a",
+        "ALIGN-003"
+      ],
+      "known_failure_modes": [
+        "unit-level scope over-approximates in monorepos",
+        "MCP legs implied by package name",
+        "call-graph reach is depth-3; a call is an edge only when the name is defined in the caller's file or resolves to one definition, so dispatch through a name a library defines many times (`call`, `forward`, `__init__`) is not followed"
+      ],
+      "suppressed": false,
+      "gitignored": false
+    },
+    {
+      "id": "AUD-101",
+      "rule_id": "AUD-101",
+      "sub": null,
+      "fingerprint": "35b7f7d9a7a25f80",
+      "title": "Host permission over-grant",
+      "severity": "critical",
+      "priority": 1,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "config",
+        "match_kind": "structured",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "file",
+        "unit": null,
+        "name": ".claude/settings.json"
+      },
+      "evidence": [
+        {
+          "role": "match",
+          "file": ".claude/settings.json",
+          "line": 3,
+          "snippet": "permissions.allow: Bash(*)"
+        }
+      ],
+      "controls": [
+        "ASI03",
+        "ASI05",
+        "LLM06",
+        "EU:Art.14",
+        "NIST:GOVERN-1.7"
+      ],
+      "recommendation": {
+        "tier": "T1",
+        "summary": "Replace the wildcard grant with the narrowest command list the workflow needs and keep permission prompts on.",
+        "alternatives": [
+          "Claude Code: list explicit `Bash(git status)`-style entries in permissions.allow; drop `Bash(*)`, `WebFetch` without a domain and defaultMode bypassPermissions.",
+          "Codex: set approval_policy to on-request and sandbox_mode to workspace-write.",
+          "Cursor / Gemini: turn off yolo, autoRun, allowAllCommands and autoAccept; keep the sandbox on.",
+          "Run the host inside a throwaway container or VM when a broad grant is unavoidable, so the blast radius is the container.",
+          "aisg: nothing here applies. ToolPolicyGuard only sees tools dispatched through `run_processing`; a host grant is read by the agent host before any pipeline runs, so the grant itself has to be narrowed."
+        ],
+        "package": {
+          "mechanism": "none",
+          "symbols": [],
+          "same_control": false,
+          "leaves_open": ""
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-014a",
+        "ALIGN-003"
+      ],
+      "known_failure_modes": [
+        "Host-global settings (~/.claude, ~/.codex, ~/.cursor, ~/.gemini) are not read unless --include-home is passed; a grant that lives there is invisible.",
+        "A grant in a file the walk skipped (SKIP_DIRS, --exclude, the ignore marker) is not seen.",
+        "A doc literal inside a quoted span or next to a discussion cue is reported as a mention at low; a fenced shell block with no cue stays low too, because a doc cannot grant anything even when it is copied into a script later."
+      ],
+      "suppressed": false,
+      "gitignored": false
+    },
+    {
+      "id": "AUD-101",
+      "rule_id": "AUD-101",
+      "sub": null,
+      "fingerprint": "11642acebf3025c3",
+      "title": "Host permission over-grant",
+      "severity": "critical",
+      "priority": 1,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "config",
+        "match_kind": "structured",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "file",
+        "unit": null,
+        "name": ".claude/settings.json"
+      },
+      "evidence": [
+        {
+          "role": "match",
+          "file": ".claude/settings.json",
+          "line": 3,
+          "snippet": "permissions.allow: WebFetch"
+        }
+      ],
+      "controls": [
+        "ASI03",
+        "ASI05",
+        "LLM06",
+        "EU:Art.14",
+        "NIST:GOVERN-1.7"
+      ],
+      "recommendation": {
+        "tier": "T1",
+        "summary": "Replace the wildcard grant with the narrowest command list the workflow needs and keep permission prompts on.",
+        "alternatives": [
+          "Claude Code: list explicit `Bash(git status)`-style entries in permissions.allow; drop `Bash(*)`, `WebFetch` without a domain and defaultMode bypassPermissions.",
+          "Codex: set approval_policy to on-request and sandbox_mode to workspace-write.",
+          "Cursor / Gemini: turn off yolo, autoRun, allowAllCommands and autoAccept; keep the sandbox on.",
+          "Run the host inside a throwaway container or VM when a broad grant is unavoidable, so the blast radius is the container.",
+          "aisg: nothing here applies. ToolPolicyGuard only sees tools dispatched through `run_processing`; a host grant is read by the agent host before any pipeline runs, so the grant itself has to be narrowed."
+        ],
+        "package": {
+          "mechanism": "none",
+          "symbols": [],
+          "same_control": false,
+          "leaves_open": ""
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-014a",
+        "ALIGN-003"
+      ],
+      "known_failure_modes": [
+        "Host-global settings (~/.claude, ~/.codex, ~/.cursor, ~/.gemini) are not read unless --include-home is passed; a grant that lives there is invisible.",
+        "A grant in a file the walk skipped (SKIP_DIRS, --exclude, the ignore marker) is not seen.",
+        "A doc literal inside a quoted span or next to a discussion cue is reported as a mention at low; a fenced shell block with no cue stays low too, because a doc cannot grant anything even when it is copied into a script later."
+      ],
+      "suppressed": false,
+      "gitignored": false
+    },
+    {
+      "id": "AUD-104",
+      "rule_id": "AUD-104",
+      "sub": null,
+      "fingerprint": "83c0159b92d78506",
+      "title": "Exec tool without a sandbox",
+      "severity": "critical",
+      "priority": 1,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "code",
+        "match_kind": "ast",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "unit",
+        "unit": "u0",
+        "name": "."
+      },
+      "evidence": [
+        {
+          "role": "match",
+          "file": "tools.py",
+          "line": 68,
+          "snippet": "run_shell: TOOLS = {"
+        },
+        {
+          "role": "definition",
+          "file": "tools.py",
+          "line": 29,
+          "snippet": "def run_shell(command: str) -> str:"
+        }
+      ],
+      "controls": [
+        "ASI05",
+        "ASI02",
+        "LLM06",
+        "EU:Art.15",
+        "NIST:MANAGE-2.3"
+      ],
+      "recommendation": {
+        "tier": "T2",
+        "summary": "Run model-chosen commands in an isolated sandbox with no host credentials.",
+        "alternatives": [
+          "Execute inside a container or microVM per call (docker run --rm with a read-only root, gVisor / runsc, firecracker) and pass only the working directory in.",
+          "Use a hosted code sandbox (e2b, modal) so the host never runs the command.",
+          "Allowlist the exact binaries and argument shapes; refuse shell=True and any interpreter.",
+          "aisg: gate the tool with ToolPolicyGuard and keep `shell_command` on LLMToolFilter's high_risk_fail_closed list so a judge outage blocks rather than allows; neither replaces the sandbox."
+        ],
+        "package": {
+          "mechanism": "gate",
+          "symbols": [
+            "ToolPolicyGuard",
+            "LLMToolFilter"
+          ],
+          "same_control": false,
+          "leaves_open": "A sandbox is structural. A gate in front of the tool and a fail-closed judge decide whether a command runs; neither confines what it can reach once it does."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-015b",
+        "ALIGN-001"
+      ],
+      "known_failure_modes": [
+        "False negative when the sandbox lives in another unit or is the deployment itself (the whole service runs in a locked-down container the code never mentions).",
+        "Any SANDBOX_SYMBOLS name in the unit satisfies the rule, including `docker` in an unrelated helper.",
+        "Capability is inferred from the tool name and its first 30 body lines; exec behind a wrapper called `do_thing()` is missed."
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "tool run_shell (registry) has exec capability; no SANDBOX_SYMBOLS name in its unit"
+    },
+    {
+      "id": "AUD-102",
+      "rule_id": "AUD-102",
+      "sub": null,
+      "fingerprint": "65bb58cbee9a68e8",
+      "title": "Agent loop without an iteration cap",
+      "severity": "high",
+      "priority": 1,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "code",
+        "match_kind": "ast",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "function",
+        "unit": "u0",
+        "name": "app.py::chat"
+      },
+      "evidence": [
+        {
+          "role": "match",
+          "file": "app.py",
+          "line": 41,
+          "snippet": "while True:"
+        },
+        {
+          "role": "llm_call",
+          "file": "app.py",
+          "line": 42,
+          "snippet": "response = client.messages.create("
+        }
+      ],
+      "controls": [
+        "ASI08",
+        "LLM10",
+        "EU:Art.15",
+        "NIST:MANAGE-2.3"
+      ],
+      "recommendation": {
+        "tier": "T2",
+        "summary": "Bound the loop with a turn cap and a wall-clock deadline that the loop checks.",
+        "alternatives": [
+          "Add `max_turns` / `max_iterations` to the loop and break when it is reached; log the exhaustion so it is visible.",
+          "LangGraph: pass `recursion_limit` in the run config; OpenAI Agents SDK: set `max_turns` on Runner.run.",
+          "Wrap the loop in an asyncio timeout or a deadline check so a stuck model cannot spend unbounded tokens.",
+          "aisg: RateLimiter (aisg.modules.input.rate_limiter) keeps a per-identity sliding window over requests and words, keyed by `key_field` on the shared context, so repeated calls in one session hit a budget; it does not count loop iterations."
+        ],
+        "package": {
+          "mechanism": "budget",
+          "symbols": [
+            "RateLimiter"
+          ],
+          "same_control": false,
+          "leaves_open": "RateLimiter is a per-identity sliding window on requests and words; it does not cap loop iterations. The loop cap is `max_iterations` in your loop."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-015a"
+      ],
+      "known_failure_modes": [
+        "Misses a cap expressed as a counter variable compared inside the loop body unless the comparison sits next to a break (Python AST tier); the grep tier only looks 40 lines after the loop for a LOOP_CAP_SYMBOLS name.",
+        "The grep tier reports a loop when an LLM call sits anywhere in the same file, not necessarily inside the loop.",
+        "A cap enforced by the framework (recursion_limit passed at graph compile time in another file) is not seen."
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "while_true enclosing an LLM call; no LOOP_CAP_SYMBOLS name in the enclosing function"
+    },
+    {
+      "id": "AUD-103",
+      "rule_id": "AUD-103",
+      "sub": null,
+      "fingerprint": "9fbd89c6a6b8ead7",
+      "title": "Fetch/browse tool without a URL allowlist",
+      "severity": "high",
+      "priority": 1,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "code",
+        "match_kind": "ast",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "unit",
+        "unit": "u0",
+        "name": "."
+      },
+      "evidence": [
+        {
+          "role": "match",
+          "file": "tools.py",
+          "line": 68,
+          "snippet": "fetch_url: TOOLS = {"
+        },
+        {
+          "role": "definition",
+          "file": "tools.py",
+          "line": 25,
+          "snippet": "def fetch_url(url: str) -> str:"
+        }
+      ],
+      "controls": [
+        "ASI01",
+        "ASI02",
+        "LLM01",
+        "NIST:MAP-5.1"
+      ],
+      "recommendation": {
+        "tier": "T2",
+        "summary": "Check every fetched URL against a host allowlist before the request is made.",
+        "alternatives": [
+          "Add an `is_allowed_url(url)` check on scheme and host at the top of the tool and refuse anything else; block private ranges and loopback.",
+          "Route tool traffic through an egress proxy that only resolves the allowed hosts.",
+          "Use the provider's hosted web tool with its domain filter instead of raw requests.",
+          "aisg: give ToolPolicyGuard a ToolPolicy whose `argument_rules` maps the tool's URL argument to a glob such as `https://api.example.com/*`; a call whose argument does not match is blocked before dispatch."
+        ],
+        "package": {
+          "mechanism": "gate",
+          "symbols": [
+            "ToolPolicyGuard",
+            "ToolPolicy"
+          ],
+          "same_control": true,
+          "leaves_open": "`argument_rules` apply only to calls dispatched through `run_processing`. The glob matches the argument text; it does not resolve hosts or block private address ranges."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-015b"
+      ],
+      "known_failure_modes": [
+        "False negative when the allowlist lives in another unit (a shared package) or is enforced by an egress proxy the code never names.",
+        "Any ALLOWLIST_SYMBOLS name anywhere in the unit satisfies the rule, even one that guards a different tool.",
+        "Capability is inferred from the tool name and its first 30 body lines; a fetch behind a wrapper called `do_thing()` is missed."
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "tool fetch_url (registry) has fetch capability; no ALLOWLIST_SYMBOLS name in its unit"
+    },
+    {
+      "id": "AUD-107",
+      "rule_id": "AUD-107",
+      "sub": null,
+      "fingerprint": "4a967929f06e5b9e",
+      "title": "No kill switch",
+      "severity": "medium",
+      "priority": 1,
+      "bucket": "asserted",
+      "basis": "absence",
+      "confidence": {
+        "evidence_kind": "absence",
+        "match_kind": "grep",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "unit",
+        "unit": "u0",
+        "name": "."
+      },
+      "evidence": [
+        {
+          "role": "absence",
+          "file": ".",
+          "line": 0,
+          "snippet": "no kill-switch read (KILL_SWITCH_ENV_READS / KILL_SWITCH_SYMBOLS) in unit u0 (.)"
+        }
+      ],
+      "controls": [
+        "ASI10",
+        "ASI08",
+        "EU:Art.14",
+        "NIST:MANAGE-2.4"
+      ],
+      "recommendation": {
+        "tier": "T2",
+        "summary": "Read an explicit kill-switch flag at the top of every request and refuse to call the model or any tool while it is set.",
+        "alternatives": [
+          "Check `os.environ.get(\"AGENT_DISABLED\")` (or `settings.agent_disabled`) before the LLM call and before each tool dispatch; return a fixed refusal when set.",
+          "Wire a feature-flag client (LaunchDarkly, Unleash, a database row) under a `kill_switch` / `circuit_breaker` name that the request path reads live.",
+          "Put the switch at the edge: a gateway rule that returns 503 for the agent route so the process itself need not be trusted to stop.",
+          "aisg: nothing here applies. This package ships no kill-switch guard, and `GUARDRAILS_DISABLE_ALL` is declared in Settings but read by nothing; the control is a disable path your own request handler checks."
+        ],
+        "package": {
+          "mechanism": "none",
+          "symbols": [],
+          "same_control": false,
+          "leaves_open": ""
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-014a",
+        "ALIGN-003"
+      ],
+      "known_failure_modes": [
+        "Cannot tell a kill switch that is read but never acted on from a working one; `aisg measure` and a runtime drill are what verify it.",
+        "A switch implemented outside the code (a load balancer rule, a feature flag service under a name not in KILL_SWITCH_SYMBOLS) is not seen.",
+        "`halt` and `feature_flag` are deliberately not recognised; a project using only those names is reported.",
+        "A unit with no model call, ingress or tool of its own is skipped: there is no request for a per-request control to sit in front of, whatever its config files name."
+      ],
+      "suppressed": false,
+      "gitignored": false
+    },
+    {
+      "id": "AUD-105",
+      "rule_id": "AUD-105",
+      "sub": null,
+      "fingerprint": "604dba3c5118b5e2",
+      "title": "No per-session tool budget",
+      "severity": "medium",
+      "priority": 1,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "code",
+        "match_kind": "ast",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "unit",
+        "unit": "u0",
+        "name": "."
+      },
+      "evidence": [
+        {
+          "role": "match",
+          "file": "tools.py",
+          "line": 68,
+          "snippet": "3 tools registered: fetch_url, run_shell, send_email"
+        },
+        {
+          "role": "tool",
+          "file": "tools.py",
+          "line": 68,
+          "snippet": "fetch_url"
+        },
+        {
+          "role": "tool",
+          "file": "tools.py",
+          "line": 68,
+          "snippet": "run_shell"
+        },
+        {
+          "role": "tool",
+          "file": "tools.py",
+          "line": 68,
+          "snippet": "send_email"
+        }
+      ],
+      "controls": [
+        "ASI08",
+        "LLM10",
+        "NIST:MANAGE-2.3"
+      ],
+      "recommendation": {
+        "tier": "T2",
+        "summary": "Cap the number of tool calls a single session may make and stop when it is hit.",
+        "alternatives": [
+          "Count tool calls per session in the loop and refuse further calls past `max_tool_calls`; surface the refusal to the model and the log.",
+          "OpenAI Agents SDK / LangGraph: set `max_turns` or `recursion_limit` per run.",
+          "Put a token or cost budget on the session at the gateway (a per-key rate limit) so the cap holds even when the loop is bypassed.",
+          "aisg: set `max_tool_calls_per_session` and `max_calls_per_tool` on ToolPolicyGuard; the counters live on the shared context dict, so one dict per request is required for the cap to hold."
+        ],
+        "package": {
+          "mechanism": "budget",
+          "symbols": [
+            "ToolPolicyGuard"
+          ],
+          "same_control": true,
+          "leaves_open": "`max_tool_calls_per_session` and `max_calls_per_tool` count only calls dispatched through `run_processing` with the shared context dict. A tool called directly is not counted."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-015a"
+      ],
+      "known_failure_modes": [
+        "Fires on registries built for tests or demos that never run in production.",
+        "A budget enforced by the framework or the provider (max_turns on a Runner, a gateway rate limit) is not seen when the code never names it.",
+        "Any BUDGET_SYMBOLS name in the unit satisfies the rule, including a `rate_limit` on an unrelated HTTP endpoint."
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "no BUDGET_SYMBOLS name in the unit"
+    },
+    {
+      "id": "AUD-201",
+      "rule_id": "AUD-201",
+      "sub": null,
+      "fingerprint": "346f03874303509d",
+      "title": "Irreversible tool with no approval gate",
+      "severity": "critical",
+      "priority": 2,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "code",
+        "match_kind": "ast",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "unit",
+        "unit": "u0",
+        "name": "."
+      },
+      "evidence": [
+        {
+          "role": "match",
+          "file": "tools.py",
+          "line": 68,
+          "snippet": "send_email: TOOLS = {"
+        },
+        {
+          "role": "definition",
+          "file": "tools.py",
+          "line": 15,
+          "snippet": "def send_email(to: str, subject: str, body: str) -> str:"
+        }
+      ],
+      "controls": [
+        "ASI02",
+        "ASI09",
+        "LLM06",
+        "EU:Art.14",
+        "NIST:MANAGE-2.4"
+      ],
+      "recommendation": {
+        "tier": "T2",
+        "summary": "Put a human approval step on the call path of every tool whose effect cannot be undone.",
+        "alternatives": [
+          "Return a pending action from the tool and have a separate, human-triggered step execute it (two-phase commit: propose, then approve).",
+          "LangGraph: `interrupt_before` the tool node with a checkpointer; OpenAI Agents SDK / Anthropic tool use: check `needs_approval` and resume only on an explicit approve.",
+          "Route the action through a ticket, PR or review queue the agent can open but not merge.",
+          "aisg: list the tool in ToolPolicyGuard(require_approval=[\"<tool>\"], approval_callback=...) so a denied or timed-out approval is Action.HUMAN, not a pass."
+        ],
+        "package": {
+          "mechanism": "gate",
+          "symbols": [
+            "ToolPolicyGuard"
+          ],
+          "same_control": true,
+          "leaves_open": "`require_approval` needs a real `approval_callback`, and only tools dispatched through `run_processing` with the tool call passed explicitly reach it. Action.HUMAN sets `passed=False`, not `blocked`; the caller has to honour it."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-014a",
+        "EU-AIA-014b",
+        "ALIGN-003"
+      ],
+      "known_failure_modes": [
+        "Name-based capability detection: a tool called `do_thing()` that sends mail or deletes rows is missed, and a tool called `delete_draft` that only touches local state is reported.",
+        "MCP-served tools are not inspected; their gates live in the server process and `aisg audit` never talks to it.",
+        "AST tier: the gate join follows three call levels from the tool body; a gate deeper than that, or one applied by the framework at dispatch time, reads as absent.",
+        "Grep tier: any APPROVAL_SYMBOLS name in the same unit counts as a gate for every tool in it, so a gate on one tool hides the others; a gate in another unit is not seen."
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "tool send_email (registry) is irreversible; no APPROVAL_SYMBOLS gate on its call path (three levels from the tool body)"
+    },
+    {
+      "id": "AUD-203",
+      "rule_id": "AUD-203",
+      "sub": null,
+      "fingerprint": "3d5b2d6513923483",
+      "title": "Irreversible tool without a dry-run or idempotency affordance",
+      "severity": "medium",
+      "priority": 2,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "code",
+        "match_kind": "ast",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "unit",
+        "unit": "u0",
+        "name": "."
+      },
+      "evidence": [
+        {
+          "role": "match",
+          "file": "tools.py",
+          "line": 68,
+          "snippet": "send_email: TOOLS = {"
+        },
+        {
+          "role": "definition",
+          "file": "tools.py",
+          "line": 15,
+          "snippet": "def send_email(to: str, subject: str, body: str) -> str:"
+        }
+      ],
+      "controls": [
+        "ASI02",
+        "LLM06",
+        "NIST:MANAGE-2.3"
+      ],
+      "recommendation": {
+        "tier": "T3",
+        "summary": "Give every irreversible tool a rehearsal path and make repeated calls safe to replay.",
+        "alternatives": [
+          "Add a `dry_run: bool` parameter that returns what would happen without doing it, and default the agent to it until a human flips it.",
+          "Accept an `idempotency_key` (or send the `Idempotency-Key` header) so a retried call does not send twice, charge twice or delete twice.",
+          "Split the tool into `plan_<action>` (pure) and `apply_<action>` (effectful) and expose only the plan step to the model by default.",
+          "aisg: put ToolPolicyGuard in front of the tool and keep the apply step behind an approval callback while the plan step runs freely."
+        ],
+        "package": {
+          "mechanism": "gate",
+          "symbols": [
+            "ToolPolicyGuard"
+          ],
+          "same_control": false,
+          "leaves_open": "A `dry_run` parameter and an idempotency key are changes inside the tool. The gate decides whether the call is made; it does not make a repeated call safe."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-015a"
+      ],
+      "known_failure_modes": [
+        "Name-based: a rehearsal mode under another name (`simulate`, `what_if`, `noop`) is reported, and a `confirm` that appears in a string (\"confirmation sent\") satisfies the rule without gating anything.",
+        "Grep tier: only the 40 lines after the tool schema and after a same-file definition of its name are searched; a flag handled by a helper elsewhere is missed.",
+        "MCP-served tools are not inspected; the affordance, if any, lives in the server."
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "tool send_email (registry) is irreversible; none of dry_run, dryRun, idempotency_key, idempotencyKey, Idempotency-Key, preview, plan_only, confirm in its body or signature"
+    },
+    {
+      "id": "AUD-303",
+      "rule_id": "AUD-303",
+      "sub": null,
+      "fingerprint": "851c672c201c5123",
+      "title": "System prompt built from request data",
+      "severity": "high",
+      "priority": 3,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "code",
+        "match_kind": "ast",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "file",
+        "unit": "u0",
+        "name": "app.py"
+      },
+      "evidence": [
+        {
+          "role": "assembly",
+          "file": "app.py",
+          "line": 37,
+          "snippet": "system_prompt = f\"{SYSTEM_TEMPLATE}\\nYou are talking to {body['customer_name']}.\""
+        },
+        {
+          "role": "source",
+          "file": "app.py",
+          "line": 35,
+          "snippet": "body = await request.json()"
+        }
+      ],
+      "controls": [
+        "ASI01",
+        "LLM01",
+        "LLM07",
+        "EU:Art.15",
+        "NIST:MAP-5.1",
+        "NIST:MEASURE-2.7"
+      ],
+      "recommendation": {
+        "tier": "T3",
+        "summary": "Keep the system prompt static: move every request-derived value into the user turn or a structured tool result, and template only from trusted configuration.",
+        "alternatives": [
+          "aisg PromptInjectionGuard on the request field before any prompt is built",
+          "Static system prompt file plus a typed context object passed in the user message",
+          "NeMo Guardrails or Guardrails AI input validation that rejects instruction-like text",
+          "Provider-side prompt caching of a fixed system prompt, which makes per-request system text a visible cache miss"
+        ],
+        "package": {
+          "mechanism": "detector",
+          "symbols": [
+            "PromptInjectionGuard"
+          ],
+          "same_control": false,
+          "leaves_open": "A static system prompt is the control. Running the guard over the request field screens what goes in; the system prompt is still built from it."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-015a"
+      ],
+      "known_failure_modes": [
+        "misses sanitisation done in a decorator",
+        "grep tier binds a `system=` line to an assembly by shared identifier only"
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "untrusted name(s) body bound from ingress reach this fstring system prompt"
+    },
+    {
+      "id": "AUD-302",
+      "rule_id": "AUD-302",
+      "sub": null,
+      "fingerprint": "44ad08d96bf08121",
+      "title": "Untrusted content concatenated into a prompt",
+      "severity": "high",
+      "priority": 3,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "code",
+        "match_kind": "ast",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "file",
+        "unit": "u0",
+        "name": "app.py"
+      },
+      "evidence": [
+        {
+          "role": "assembly",
+          "file": "app.py",
+          "line": 38,
+          "snippet": "prompt = f\"Customer record: {customer}\\nCustomer says: {body['message']}\""
+        },
+        {
+          "role": "source",
+          "file": "app.py",
+          "line": 35,
+          "snippet": "body = await request.json()"
+        }
+      ],
+      "controls": [
+        "ASI01",
+        "ASI06",
+        "LLM01",
+        "EU:Art.15",
+        "NIST:MAP-5.1",
+        "NIST:MEASURE-2.7"
+      ],
+      "recommendation": {
+        "tier": "T2",
+        "summary": "Delimit and label untrusted text before it enters the prompt, keep it in the user turn (never the system prompt), and run an injection detector on the ingress path.",
+        "alternatives": [
+          "aisg PromptInjectionGuard on the input stage, with the mention/use distinction on",
+          "Spotlighting: wrap untrusted text in explicit delimiters or datamarking and tell the model the span is data, not instructions",
+          "LLM Guard PromptInjection scanner or Lakera Guard on the ingress path",
+          "Rebuff or a NeMo Guardrails input rail before assembly"
+        ],
+        "package": {
+          "mechanism": "detector",
+          "symbols": [
+            "PromptInjectionGuard"
+          ],
+          "same_control": false,
+          "leaves_open": "Delimiting the untrusted span and keeping it in the user turn is the control. The guard lowers the probability that an injection lands; it does not change what an injection that lands can do."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-015a"
+      ],
+      "known_failure_modes": [
+        "misses sanitisation done in a decorator",
+        "grep tier co-locates by shared identifier and is noisy by design"
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "untrusted name(s) customer, body bound from ingress reach this fstring prompt"
+    },
+    {
+      "id": "AUD-401",
+      "rule_id": "AUD-401",
+      "sub": null,
+      "fingerprint": "668c8f1c566db21f",
+      "title": "Model output -> shell",
+      "severity": "critical",
+      "priority": 4,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "code",
+        "match_kind": "ast",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "function",
+        "unit": "u0",
+        "name": "app.py::chat"
+      },
+      "evidence": [
+        {
+          "role": "source",
+          "file": "app.py",
+          "line": 61,
+          "snippet": "reply = response.content[0].text"
+        },
+        {
+          "role": "sink",
+          "file": "app.py",
+          "line": 62,
+          "snippet": "subprocess.run(f\"echo {reply}\", shell=True)"
+        }
+      ],
+      "controls": [
+        "ASI02",
+        "ASI05",
+        "LLM05",
+        "LLM06",
+        "EU:Art.15",
+        "NIST:MANAGE-2.2",
+        "NIST:MEASURE-2.7"
+      ],
+      "recommendation": {
+        "tier": "T3",
+        "summary": "Never hand model text to a shell. Map the model's choice onto a fixed set of commands, pass arguments as an argv list, and run in a sandbox with an approval step for anything that writes or sends.",
+        "alternatives": [
+          "aisg ToolPolicyGuard with shell_command in the approval-required set, and LLMToolFilter with shell_command kept in high_risk_fail_closed",
+          "Argv lists with shlex.quote and shell=False; no string interpolation into a command",
+          "Run tool code in a container or gVisor/Firecracker sandbox with no network by default",
+          "NeMo Guardrails output rail that refuses executable text"
+        ],
+        "package": {
+          "mechanism": "gate",
+          "symbols": [
+            "ToolPolicyGuard",
+            "LLMToolFilter"
+          ],
+          "same_control": false,
+          "leaves_open": "Argv lists, `shell=False` and a sandbox are changes at the sink. The gate decides whether the call is dispatched; the string still reaches a shell when it is."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-014b",
+        "ALIGN-003"
+      ],
+      "known_failure_modes": [
+        "taint stops at data structures",
+        "grep co-location is noisy by design and says so"
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "model output (content_text, line 61) reaches subprocess.run at line 62"
+    },
+    {
+      "id": "AUD-602/mcp",
+      "rule_id": "AUD-602",
+      "sub": "mcp",
+      "fingerprint": "29652453b903c72c",
+      "title": "Unpinned MCP server / bootstrap",
+      "severity": "high",
+      "priority": 6,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "config",
+        "match_kind": "structured",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "file",
+        "unit": null,
+        "name": ".mcp.json"
+      },
+      "evidence": [
+        {
+          "role": "match",
+          "file": ".mcp.json",
+          "line": 3,
+          "snippet": "\"gmail\": npx -y @modelcontextprotocol/server-gmail"
+        }
+      ],
+      "controls": [
+        "ASI04",
+        "LLM03",
+        "EU:Art.15",
+        "NIST:GOVERN-6.1",
+        "NIST:MANAGE-3.1"
+      ],
+      "recommendation": {
+        "tier": "T1",
+        "summary": "Pin the package (`pkg@1.2.3`, `pkg==1.2.3`, `image@sha256:...`) and keep a lockfile so the server that ran in review is the one that runs in production.",
+        "alternatives": [
+          "a lockfile (package-lock.json / uv.lock) checked in next to the MCP config",
+          "Docker digests (`@sha256:`) for MCP images and CI base images",
+          "aisg audit in CI with --fail-on high",
+          "Renovate / Dependabot to bump the pins under review"
+        ],
+        "package": {
+          "mechanism": "detector",
+          "symbols": [
+            "aisg audit"
+          ],
+          "same_control": false,
+          "leaves_open": "Pinning the MCP command and keeping a lockfile is the control. The audit in CI reports an unpinned entry; it does not pin it."
+        }
+      },
+      "related_lint_rules": [],
+      "known_failure_modes": [
+        "a version pin is not an integrity pin: `pkg@1.2.3` can still be republished",
+        "a launcher wrapped in a shell script (`command: ./run.sh`) is not assessable (None)",
+        "bootstrap lines inside a heredoc or a multi-line RUN are seen line by line"
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "MCP server gmail launches without a version pin"
+    },
+    {
+      "id": "AUD-603/plaintext",
+      "rule_id": "AUD-603",
+      "sub": "plaintext",
+      "fingerprint": "3452271ac6c94981",
+      "title": "Remote or plaintext MCP transport",
+      "severity": "high",
+      "priority": 6,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "config",
+        "match_kind": "structured",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "file",
+        "unit": null,
+        "name": ".mcp.json"
+      },
+      "evidence": [
+        {
+          "role": "match",
+          "file": ".mcp.json",
+          "line": 7,
+          "snippet": "\"ops\": http://mcp.example.com/sse"
+        }
+      ],
+      "controls": [
+        "ASI04",
+        "ASI07",
+        "LLM03",
+        "EU:Art.15",
+        "NIST:MEASURE-2.7",
+        "NIST:MAP-5.1"
+      ],
+      "recommendation": {
+        "tier": "T1",
+        "summary": "Run the server locally over stdio, or pin the remote host, require TLS and pass it with --trusted-mcp-hosts once it has been reviewed.",
+        "alternatives": [
+          "stdio transport to a locally installed, version-pinned server",
+          "an MCP gateway / proxy that terminates TLS and enforces an allowlist",
+          "aisg audit --trusted-mcp-hosts <host> after a documented review",
+          "network policy (egress allowlist) around the host process"
+        ],
+        "package": {
+          "mechanism": "none",
+          "symbols": [],
+          "same_control": false,
+          "leaves_open": ""
+        }
+      },
+      "related_lint_rules": [],
+      "known_failure_modes": [
+        "a hostname is never resolved: a DNS name for 127.0.0.1 counts as remote",
+        "a URL read from an environment variable is not seen",
+        "trust is a flag the operator passes, not something the audit verifies"
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "MCP server ops: sse over http:// to mcp.example.com (host not in --trusted-mcp-hosts)"
+    },
+    {
+      "id": "AUD-601/anthropic",
+      "rule_id": "AUD-601",
+      "sub": "anthropic",
+      "fingerprint": "05bc52ca2a4e7523",
+      "title": "Unpinned model id",
+      "severity": "medium",
+      "priority": 6,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "code",
+        "match_kind": "structured",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "unit",
+        "unit": "u0",
+        "name": "."
+      },
+      "evidence": [
+        {
+          "role": "match",
+          "file": "app.py",
+          "line": 20,
+          "snippet": "MODEL = \"claude-sonnet-4-5\""
+        }
+      ],
+      "controls": [
+        "ASI04",
+        "LLM03",
+        "EU:Art.9",
+        "EU:Art.15",
+        "NIST:MANAGE-3.1",
+        "NIST:GOVERN-6.1"
+      ],
+      "recommendation": {
+        "tier": "T1",
+        "summary": "Pin the dated snapshot (claude-*-YYYYMMDD, gpt-4o-YYYY-MM-DD, gemini-*-NNN) and bump it deliberately with an eval run.",
+        "alternatives": [
+          "aisg measure with the pinned id recorded in .aisg-audit/measure-report.json",
+          "promptfoo evals gating the model bump in CI",
+          "a config-level model registry with one id per environment",
+          "vendor model-version aliases resolved once at deploy time and logged"
+        ],
+        "package": {
+          "mechanism": "measurement",
+          "symbols": [
+            "aisg measure"
+          ],
+          "same_control": false,
+          "leaves_open": "Pinning the id is an edit to the call site. `aisg measure` records the id it saw in its report, so a later drift is visible; it does not pin anything."
+        }
+      },
+      "related_lint_rules": [],
+      "known_failure_modes": [
+        "provider alias tables go stale as vendors rename snapshots",
+        "a model id read from an environment variable is only seen when the .env is committed",
+        "an id built at runtime (f-string, config lookup) is not seen"
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "anthropic id claude-sonnet-4-5 is a floating alias (source: literal)"
+    },
+    {
+      "id": "AUD-702",
+      "rule_id": "AUD-702",
+      "sub": null,
+      "fingerprint": "2bbb202a98a3b478",
+      "title": "No tool-call audit log",
+      "severity": "high",
+      "priority": 7,
+      "bucket": "asserted",
+      "basis": "absence",
+      "confidence": {
+        "evidence_kind": "absence",
+        "match_kind": "structured",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "unit",
+        "unit": "u0",
+        "name": "."
+      },
+      "evidence": [
+        {
+          "role": "absence",
+          "file": ".",
+          "line": 0,
+          "snippet": "3 tool(s) in unit u0 (fetch_url, run_shell, send_email); no audit-log symbol (AuditLogger, audit_log, structlog, tool_call_log, record_tool_call)"
+        }
+      ],
+      "controls": [
+        "ASI02",
+        "ASI10",
+        "LLM06",
+        "EU:Art.12",
+        "EU:Art.14",
+        "NIST:MEASURE-2.4",
+        "NIST:MANAGE-4.1"
+      ],
+      "recommendation": {
+        "tier": "T2",
+        "summary": "Record every tool invocation -- name, arguments (redacted), caller, outcome, timestamp -- to an append-only log before the tool runs.",
+        "alternatives": [
+          "Wrap the tool dispatcher with structlog (or the standard logging module) bound to a dedicated, append-only audit stream.",
+          "Emit tool calls as OpenTelemetry spans with gen_ai.tool.* attributes to the same collector as the LLM spans.",
+          "If the pipeline runs through aisg, enable AuditLogger; note that its log() is async but writes with blocking I/O."
+        ],
+        "package": {
+          "mechanism": "record",
+          "symbols": [
+            "AuditLogger"
+          ],
+          "same_control": false,
+          "leaves_open": "An AuditRecord carries the stage, content hashes and the checks that ran; it does not carry the tool name, its arguments, the caller or the outcome. log() is async but writes with blocking I/O."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-012a",
+        "ALIGN-003"
+      ],
+      "known_failure_modes": [
+        "A tool-call log written through a symbol outside AUDIT_LOG_SYMBOLS (a plain `logger.info` in the dispatcher, a database insert) is reported as absent.",
+        "An audit symbol anywhere in the unit satisfies the rule even when the tool dispatcher never reaches it: presence is checked, not the call path.",
+        "Tools recorded by the host (Claude Code, an MCP gateway) rather than by the repository are invisible here."
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "tools defined in unit u0: fetch_url, run_shell, send_email; none of the audit-log symbols (AuditLogger, audit_log, audit.log, structlog, tool_call_log, record_tool_call) appears in that unit"
+    },
+    {
+      "id": "AUD-701",
+      "rule_id": "AUD-701",
+      "sub": null,
+      "fingerprint": "e7eac88080a04be7",
+      "title": "No observability on LLM calls",
+      "severity": "medium",
+      "priority": 7,
+      "bucket": "asserted",
+      "basis": "absence",
+      "confidence": {
+        "evidence_kind": "absence",
+        "match_kind": "structured",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "unit",
+        "unit": "u0",
+        "name": "."
+      },
+      "evidence": [
+        {
+          "role": "absence",
+          "file": ".",
+          "line": 0,
+          "snippet": "no LLM observability symbol in unit u0 (langfuse, langsmith, traceloop, gen_ai.*, TelemetryProvider, helicone, phoenix, weave, ...)"
+        }
+      ],
+      "controls": [
+        "ASI08",
+        "ASI10",
+        "LLM10",
+        "EU:Art.12",
+        "EU:Art.26",
+        "NIST:MEASURE-2.4",
+        "NIST:MANAGE-4.1"
+      ],
+      "recommendation": {
+        "tier": "T2",
+        "summary": "Trace every LLM call and tool call with prompt, completion, model id, latency and cost, so incidents can be reconstructed after the fact.",
+        "alternatives": [
+          "Emit OpenTelemetry GenAI semantic-convention spans (gen_ai.* attributes) from your existing OTel setup; no new vendor is needed.",
+          "Instrument with Langfuse, LangSmith, Traceloop/OpenLLMetry, Helicone, Braintrust, Arize Phoenix or W&B Weave.",
+          "If the pipeline runs through aisg, construct aisg.modules.observability.otel.TelemetryProvider once per process and point it at your collector."
+        ],
+        "package": {
+          "mechanism": "record",
+          "symbols": [
+            "TelemetryProvider"
+          ],
+          "same_control": true,
+          "leaves_open": "Only calls that go through `run_full` are traced; an LLM call made outside the pipeline is not. TelemetryProvider sets the process-global tracer and meter providers, so construct it once per process."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-012a"
+      ],
+      "known_failure_modes": [
+        "Tracing wired through a wrapper module the symbol tables do not name is reported as absent.",
+        "A vendored or renamed import (`import langfuse as lf` is caught, a private fork is not) is reported as absent.",
+        "Observability configured outside the tree (a sidecar, a gateway, an env-only OTel exporter) is invisible to a static scan.",
+        "A tracing import that is never called still satisfies the rule: presence of the symbol is what is checked, not that spans are emitted."
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "unit u0 has an AI surface and none of the LLM observability symbols (langfuse, langsmith, LANGCHAIN_TRACING, traceloop/openllmetry, gen_ai.* OTel attributes, TelemetryProvider, helicone, braintrust, arize/phoenix, wandb, weave) appears in it"
+    },
+    {
+      "id": "AUD-703",
+      "rule_id": "AUD-703",
+      "sub": null,
+      "fingerprint": "3e1c242718251130",
+      "title": "No incident path",
+      "severity": "low",
+      "priority": 7,
+      "bucket": "asserted",
+      "basis": "absence",
+      "confidence": {
+        "evidence_kind": "absence",
+        "match_kind": "structured",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "repo",
+        "unit": null,
+        "name": "."
+      },
+      "evidence": [
+        {
+          "role": "absence",
+          "file": ".",
+          "line": 0,
+          "snippet": "no incident path; ai-system-card.yaml has no incident_contact; looked for SECURITY.md, INCIDENT*.md, docs/incident*, runbook*, ISSUE_TEMPLATE/*security*"
+        }
+      ],
+      "controls": [
+        "ASI08",
+        "ASI10",
+        "EU:Art.26",
+        "EU:Art.73",
+        "NIST:GOVERN-4.3",
+        "NIST:MANAGE-4.3"
+      ],
+      "recommendation": {
+        "tier": "T2",
+        "summary": "Write down who is paged when the AI system misbehaves, how a user reports harm, and how the system is disabled, and keep that text in the repository.",
+        "alternatives": [
+          "Add a SECURITY.md with a reporting address and an expected response time (GitHub surfaces it on the repository's Security tab).",
+          "Add a runbook (runbook.md or docs/incident-response.md) covering detection, kill switch, rollback and user notification.",
+          "If you keep an ai-system-card.yaml (for example from `aisg init`), fill in incident_contact so the card carries the contact too."
+        ],
+        "package": {
+          "mechanism": "document",
+          "symbols": [
+            "aisg init"
+          ],
+          "same_control": false,
+          "leaves_open": "`incident_contact` on the card is a place to write the contact down. The runbook -- who is paged, how harm is reported, how the system is stopped -- is the control and is written by you."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-009a"
+      ],
+      "known_failure_modes": [
+        "An incident process documented under a name the globs do not cover (ONCALL.md, a wiki link in the README) is reported as absent.",
+        "A SECURITY.md that exists but is empty or boilerplate satisfies the rule: the file's presence is checked, not its content.",
+        "A contact declared under a key other than incident_contact / contact / security_contact / incident.contact in the system card is not seen."
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "none of SECURITY.md, INCIDENT*.md, docs/incident*, runbook*, .github/ISSUE_TEMPLATE/*security*, or a system-card incident_contact is present; the system card ai-system-card.yaml names no contact"
+    },
+    {
+      "id": "AUD-901",
+      "rule_id": "AUD-901",
+      "sub": null,
+      "fingerprint": "c0ecfbcc13ea3d5f",
+      "title": "No evals in CI",
+      "severity": "high",
+      "priority": 9,
+      "bucket": "asserted",
+      "basis": "absence",
+      "confidence": {
+        "evidence_kind": "absence",
+        "match_kind": "structured",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "repo",
+        "unit": null,
+        "name": "."
+      },
+      "evidence": [
+        {
+          "role": "absence",
+          "file": ".",
+          "line": 0,
+          "snippet": "no eval tool (promptfoo, deepeval, ragas, inspect_ai, garak, pyrit, giskard, lm_eval, evals/, aisg measure, aisg probe) referenced from CI or a task runner"
+        }
+      ],
+      "controls": [
+        "ASI01",
+        "LLM01",
+        "EU:Art.9",
+        "EU:Art.15",
+        "NIST:MEASURE-2.5",
+        "NIST:MEASURE-2.7"
+      ],
+      "recommendation": {
+        "tier": "T2",
+        "summary": "Run an attack-plus-benign eval on every change: add `aisg measure` or `aisg probe` to the CI workflow and fail the job on regressions.",
+        "alternatives": [
+          "aisg measure --config <preset> in a CI step, with the report committed",
+          "promptfoo eval in a GitHub Actions job (npx promptfoo eval -c promptfooconfig.yaml)",
+          "deepeval or ragas test cases run by pytest in the existing test job",
+          "inspect_ai or garak invoked from tox.ini / noxfile.py so the runner is versioned"
+        ],
+        "package": {
+          "mechanism": "measurement",
+          "symbols": [
+            "aisg measure",
+            "aisg probe"
+          ],
+          "same_control": true,
+          "leaves_open": "The CI workflow edit is yours to make, and `aisg probe` needs an endpoint that is being served. A run on every change is the control; what the run reports is a separate question."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-009a",
+        "EU-AIA-015a"
+      ],
+      "known_failure_modes": [
+        "an eval tool invoked from a script the audit does not recognise as a runner is reported as absent",
+        "a CI workflow that names an eval tool without running it (a comment, a disabled job) counts as wired",
+        "only the eval tools in patterns.EVAL_TOOLS are recognised"
+      ],
+      "suppressed": false,
+      "gitignored": false
+    },
+    {
+      "id": "AUD-1002",
+      "rule_id": "AUD-1002",
+      "sub": null,
+      "fingerprint": "527b3ceb272b5c68",
+      "title": "Risk tier undetermined",
+      "severity": "info",
+      "priority": 10,
+      "bucket": "asserted",
+      "basis": "presence",
+      "confidence": {
+        "evidence_kind": "config",
+        "match_kind": "structured",
+        "precision": null,
+        "label": "UNMEASURED"
+      },
+      "scope": {
+        "kind": "repo",
+        "unit": null,
+        "name": "."
+      },
+      "evidence": [
+        {
+          "role": "card",
+          "file": "ai-system-card.yaml",
+          "line": 19,
+          "snippet": "risk_tier: unknown"
+        }
+      ],
+      "controls": [
+        "EU:Art.6",
+        "EU:Art.9",
+        "NIST:MAP-1.1",
+        "NIST:MAP-5.1"
+      ],
+      "recommendation": {
+        "tier": "T2",
+        "summary": "Have the operator record the risk tier in the system card, with the Annex III category when one applies. The tier is a legal determination the operator makes; the card is where it is written down.",
+        "alternatives": [
+          "aisg init and answer the risk-tier prompt after the operator's legal review",
+          "set risk_tier in ai-system-card.yaml by hand with a link to the review",
+          "the EU AI Act compliance checker questionnaire, with its output committed",
+          "a signed-off risk assessment in docs/ that the card points to"
+        ],
+        "package": {
+          "mechanism": "document",
+          "symbols": [
+            "aisg init"
+          ],
+          "same_control": false,
+          "leaves_open": "Classification is a legal determination the operator makes; aisg init only records the answer. The determination itself is outside the package."
+        }
+      },
+      "related_lint_rules": [
+        "EU-AIA-011a",
+        "EU-AIA-009a"
+      ],
+      "known_failure_modes": [
+        "a card that spells the tier in a way the audit does not recognise as unset (a placeholder word other than unknown / todo / tbd) is treated as determined",
+        "the value is read as written; the audit cannot tell whether it is right"
+      ],
+      "suppressed": false,
+      "gitignored": false,
+      "notes": "Risk classification under Art. 6 / Annex III is a legal determination made by the operator, not a tool output. This finding reports what the card says; it does not classify the system."
+    }
+  ],
+  "measured": [],
+  "reports": [],
+  "unknown": [
+    {
+      "category": "tools",
+      "what": "secrets: regex-only",
+      "why": "gitleaks skipped by --no-external",
+      "how_to_resolve": "run without --no-external (and with gitleaks on PATH)",
+      "rule_ids": [
+        "AUD-501",
+        "AUD-502"
+      ]
+    },
+    {
+      "category": "tools",
+      "what": "secrets: regex-only",
+      "why": "detect-secrets skipped by --no-external",
+      "how_to_resolve": "run without --no-external (and with detect-secrets on PATH)",
+      "rule_ids": [
+        "AUD-501",
+        "AUD-502"
+      ]
+    },
+    {
+      "category": "tools",
+      "what": "dependency vulnerabilities",
+      "why": "pip-audit skipped by --no-external",
+      "how_to_resolve": "run without --no-external (and with pip-audit on PATH)",
+      "rule_ids": [
+        "AUD-606"
+      ]
+    },
+    {
+      "category": "tools",
+      "what": "dependency vulnerabilities",
+      "why": "npm-audit skipped by --no-external",
+      "how_to_resolve": "run without --no-external (and with npm-audit on PATH)",
+      "rule_ids": [
+        "AUD-606"
+      ]
+    },
+    {
+      "category": "tools",
+      "what": "dependency vulnerabilities",
+      "why": "osv-scanner skipped by --no-external",
+      "how_to_resolve": "run without --no-external (and with osv-scanner on PATH)",
+      "rule_ids": [
+        "AUD-606"
+      ]
+    },
+    {
+      "category": "tools",
+      "what": "MCP descriptions: regex-only",
+      "why": "mcp-scan skipped by --no-external",
+      "how_to_resolve": "run without --no-external (and with mcp-scan on PATH)",
+      "rule_ids": [
+        "AUD-604",
+        "AUD-603"
+      ]
+    },
+    {
+      "category": "tools",
+      "what": "non-Python sink taint",
+      "why": "semgrep skipped by --no-external",
+      "how_to_resolve": "run without --no-external (and with semgrep on PATH)",
+      "rule_ids": [
+        "AUD-401",
+        "AUD-402",
+        "AUD-403",
+        "AUD-404",
+        "AUD-405",
+        "AUD-406"
+      ]
+    },
+    {
+      "category": "tools",
+      "what": "eval results",
+      "why": "promptfoo skipped by --no-external",
+      "how_to_resolve": "run without --no-external (and with promptfoo on PATH)",
+      "rule_ids": [
+        "AUD-902",
+        "AUD-904"
+      ]
+    }
+  ],
+  "external_tools": [
+    {
+      "name": "gitleaks",
+      "status": "skipped_by_flag",
+      "network": false,
+      "findings": 0,
+      "argv": [],
+      "flag": "--no-external"
+    },
+    {
+      "name": "detect-secrets",
+      "status": "skipped_by_flag",
+      "network": false,
+      "findings": 0,
+      "argv": [],
+      "flag": "--no-external"
+    },
+    {
+      "name": "pip-audit",
+      "status": "skipped_by_flag",
+      "network": true,
+      "findings": 0,
+      "argv": [],
+      "flag": "--no-external"
+    },
+    {
+      "name": "npm-audit",
+      "status": "skipped_by_flag",
+      "network": true,
+      "findings": 0,
+      "argv": [],
+      "flag": "--no-external"
+    },
+    {
+      "name": "osv-scanner",
+      "status": "skipped_by_flag",
+      "network": true,
+      "findings": 0,
+      "argv": [],
+      "flag": "--no-external"
+    },
+    {
+      "name": "mcp-scan",
+      "status": "skipped_by_flag",
+      "network": false,
+      "findings": 0,
+      "argv": [],
+      "flag": "--no-external"
+    },
+    {
+      "name": "semgrep",
+      "status": "skipped_by_flag",
+      "network": false,
+      "findings": 0,
+      "argv": [],
+      "flag": "--no-external"
+    },
+    {
+      "name": "promptfoo",
+      "status": "skipped_by_flag",
+      "network": true,
+      "findings": 0,
+      "argv": [],
+      "flag": "--no-external"
+    }
+  ],
+  "baseline": null,
+  "inventory": {
+    "schema": "aisg/1",
+    "kind": "inventory",
+    "target": {
+      "path": "C:/Users/OAV/MAIN/AI/AI-SAFE-EARTH/S01_AI-safety-guardrails/tests/fixtures/audit/py_agent",
+      "git_sha": "b33dc681cdee4a80a0064e61f68c60706ad1b802",
+      "dirty": true,
+      "scanned_files": 8,
+      "skipped_files": 0,
+      "bytes": 5737,
+      "duration_ms": 121,
+      "oversize_files": 0
+    },
+    "units": [
+      {
+        "id": "u0",
+        "root": ".",
+        "manifest": "pyproject.toml",
+        "language": "python",
+        "ai_surface": true
+      }
+    ],
+    "languages": {
+      "python": 2,
+      "typescript": 0,
+      "go": 0,
+      "other": 6
+    },
+    "llm_calls": [
+      {
+        "file": "app.py",
+        "line": 13,
+        "provider": "anthropic",
+        "sdk": "anthropic",
+        "api": "import anthropic",
+        "unit": "u0",
+        "model_ref": "m1"
+      },
+      {
+        "file": "app.py",
+        "line": 42,
+        "provider": "anthropic",
+        "sdk": "anthropic",
+        "api": ".messages.create(",
+        "unit": "u0",
+        "model_ref": "m1"
+      }
+    ],
+    "models": [
+      {
+        "id": "m1",
+        "file": "app.py",
+        "line": 20,
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-5",
+        "pinned": false,
+        "source": "literal"
+      }
+    ],
+    "frameworks": [],
+    "tools": [
+      {
+        "id": "t1",
+        "name": "send_email",
+        "file": "tools.py",
+        "line": 36,
+        "unit": "u0",
+        "kind": "anthropic_schema",
+        "capabilities": [
+          "email",
+          "external_action",
+          "irreversible"
+        ],
+        "gated": false,
+        "gate_symbols": [],
+        "risk_tier": "high",
+        "description_snippet": "Send an email on behalf of the support team."
+      },
+      {
+        "id": "t2",
+        "name": "fetch_url",
+        "file": "tools.py",
+        "line": 49,
+        "unit": "u0",
+        "kind": "anthropic_schema",
+        "capabilities": [
+          "fetch"
+        ],
+        "gated": false,
+        "gate_symbols": [],
+        "risk_tier": "low",
+        "description_snippet": "Fetch the text of any web page."
+      },
+      {
+        "id": "t3",
+        "name": "run_shell",
+        "file": "tools.py",
+        "line": 58,
+        "unit": "u0",
+        "kind": "anthropic_schema",
+        "capabilities": [
+          "exec",
+          "external_action"
+        ],
+        "gated": false,
+        "gate_symbols": [],
+        "risk_tier": "critical",
+        "description_snippet": "Run a shell command on the support host and return its output."
+      }
+    ],
+    "mcp": {
+      "configs": [
+        {
+          "file": ".mcp.json",
+          "host": "claude"
+        }
+      ],
+      "servers": [
+        {
+          "name": "gmail",
+          "file": ".mcp.json",
+          "line": 3,
+          "transport": "stdio",
+          "command": "npx",
+          "args": [
+            "-y",
+            "@modelcontextprotocol/server-gmail"
+          ],
+          "url": null,
+          "pinned": false,
+          "trusted": false,
+          "implied_legs": [
+            "private",
+            "external_action"
+          ],
+          "env_secret_literals": 0
+        },
+        {
+          "name": "ops",
+          "file": ".mcp.json",
+          "line": 7,
+          "transport": "sse",
+          "command": null,
+          "args": [],
+          "url": "http://mcp.example.com/sse",
+          "pinned": null,
+          "trusted": false,
+          "implied_legs": [
+            "untrusted"
+          ],
+          "env_secret_literals": 0
+        }
+      ]
+    },
+    "hosts": [
+      {
+        "host": "claude",
+        "file": ".claude/settings.json",
+        "over_grants": [
+          "Bash(*)",
+          "WebFetch"
+        ],
+        "default_mode": null,
+        "hooks": 0
+      }
+    ],
+    "data_sources": [
+      {
+        "file": "app.py",
+        "line": 9,
+        "kind": "db",
+        "symbol": "sqlite3",
+        "unit": "u0"
+      },
+      {
+        "file": "app.py",
+        "line": 25,
+        "kind": "db",
+        "symbol": "sqlite3",
+        "unit": "u0"
+      },
+      {
+        "file": "app.py",
+        "line": 25,
+        "kind": "env",
+        "symbol": "os.environ.get(\"CUSTOMER_DB\"",
+        "unit": "u0"
+      }
+    ],
+    "ingress": [
+      {
+        "file": "app.py",
+        "line": 33,
+        "kind": "http",
+        "symbol": "@app.post",
+        "unit": "u0"
+      },
+      {
+        "file": "app.py",
+        "line": 35,
+        "kind": "http",
+        "symbol": "await request.",
+        "unit": "u0"
+      },
+      {
+        "file": "tools.py",
+        "line": 26,
+        "kind": "fetch",
+        "symbol": "requests.get(",
+        "unit": "u0"
+      }
+    ],
+    "external_actions": [
+      {
+        "file": "app.py",
+        "line": 10,
+        "kind": "shell",
+        "symbol": "subprocess",
+        "unit": "u0"
+      },
+      {
+        "file": "app.py",
+        "line": 62,
+        "kind": "shell",
+        "symbol": "subprocess",
+        "unit": "u0"
+      },
+      {
+        "file": "tools.py",
+        "line": 8,
+        "kind": "email",
+        "symbol": "smtplib",
+        "unit": "u0"
+      },
+      {
+        "file": "tools.py",
+        "line": 9,
+        "kind": "shell",
+        "symbol": "subprocess",
+        "unit": "u0"
+      },
+      {
+        "file": "tools.py",
+        "line": 20,
+        "kind": "email",
+        "symbol": "smtplib",
+        "unit": "u0"
+      },
+      {
+        "file": "tools.py",
+        "line": 30,
+        "kind": "shell",
+        "symbol": "subprocess",
+        "unit": "u0"
+      }
+    ],
+    "sinks": [
+      {
+        "file": "app.py",
+        "line": 62,
+        "kind": "shell",
+        "symbol": "subprocess.run(",
+        "unit": "u0"
+      },
+      {
+        "file": "tools.py",
+        "line": 26,
+        "kind": "url",
+        "symbol": "requests.get(",
+        "unit": "u0"
+      },
+      {
+        "file": "tools.py",
+        "line": 30,
+        "kind": "shell",
+        "symbol": "subprocess.run(",
+        "unit": "u0"
+      }
+    ],
+    "guardrails": [],
+    "observability": [],
+    "evals": [],
+    "reports": [],
+    "system_card": {
+      "file": "ai-system-card.yaml",
+      "risk_tier": "unknown",
+      "annex_iii_category": null,
+      "incident_contact": null
+    },
+    "secrets": {
+      "literal_hits": 0,
+      "config_hits": 0,
+      "scanner": "regex-only"
+    },
+    "loops": [
+      {
+        "file": "app.py",
+        "line": 41,
+        "capped": false,
+        "cap_symbol": null,
+        "unit": "u0"
+      }
+    ],
+    "ci": [],
+    "incident_path": [],
+    "own_output_skipped": [],
+    "unknown": []
+  },
+  "rules": [
+    {
+      "id": "AUD-101",
+      "title": "Host permission over-grant",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-102",
+      "title": "Agent loop without an iteration cap",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-103",
+      "title": "Fetch/browse tool without a URL allowlist",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-104",
+      "title": "Exec tool without a sandbox",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-105",
+      "title": "No per-session tool budget",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-106",
+      "title": "Broad credentials in agent scope",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-107",
+      "title": "No kill switch",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-108",
+      "title": "Unsafe hook or CI step",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-201",
+      "title": "Irreversible tool with no approval gate",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-202",
+      "title": "Inert or bypassed gate",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-203",
+      "title": "Irreversible tool without a dry-run or idempotency affordance",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-301",
+      "title": "LETHAL TRIFECTA: private data + untrusted content + external action in one scope",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-302",
+      "title": "Untrusted content concatenated into a prompt",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-303",
+      "title": "System prompt built from request data",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-401",
+      "title": "Model output -> shell",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-402",
+      "title": "Model output -> eval/exec",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-403",
+      "title": "Model output -> SQL",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-404",
+      "title": "Model output -> HTML without escaping",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-405",
+      "title": "Model output -> outbound URL",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-406",
+      "title": "Model output -> filesystem write",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-501",
+      "title": "Secret literal in source",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-502",
+      "title": "Secret in MCP / host config",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-503",
+      "title": "Secret or PII bound into a prompt",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-504",
+      "title": "Verbatim prompt/response logging",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-505",
+      "title": "Literal PII in prompts / fixtures / logs",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-601",
+      "title": "Unpinned model id",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-602",
+      "title": "Unpinned MCP server / bootstrap",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-603",
+      "title": "Remote or plaintext MCP transport",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-604",
+      "title": "MCP tool-description poisoning",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-605",
+      "title": "Unpinned weights / trust_remote_code",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-606",
+      "title": "Dependency vulnerabilities",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-701",
+      "title": "No observability on LLM calls",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-702",
+      "title": "No tool-call audit log",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-703",
+      "title": "No incident path",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-801",
+      "title": "Guard present but unmeasured",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-802",
+      "title": "Guard configured fail-open",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-803",
+      "title": "Reported guard below threshold",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-804",
+      "title": "LLM judge without credentials or timeout",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-805",
+      "title": "Keyword-only content filter",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-901",
+      "title": "No evals in CI",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-902",
+      "title": "Probe report shows failed, inconclusive, errored or skipped cases",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-903",
+      "title": "Model changed since last report",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-904",
+      "title": "Eval config without benign traffic",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-1001",
+      "title": "No system card",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-1002",
+      "title": "Risk tier undetermined",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    },
+    {
+      "id": "AUD-1003",
+      "title": "Annex III keywords in prompt material, no category on the card",
+      "measured_precision": null,
+      "ran": true,
+      "experimental": false
+    }
+  ]
+}

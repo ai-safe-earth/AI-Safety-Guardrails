@@ -236,6 +236,38 @@ is not ASCII, one that contains compliance language, and one that looks like a s
 second `--accept` for the same fingerprint replaces the reason. `--accept` without
 `--amend-baseline` is exit 2.
 
+## The decision document (`"kind": "decision"`)
+
+`aisg decide --format json -o .aisg-audit/decision-report.json` writes the trade table
+as data. Top-level keys, in order: `schema`, `kind`, `tool`, `generated_at`,
+`disclaimer`, `inputs` (`audit`, `measure` or null, `prices` with `as_of` and `stale`,
+`card` or null), `traffic` (`requests_per_day`, `avg_input_tokens`, `avg_output_tokens`,
+`source`), `budgets` (`p99_ms`, `monthly_usd`, `max_usd_per_request`,
+`human_review_capacity_per_day`, `max_human_rate`, `source`), `controls`, `selected`,
+`totals`, `unmeasured`, `exit_code`.
+
+One `controls[]` row per package symbol the findings name: `control`, `symbol`, `kind`
+(`guard` | `config` | `record` | `action`), `stage`, `rules` (`id`, `same_control`,
+`mechanism`), `mechanisms`, `catch_rate`, `catch_rate_relevant` (the families the guard
+is for), `catch_rate_meaningful`, `benign_broken_rate`, `benign_modified_rate`,
+`human_rate`, `p50_ms`, `p99_ms`, `llm_calls_per_request`, `tokens_in_per_request`,
+`tokens_out_per_request`, `usd_per_request`, `usd_per_month`, `usd_basis` (`measured` |
+`estimated` | `unavailable` | `none` | `free` | `local`, with `, stale` when the price
+table is past its shelf life), `fail_mode` (`open` | `closed` | `mixed` | `n/a`),
+`provenance` (`MEASURED <date>` | `ESTIMATED <date>` | `UNMEASURED`), `over_budget`
+(any of `p99`, `usd/request`, `usd/month`, `human`, `benign`) and `recommendation`
+(`verdict`, `reasons`, `config_changes`). Read the verdict and the provenance together:
+`apply` is a reading of declared budgets, never a safety statement, and `ESTIMATED`
+means the judge's tokens were computed from its prompt because `aisg measure` ran
+offline. `totals` carries `mode`, `p50_ms`, `p99_ms_upper_bound`, `usd_per_request`,
+`usd_per_month`, `human_per_day`, `human_capacity_per_day`, `over_budget`,
+`excluded_unmeasured`.
+
+The document is evidence, not own output: the next audit reads it as `REPORTED <age>`
+and AUD-806 turns each over-budget row into a finding (`AUD-806/latency`, `/cost`,
+`/human`, `/benign`). `aisg audit --format html --decision <file>` adds it to the page
+as the "Trade table" section after the plan.
+
 ## `--format html`
 
 One renderer, two documents: without `--baseline` it is document 1 (the survey), with it

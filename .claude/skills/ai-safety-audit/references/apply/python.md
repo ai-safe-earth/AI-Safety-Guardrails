@@ -353,6 +353,42 @@ its own benign corpus; benign cases in your own eval config are the control. (AU
 pinning the id is an edit to the call site; measure records the id it saw, it pins
 nothing.
 
+## `aisg decide` (AUD-806; second symbol `aisg measure`; phase 3, needs a measure report)
+
+    aisg decide --format json -o .aisg-audit/decision-report.json
+    aisg decide --format markdown -o .aisg-audit/decision.md
+    aisg audit . --format html --decision .aisg-audit/decision-report.json -o .aisg-audit/audit-before.html
+
+Joins the audit's proposed controls (`recommendation.package` symbols) with the measure
+report, the dated price table (`prices.yaml`, `as_of` printed on every figure) and the
+traffic the operator declared (flags, or the card's `traffic:` and `budgets:` blocks).
+One row per candidate control: catch rate (overall and for the families the guard is
+for), benign breakage, human-routing rate, p50/p99, tokens per request, usd per request
+and per month, fail mode, provenance (`MEASURED <date>` / `ESTIMATED <date>` /
+`UNMEASURED`) and a verdict that is a deterministic reading of the declared budgets:
+`apply`, `apply with <config change>`, `defer (over budget: <which>)`, `unmeasured (run
+aisg measure first)`. No model call, no socket; an unknown budget never counts as
+exceeded; a judge the measure report did not exercise is UNMEASURED, never 0%.
+
+The configuration changes a row can name, and what each gives up:
+
+- `prompt_injection: llm_judge: false` / `toxicity_output: use_llm_judge: false`: the
+  regex path stays, the judge's catch on novel attacks goes; re-measure after.
+- `CachedJudge(judge, max_size=512, ttl=3600)`: saves on repeated inputs only; the
+  saving scales with the repeat rate of real traffic, which the report does not know.
+- Stage order under `parallel_checks: false`: regex guards before the judge, so a
+  block short-circuits before the expensive call.
+- `sensitivity: low` / `allow_security_discussion: true` (PromptInjectionGuard) or
+  `action: flag` (other guards): routes instead of rejecting; the review queue grows.
+- `GuardrailPipeline(thresholds=Thresholds(max_p99_latency_ms=..., max_usd_per_request=...,
+  max_human_rate=...))` or `pipeline.thresholds:` in the preset: demotes a guard whose
+  MEASURED Profile fails the bar; an unmeasured guard keeps running.
+
+Leaves open, in summary (AUD-806): the budgets are the operator's declarations, the tool
+compares and does not set them; a changed configuration needs a new measure run and a new
+decide run before the figures describe it. A dollar figure is as good as the price table's
+`as_of` date and is labelled `stale` past `stale_after_days`.
+
 ## `aisg probe` (AUD-902; second symbol on AUD-901, 903; phase 5 only)
 
     aisg probe http://127.0.0.1:<port>/chat -o .aisg-audit/probe-report.json

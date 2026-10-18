@@ -826,6 +826,52 @@ you set the bar.
 
 Output is `measure-report.json` (schema `aisg/1`) plus a terminal table.
 
+### `aisg decide` — what each control costs, and whether it fits the budget
+
+```bash
+aisg measure --config config/guardrails.yaml -o .aisg-audit/measure-report.json
+aisg decide --requests-per-day 20000 --avg-input-tokens 400 --p99-budget-ms 250 --monthly-budget-usd 300
+aisg decide --format json -o .aisg-audit/decision-report.json
+aisg audit . --format html --decision .aisg-audit/decision-report.json -o .aisg-audit/audit-before.html
+```
+
+A guard is a trade, and cost is its third column. `aisg measure` records, per guard,
+what it catches, what it breaks, its p50/p99 latency and now what it spends on model
+calls: by default it runs **offline**, never calling a provider, timing the regex path
+and **estimating** a judge's tokens from the exact prompt the guard would send (the
+judge is marked `llm_exercised: false` and its catch rate is reported as not measured,
+never as 0%). `aisg measure --allow-provider-calls` runs the judges for real, which
+costs money and needs credentials; the tokens are then **measured** from the providers'
+usage fields. The runtime records tokens and never dollars; every judge call leaves
+`metadata["llm_usage"]` on its result, the audit logger and the OpenTelemetry
+instruments read the same key, and `--include-policy` adds the policy-stage guards.
+
+`aisg decide` joins the audit report (which controls, which symbols), the measure
+report, a dated price table (`config/prices.yaml`: `as_of`, `sources`,
+`stale_after_days`; a model not listed renders `unavailable` and names itself, nothing
+is ever fetched or guessed) and the traffic you declare (flags, or the `traffic:` and
+`budgets:` blocks `aisg init` writes into the system card). One row per candidate
+control: catch rate overall and for the families the guard is for, benign breakage,
+human-routing rate, p50/p99, tokens per request, usd per request and per month, fail
+mode, provenance (`MEASURED <date>`, `ESTIMATED <date>`, `UNMEASURED`), and a verdict
+that is a deterministic reading of the budgets:
+
+| verdict | meaning |
+|---|---|
+| `apply` | inside every budget that is known |
+| `apply with <config change>` | over a budget, and a configuration change exists that is likely to bring it back (a hypothesis until `aisg measure` is re-run) |
+| `defer (over budget: <which>)` | over a budget, and nothing in the package changes that |
+| `unmeasured (run aisg measure first)` | no measurement, or a judge the measure report never exercised |
+
+An unknown budget never counts as exceeded, an unknown figure never counts as zero, and
+the UNMEASURED list prints in every format. Totals sum sequential stages and take the
+maximum of parallel ones; the pipeline p99 is an upper bound and says so; month = 30
+days. Exit 0 rendered, 1 when a selected control or the total exceeds a budget, 2
+fatal. The decision document (`"kind": "decision"`) is evidence the next audit reads:
+AUD-806 reports a wired guard over a declared budget, and `--decision` adds the Trade
+table to the html document. `[tool.aisg-decide]` in `pyproject.toml` defaults every
+flag except `--select`.
+
 ### `aisg probe` — send an attack corpus at a live endpoint
 
 ```bash

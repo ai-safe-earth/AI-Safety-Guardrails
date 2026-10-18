@@ -46,7 +46,17 @@ from __future__ import annotations
 import os
 from typing import Literal
 
-from aisg.modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
+from aisg.core.measurement import LLMUsage
+from aisg.modules.llm_judges.base import (
+    JudgeVerdict,
+    LLMJudgeBase,
+    usage_from_ollama,
+    usage_from_openai_compatible,
+)
+
+# LlamaGuard answers `safe` or `unsafe` plus category codes: a handful of tokens.
+# One cap for every provider; the estimator reads it too.
+MAX_TOKENS = 20
 
 # ---------------------------------------------------------------------------
 # Category definitions
@@ -256,22 +266,22 @@ class LlamaGuardJudge(LLMJudgeBase):
         conversation_history: list[dict] | None,
     ) -> JudgeVerdict:
         if self.provider == "huggingface":
-            raw = await self._call_huggingface(content, role, conversation_history)
+            raw, usage = await self._call_huggingface(content, role, conversation_history)
         elif self.provider == "ollama":
-            raw = await self._call_ollama(content, role, conversation_history)
+            raw, usage = await self._call_ollama(content, role, conversation_history)
         else:
             # groq, together, openai — all OpenAI-compatible
-            raw = await self._call_openai_compatible(content, role, conversation_history)
+            raw, usage = await self._call_openai_compatible(content, role, conversation_history)
 
         safe, categories = _parse_response(raw)
-        return JudgeVerdict(safe=safe, categories=categories, raw_response=raw)
+        return JudgeVerdict(safe=safe, categories=categories, raw_response=raw, usage=usage)
 
     async def _call_openai_compatible(
         self,
         content: str,
         role: Literal["user", "agent"],
         conversation_history: list[dict] | None,
-    ) -> str:
+    ) -> tuple[str, LLMUsage]:
         import aiohttp
 
         prompt = _build_prompt(content, role, conversation_history)
@@ -284,7 +294,7 @@ class LlamaGuardJudge(LLMJudgeBase):
         payload = {
             "model": self.model,
             "messages": messages,
-            "max_tokens": 20,
+            "max_tokens": MAX_TOKENS,
             "temperature": 0,
         }
 
@@ -297,14 +307,15 @@ class LlamaGuardJudge(LLMJudgeBase):
             ) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
-                return data["choices"][0]["message"]["content"].strip()
+                raw = data["choices"][0]["message"]["content"].strip()
+                return raw, usage_from_openai_compatible(data, self.model, self.provider)
 
     async def _call_ollama(
         self,
         content: str,
         role: Literal["user", "agent"],
         conversation_history: list[dict] | None,
-    ) -> str:
+    ) -> tuple[str, LLMUsage]:
         import aiohttp
 
         prompt = _build_prompt(content, role, conversation_history)
@@ -312,7 +323,7 @@ class LlamaGuardJudge(LLMJudgeBase):
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
-            "options": {"temperature": 0, "num_predict": 20},
+            "options": {"temperature": 0, "num_predict": MAX_TOKENS},
         }
 
         timeout = aiohttp.ClientTimeout(total=self.timeout)
@@ -323,14 +334,15 @@ class LlamaGuardJudge(LLMJudgeBase):
             ) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
-                return data["message"]["content"].strip()
+                raw = data["message"]["content"].strip()
+                return raw, usage_from_ollama(data, self.model)
 
     async def _call_huggingface(
         self,
         content: str,
         role: Literal["user", "agent"],
         conversation_history: list[dict] | None,
-    ) -> str:
+    ) -> tuple[str, LLMUsage]:
         """
         Run LlamaGuard 3 locally via HuggingFace transformers.
         Requires: pip install transformers torch accelerate
@@ -354,7 +366,7 @@ class LlamaGuardJudge(LLMJudgeBase):
             "text-generation",
             model=self.model,
             device_map="auto",
-            max_new_tokens=20,
+            max_new_tokens=MAX_TOKENS,
         )
         fn = functools.partial(pipe, prompt)
         result = await loop.run_in_executor(None, fn)
@@ -362,4 +374,6 @@ class LlamaGuardJudge(LLMJudgeBase):
         # Strip the input prompt from the output
         if generated.startswith(prompt):
             generated = generated[len(prompt) :]
-        return generated.strip()
+        # Local inference reports no token counts; the weights are free but the call
+        # is not nothing, so it is `unavailable`, not `none`.
+        return generated.strip(), LLMUsage.unavailable_for(self.model, "huggingface")

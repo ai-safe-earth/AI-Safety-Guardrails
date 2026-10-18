@@ -245,3 +245,13 @@ fail_on_warnings = false    # set true for strict PR enforcement
 [tool.aisg-audit]
 exclude = ["tests", "src/aisg/probes"]
 fail-on = "high"
+
+# -------------------------------------------------------
+# aisg-decide configuration
+# -------------------------------------------------------
+# Read by aisg/devtools/decide.py via aisg/devtools/_config.py. Every flag of
+# `aisg decide` can be defaulted here except `select` (a per-decision act).
+# `prices` points the decision at a price table other than the packaged one;
+# a figure typed in with a date beats a figure nobody can recheck.
+[tool.aisg-decide]
+# prices = "config/prices.yaml"

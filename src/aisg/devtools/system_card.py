@@ -53,6 +53,37 @@ DEFAULT_CARD = {
     # `aisg audit` (AUD-703, AUD-1001) reads this key; a value still starting
     # with "TODO" counts as no contact, so the placeholder cannot satisfy it.
     "incident_contact": "TODO: who to reach when this system misbehaves (mailbox, pager, queue)",
+    # What the operator EXPECTS the system to carry and can afford. `aisg decide`
+    # compares measured guard figures against these; nothing verifies them. A null
+    # means unknown, and an unknown budget is reported as such, never assumed.
+    "traffic": {
+        "requests_per_day": None,
+        "avg_input_tokens": None,
+        "avg_output_tokens": None,
+    },
+    "budgets": {
+        "p99_ms": None,
+        "monthly_usd": None,
+        "max_usd_per_request": None,
+        "human_review_capacity_per_day": None,
+        "max_human_rate": None,
+    },
+}
+
+# The numeric blocks, with the question `aisg init` asks for each field.
+NUMERIC_BLOCKS: dict[str, dict[str, str]] = {
+    "traffic": {
+        "requests_per_day": "Expected requests per day",
+        "avg_input_tokens": "Typical prompt size, in tokens",
+        "avg_output_tokens": "Typical response size, in tokens",
+    },
+    "budgets": {
+        "p99_ms": "Latency budget for the whole guard chain, p99 in ms",
+        "monthly_usd": "Monthly spend ceiling for guards, in USD",
+        "max_usd_per_request": "Per-request spend cap for guards, in USD",
+        "human_review_capacity_per_day": "Approvals people can handle per day",
+        "max_human_rate": "Share of requests that may go to a person (0-1)",
+    },
 }
 
 
@@ -137,8 +168,54 @@ def render_card(card: dict) -> str:
         "# Who to reach when the system misbehaves: a mailbox, pager or ticket queue.",
         f"incident_contact: {_yaml_scalar(card['incident_contact'])}",
         "",
+        "# What you EXPECT this system to carry, and what it can afford. `aisg decide`",
+        "# reads these blocks and compares measured guard figures against them; it does",
+        "# not verify them. null means unknown, and an unknown budget is reported as",
+        "# unknown rather than assumed.",
+        "traffic:",
     ]
+    lines += _numeric_lines(card.get("traffic"), NUMERIC_BLOCKS["traffic"])
+    lines += ["budgets:"]
+    lines += _numeric_lines(card.get("budgets"), NUMERIC_BLOCKS["budgets"])
+    lines.append("")
     return "\n".join(lines)
+
+
+def _numeric_lines(block: object, fields: dict[str, str]) -> list[str]:
+    values = block if isinstance(block, dict) else {}
+    out = []
+    for key in fields:
+        value = values.get(key)
+        rendered = "null" if value is None else _yaml_number(value)
+        out.append(f"  {key}: {rendered}")
+    return out
+
+
+def _yaml_number(value: object) -> str:
+    """A number as YAML reads it back; anything else is quoted so it stays a string."""
+    if isinstance(value, bool):
+        return _yaml_scalar(str(value))
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return repr(value)
+    return _yaml_scalar(str(value))
+
+
+def _prompt_number(label: str) -> float | int | None:
+    """Ask for an optional number; Enter leaves it unknown; re-ask on a non-number."""
+    while True:
+        try:
+            raw = input(f"{label}\n  (default: unknown) > ").strip()
+        except EOFError:
+            print()
+            return None
+        if not raw:
+            return None
+        try:
+            return int(raw) if raw.lstrip("-").isdigit() else float(raw)
+        except ValueError:
+            print(f"  ! '{raw}' is not a number; Enter to leave it unknown")
 
 
 def collect_interactive() -> dict:
@@ -165,6 +242,11 @@ def collect_interactive() -> dict:
     card["incident_contact"] = _prompt(
         "Incident contact (who to reach when it misbehaves)", DEFAULT_CARD["incident_contact"]
     )
+
+    print("\n  Traffic and budgets: what you expect the system to carry and can afford.")
+    print("  `aisg decide` compares measured guard figures against them. Enter = unknown.")
+    for block, fields in NUMERIC_BLOCKS.items():
+        card[block] = {key: _prompt_number(label) for key, label in fields.items()}
     return card
 
 

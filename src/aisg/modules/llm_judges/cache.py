@@ -36,6 +36,7 @@ import time
 from collections import OrderedDict
 from typing import Literal
 
+from aisg.core.measurement import LLMUsage
 from aisg.modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
 
 
@@ -94,15 +95,19 @@ class CachedJudge(LLMJudgeBase):
                 if self._ttl == 0 or (time.monotonic() - stored_at) < self._ttl:
                     # Cache hit — move to end (most-recently-used)
                     self._cache.move_to_end(cache_key)
-                    # Return a copy so callers can't mutate cached data
+                    # Return a copy so callers can't mutate cached data. The hit
+                    # made no call: its usage is zero tokens, basis `none`, flagged
+                    # as a hit so the measurement can report the hit rate.
                     return JudgeVerdict(
                         safe=verdict.safe,
                         categories=list(verdict.categories),
                         confidence=verdict.confidence,
+                        reason=verdict.reason,
                         raw_response=verdict.raw_response,
                         judge_name=verdict.judge_name,
                         latency_ms=0.0,  # cache hit has ~0 latency
                         error=verdict.error,
+                        usage=LLMUsage.from_cache(self.model, self.provider),
                     )
                 # Expired — remove
                 del self._cache[cache_key]
@@ -122,11 +127,22 @@ class CachedJudge(LLMJudgeBase):
             safe=verdict.safe,
             categories=list(verdict.categories),
             confidence=verdict.confidence,
+            reason=verdict.reason,
             raw_response=verdict.raw_response,
             judge_name=verdict.judge_name,
             latency_ms=verdict.latency_ms,
             error=verdict.error,
+            usage=verdict.usage,
         )
+
+    @property
+    def model(self) -> str:
+        """The wrapped judge's model id, for usage records and the price table."""
+        return str(getattr(self._judge, "model", "") or "")
+
+    @property
+    def provider(self) -> str:
+        return str(getattr(self._judge, "provider", "") or "")
 
     # ------------------------------------------------------------------
     # Helpers

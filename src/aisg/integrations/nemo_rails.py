@@ -54,6 +54,7 @@ from aisg.core.base import (
     PipelineResult,
     Severity,
 )
+from aisg.core.measurement import LLMUsage
 from aisg.core.registry import register_guard
 
 try:
@@ -184,6 +185,7 @@ class NemoRailsGuard(GuardrailBase):
             nemo_response: str = await rails.generate_async(messages=messages)
         except Exception as exc:
             latency_ms = (time.perf_counter() - start) * 1000
+            failed_usage = LLMUsage.unavailable_for("", "nemo").as_metadata()
             if self._fail_open:
                 return CheckResult(
                     passed=True,
@@ -197,7 +199,7 @@ class NemoRailsGuard(GuardrailBase):
                         )
                     ],
                     latency_ms=latency_ms,
-                    metadata={"nemo_error": str(exc)},
+                    metadata={"nemo_error": str(exc), "llm_usage": failed_usage},
                 )
             return CheckResult(
                 passed=False,
@@ -212,10 +214,11 @@ class NemoRailsGuard(GuardrailBase):
                 ],
                 rejection_message=self._rejection_message,
                 latency_ms=latency_ms,
-                metadata={"nemo_error": str(exc)},
+                metadata={"nemo_error": str(exc), "llm_usage": failed_usage},
             )
 
         latency_ms = (time.perf_counter() - start) * 1000
+        usage = _nemo_usage(rails).as_metadata()
         blocked = _is_nemo_block(nemo_response)
 
         if blocked:
@@ -234,15 +237,48 @@ class NemoRailsGuard(GuardrailBase):
                 ],
                 rejection_message=self._rejection_message if self._block_on_refuse else None,
                 latency_ms=latency_ms,
-                metadata={"nemo_response": nemo_response},
+                metadata={"nemo_response": nemo_response, "llm_usage": usage},
             )
 
         return CheckResult(
             passed=True,
             action=Action.ALLOW,
             latency_ms=latency_ms,
-            metadata={"nemo_response": nemo_response},
+            metadata={"nemo_response": nemo_response, "llm_usage": usage},
         )
+
+
+def _nemo_usage(rails: object) -> LLMUsage:
+    """
+    What the last `generate_async` cost, from NeMo's own `explain()` record: the
+    sum of prompt and completion tokens over its LLM calls, the first model name.
+    Any version of nemoguardrails that lacks the record, or a record with no
+    token counts, is `unavailable` -- a call happened and nothing says its cost.
+    """
+    try:
+        info = rails.explain()  # type: ignore[attr-defined]
+        calls = list(getattr(info, "llm_calls", None) or [])
+    except Exception:
+        return LLMUsage.unavailable_for("", "nemo")
+    if not calls:
+        return LLMUsage.unavailable_for("", "nemo")
+
+    def _count(value: object) -> int | None:
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+    tokens_in = [_count(getattr(c, "prompt_tokens", None)) for c in calls]
+    tokens_out = [_count(getattr(c, "completion_tokens", None)) for c in calls]
+    model = next((str(getattr(c, "llm_model_name", "") or "") for c in calls), "")
+    if any(t is not None for t in tokens_in + tokens_out):
+        return LLMUsage(
+            tokens_in=sum(t or 0 for t in tokens_in),
+            tokens_out=sum(t or 0 for t in tokens_out),
+            model=model,
+            provider="nemo",
+            cost_basis="measured",
+            calls=len(calls),
+        )
+    return LLMUsage(None, None, model, "nemo", "unavailable", False, len(calls))
 
 
 # ---------------------------------------------------------------------------

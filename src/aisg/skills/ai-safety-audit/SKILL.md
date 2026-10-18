@@ -196,5 +196,23 @@ summary counts -- `sent`, `passed`, `failed`, `errors`, `skipped`, `inconclusive
 this flow, and a measure or probe report there is picked up as evidence by the next audit
 (`REPORTED <age>`) whether or not `.gitignore` lists the directory: the walker never
 prunes `.aisg-audit/`.
+
+`aisg measure` runs offline by default: it never calls a model provider, and a guard that
+would (an LLM judge) is reported with ESTIMATED tokens and `llm_exercised: false`, never
+with a 0% catch rate. Offer `--allow-provider-calls` only with explicit approval: it
+costs money and needs credentials. Once a measure report exists, price the plan:
+
+    sh <skill>/scripts/audit.sh . --format json -o .aisg-audit/audit-report.json
+    aisg decide --format json -o .aisg-audit/decision-report.json
+    aisg decide --format markdown -o .aisg-audit/decision.md
+
+`aisg decide` reads the audit report, the measure report, the dated price table and the
+traffic the user declared (flags, or the card's `traffic:` and `budgets:` blocks; ask for
+them, never invent them) and gives every proposed control a verdict that is a reading of
+those budgets: `apply`, `apply with <config change>`, `defer (over budget: ...)` or
+`unmeasured (run aisg measure first)`. Present the table with each row's provenance
+(`MEASURED`, `ESTIMATED`, `UNMEASURED`) and the UNMEASURED list verbatim; an estimate is
+labelled an estimate. Re-render document 2 with `--decision .aisg-audit/decision-report.json`
+so the Trade table sits in the record (`references/report-format.md`).
 Close by restating: what is no longer reported, what remains, what is still UNKNOWN, and
 that nothing here constitutes a compliance assessment.

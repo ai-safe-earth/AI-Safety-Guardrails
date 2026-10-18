@@ -26,7 +26,27 @@ import re
 from typing import Literal
 
 from aisg.core.base import Action, CheckResult, Finding, GuardrailBase, GuardrailStage, Severity
+from aisg.core.measurement import LLMUsage
 from aisg.core.registry import register_guard
+from aisg.modules.llm_judges.base import usage_from_anthropic
+
+# The optional judge's call shape, as module constants so the offline estimator
+# (`llm_judges/estimate.py`) prices exactly what the guard sends.
+DEFAULT_JUDGE_MODEL = "claude-sonnet-4-20250514"
+JUDGE_CONTENT_CAP = 3000
+JUDGE_MAX_TOKENS = 200
+_JUDGE_PROMPT = (
+    "Rate the following AI response for toxicity on a scale 0.0-1.0.\n"
+    "Categories to check: hate_speech, harassment, violence, sexual_content, self_harm.\n"
+    "Response: {content}\n\n"
+    'Reply ONLY with JSON: {{"score": 0.0, "categories": [], "reason": ""}}'
+)
+
+
+def judge_prompt(content: str) -> str:
+    """The exact text the inline judge sends for `content`."""
+    return _JUDGE_PROMPT.format(content=content[:JUDGE_CONTENT_CAP])
+
 
 # ---------------------------------------------------------------------------
 # Fast rule-based layer
@@ -82,6 +102,7 @@ class ToxicityFilter(GuardrailBase):
         categories: list[str] | None = None,
         action: Literal["block", "warn", "flag"] = "block",
         use_llm_judge: bool = False,
+        llm_judge_model: str = DEFAULT_JUDGE_MODEL,
         use_perspective: bool = False,
         block_message: str = "I'm unable to provide that response as it may contain harmful content.",
         **kwargs,
@@ -92,8 +113,10 @@ class ToxicityFilter(GuardrailBase):
             Action[action.upper()] if action.upper() in Action.__members__ else Action.BLOCK
         )
         self.use_llm_judge = use_llm_judge
+        self.llm_judge_model = llm_judge_model
         self.use_perspective = use_perspective
         self.block_message = block_message
+        self._judge_error = ""
 
     async def check(self, content: str, context: dict) -> CheckResult:
         findings: list[Finding] = []
@@ -114,13 +137,25 @@ class ToxicityFilter(GuardrailBase):
                         )
                     )
 
-        # LLM judge (optional)
-        if self.use_llm_judge and not findings:
-            llm_findings = await self._llm_judge(content)
-            findings.extend(llm_findings)
+        # LLM judge (optional). The usage record says whether it ran: `calls: 0` when
+        # the regex layer decided first, so "configured but not called" is visible.
+        metadata: dict = {}
+        if self.use_llm_judge:
+            if findings:
+                metadata["llm_usage"] = LLMUsage.none(
+                    self.llm_judge_model, "anthropic"
+                ).as_metadata()
+            else:
+                llm_findings, usage = await self._llm_judge(content)
+                metadata["llm_usage"] = usage.as_metadata()
+                if self._judge_error:
+                    metadata["judge_error"] = self._judge_error
+                findings.extend(llm_findings)
 
         if not findings:
-            return CheckResult(passed=True, action=Action.ALLOW, sanitized_content=content)
+            return CheckResult(
+                passed=True, action=Action.ALLOW, sanitized_content=content, metadata=metadata
+            )
 
         if self.action_mode == Action.BLOCK:
             return CheckResult(
@@ -129,6 +164,7 @@ class ToxicityFilter(GuardrailBase):
                 findings=findings,
                 sanitized_content=self.block_message,
                 rejection_message=self.block_message,
+                metadata=metadata,
             )
 
         return CheckResult(
@@ -136,24 +172,23 @@ class ToxicityFilter(GuardrailBase):
             action=Action.FLAG,
             findings=findings,
             sanitized_content=content,
+            metadata=metadata,
         )
 
-    async def _llm_judge(self, content: str) -> list[Finding]:
+    async def _llm_judge(self, content: str) -> tuple[list[Finding], LLMUsage]:
+        """The optional model call: findings and what it cost. A failure is recorded in
+        `_judge_error` and returned as `unavailable` usage; the guard stays fail-open."""
+        self._judge_error = ""
         try:
             import anthropic
 
             client = anthropic.AsyncAnthropic()
-            prompt = (
-                "Rate the following AI response for toxicity on a scale 0.0-1.0.\n"
-                "Categories to check: hate_speech, harassment, violence, sexual_content, self_harm.\n"
-                f"Response: {content[:3000]}\n\n"
-                'Reply ONLY with JSON: {"score": 0.0, "categories": [], "reason": ""}'
-            )
             resp = await client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=200,
-                messages=[{"role": "user", "content": prompt}],
+                model=self.llm_judge_model,
+                max_tokens=JUDGE_MAX_TOKENS,
+                messages=[{"role": "user", "content": judge_prompt(content)}],
             )
+            usage = usage_from_anthropic(resp, self.llm_judge_model)
             import json
 
             data = json.loads(resp.content[0].text)
@@ -166,7 +201,8 @@ class ToxicityFilter(GuardrailBase):
                         description=f"LLM judge: toxicity score {data['score']:.2f} — {data.get('reason', '')}",
                         metadata=data,
                     )
-                ]
-        except Exception:
-            pass
-        return []
+                ], usage
+            return [], usage
+        except Exception as exc:
+            self._judge_error = f"{type(exc).__name__}: {exc}"
+            return [], LLMUsage.unavailable_for(self.llm_judge_model, "anthropic")

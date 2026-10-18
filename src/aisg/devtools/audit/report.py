@@ -467,6 +467,26 @@ def _probe_extract(body: Any) -> dict[str, Any]:
     return {str(key): value for key, value in summary.items() if _number(value) is not None}
 
 
+def _decision_extract(body: Any) -> dict[str, dict[str, Any]]:
+    """Per control over a declared budget: which budgets, the provenance and the verdict.
+    Rows inside every budget are not repeated here; the decision document has them."""
+    controls = body.get("controls") if isinstance(body, dict) else None
+    out: dict[str, dict[str, Any]] = {}
+    for row in controls if isinstance(controls, list) else []:
+        if not isinstance(row, dict) or not isinstance(row.get("control"), str):
+            continue
+        over = row.get("over_budget")
+        if not isinstance(over, list) or not over:
+            continue
+        rec = row.get("recommendation") if isinstance(row.get("recommendation"), dict) else {}
+        out[row["control"]] = {
+            "over_budget": [str(x) for x in over],
+            "provenance": str(row.get("provenance") or ""),
+            "verdict": str(rec.get("verdict") or ""),
+        }
+    return out
+
+
 def _report_entry(record: ReportRecord | dict[str, Any]) -> dict[str, Any]:
     if isinstance(record, ReportRecord):
         meta = record.to_dict()
@@ -481,6 +501,8 @@ def _report_entry(record: ReportRecord | dict[str, Any]) -> dict[str, Any]:
         entry["guards"] = _measure_extract(body)
     elif kind == "probe":
         entry["summary"] = _probe_extract(body)
+    elif kind == "decision":
+        entry["controls"] = _decision_extract(body)
     return entry
 
 
@@ -1153,8 +1175,12 @@ def to_terminal(report: Report, quiet: bool = False) -> str:
 # ---------------------------------------------------------------------------
 
 
-def render(report: Report, fmt: str, *, quiet: bool = False) -> str:
-    """One renderer per run. `quiet` only affects the terminal format."""
+def render(
+    report: Report, fmt: str, *, quiet: bool = False, decision: dict[str, Any] | None = None
+) -> str:
+    """One renderer per run. `quiet` only affects the terminal format; `decision` (an
+    `aisg decide` document) adds the Trade table section to the html page and nothing
+    to any other format, whose documents stay exactly what the JSON says."""
     if fmt == "json":
         return to_json(report)
     if fmt == "sarif":
@@ -1167,5 +1193,5 @@ def render(report: Report, fmt: str, *, quiet: bool = False) -> str:
         # Local import: `html.py` imports this module's templates, see `all_templates`.
         from aisg.devtools.audit.html import render_html
 
-        return render_html(report)
+        return render_html(report, decision=decision)
     raise ValueError(f"unknown format {fmt!r}; expected one of {', '.join(FORMATS)}")

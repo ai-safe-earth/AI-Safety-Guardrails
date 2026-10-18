@@ -39,7 +39,7 @@ from __future__ import annotations
 
 from aisg.core.base import Action, CheckResult, Finding, GuardrailBase, GuardrailStage, Severity
 from aisg.core.registry import register_guard
-from aisg.modules.llm_judges.base import category_to_severity
+from aisg.modules.llm_judges.base import category_to_severity, usage_metadata
 
 
 @register_guard("llm_input_filter")
@@ -127,6 +127,7 @@ class LLMInputFilter(GuardrailBase):
                         metadata={"judge": verdict.judge_name, "error": verdict.error},
                     )
                 ],
+                metadata={"llm_usage": usage_metadata(verdict, self._judge)},
             )
 
         if verdict.safe:
@@ -135,6 +136,7 @@ class LLMInputFilter(GuardrailBase):
                 action=Action.ALLOW,
                 sanitized_content=content,
                 metadata={
+                    "llm_usage": usage_metadata(verdict, self._judge),
                     "judge": verdict.judge_name,
                     "latency_ms": verdict.latency_ms,
                 },
@@ -174,6 +176,7 @@ class LLMInputFilter(GuardrailBase):
             sanitized_content=content,
             rejection_message=self.block_message if should_block else None,
             metadata={
+                "llm_usage": usage_metadata(verdict, self._judge),
                 "judge": verdict.judge_name,
                 "latency_ms": verdict.latency_ms,
                 "violated_categories": verdict.categories,

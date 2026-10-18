@@ -34,6 +34,7 @@ from aisg.devtools.audit.baseline import (
     write_baseline,
 )
 from aisg.devtools.audit.model import (
+    SCHEMA_VERSION,
     AuditContext,
     Bucket,
     Finding,
@@ -88,6 +89,10 @@ UNMEASURED = "UNMEASURED"
 _REDACT_REFUSED = (
     "--no-redact is refused: redaction is not optional. Secret-shaped snippets are "
     "always redacted in every format; there is no flag that prints them."
+)
+_DECISION_REFUSED = (
+    "--decision {path}: not an `aisg decide` document ({why}); write one with "
+    "`aisg decide --format json -o <file>`"
 )
 _INVENTORY_BASELINE_REFUSED = (
     "--inventory-only runs no rules, so {flag} has nothing to compare or record; "
@@ -194,6 +199,7 @@ class AuditOptions:
     debug: bool = False
     redact: bool = True
     pip_audit_env: str | None = None
+    decision: str | None = None
 
     @classmethod
     def from_namespace(cls, ns: argparse.Namespace | AuditOptions) -> AuditOptions:
@@ -250,6 +256,7 @@ class AuditOptions:
             debug=bool(get("debug", False)),
             redact=bool(get("redact", True)),
             pip_audit_env=_opt_str(get("pip_audit_env")),
+            decision=_opt_str(get("decision")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -339,6 +346,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="FILE",
         help="fingerprint baseline (or a full audit report); only new findings count",
+    )
+    parser.add_argument(
+        "--decision",
+        default=None,
+        metavar="FILE",
+        help=(
+            "an `aisg decide` document (kind: decision); --format html adds its Trade table "
+            "as a section, other formats ignore it"
+        ),
     )
     parser.add_argument(
         "--write-baseline",
@@ -487,6 +503,22 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _note(message: str) -> None:
     print(f"{PROG}: {message}", file=sys.stderr)
+
+
+def _load_decision(path: str) -> tuple[dict[str, Any] | None, str | None]:
+    """The `aisg decide` document behind `--decision`, or why it was refused."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except OSError as exc:
+        return None, f"not readable: {exc}"
+    except json.JSONDecodeError as exc:
+        return None, f"not valid JSON: {exc}"
+    if not isinstance(data, dict) or data.get("schema") != SCHEMA_VERSION:
+        return None, f"schema is not {SCHEMA_VERSION}"
+    if data.get("kind") != "decision" or not isinstance(data.get("controls"), list):
+        return None, "kind is not decision"
+    data["_file"] = path  # named in the html section; not part of the document's keys
+    return data, None
 
 
 def _list_rules_text(rules: Sequence[type[AuditRule]]) -> str:
@@ -844,7 +876,13 @@ def run_audit(args: argparse.Namespace | AuditOptions) -> int:
         exit_code=exit_code,
     )
 
-    text = render(report, options.format, quiet=options.quiet)
+    decision: dict[str, Any] | None = None
+    if options.decision:
+        decision, problem = _load_decision(options.decision)
+        if problem is not None:
+            _note(_DECISION_REFUSED.format(path=options.decision, why=problem))
+            return EXIT_FATAL
+    text = render(report, options.format, quiet=options.quiet, decision=decision)
     _write_output(text, options.output)
     if options.output is not None:
         _note(f"{options.format} report written to {options.output}")

@@ -176,13 +176,21 @@ def _sites(finding):
 
 
 def test_rules_list_is_ordered_and_complete():
-    assert [r.id for r in RULES] == ["AUD-801", "AUD-802", "AUD-803", "AUD-804", "AUD-805"]
+    assert [r.id for r in RULES] == [
+        "AUD-801",
+        "AUD-802",
+        "AUD-803",
+        "AUD-804",
+        "AUD-805",
+        "AUD-806",
+    ]
     assert RULES == [
         GuardUnmeasured,
         GuardFailOpen,
         GuardReportedBelowThreshold,
         LLMJudgeWithoutCredentialsOrTimeout,
         KeywordOnlyFilter,
+        guards_module.GuardReportedOverBudget,
     ]
 
 

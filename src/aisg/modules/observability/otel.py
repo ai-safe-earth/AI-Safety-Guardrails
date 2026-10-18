@@ -98,6 +98,9 @@ class TelemetryProvider:
         self._finding_counter = None
         self._stage_latency = None
         self._guard_latency = None
+        self._llm_calls = None
+        self._llm_tokens = None
+        self._llm_tokens_per_call = None
 
         if self.enabled:
             self._setup()
@@ -212,6 +215,24 @@ class TelemetryProvider:
             description="Latency per individual guardrail check",
             unit="ms",
         )
+        # Model calls the guards themselves make (judges). Tokens, never dollars:
+        # pricing is an offline join (`aisg decide`), and a price frozen into a
+        # metric is wrong within months.
+        self._llm_calls = m.create_counter(
+            name="guardrail.guard.llm_calls",
+            description="Model calls made by guards (judges), cache hits counted separately",
+            unit="{call}",
+        )
+        self._llm_tokens = m.create_counter(
+            name="guardrail.guard.tokens",
+            description="Tokens spent by guards on model calls, by direction and cost basis",
+            unit="{token}",
+        )
+        self._llm_tokens_per_call = m.create_histogram(
+            name="guardrail.guard.tokens_per_call",
+            description="Tokens per guard model call, by direction",
+            unit="{token}",
+        )
 
     # ------------------------------------------------------------------
     # Span context managers
@@ -317,6 +338,7 @@ class TelemetryProvider:
                 "guardrail.guard.action": result.action.value,
             },
         )
+        self._record_llm_usage(result, guard_name, stage, span)
 
         if span is not None:
             span.set_attribute("guardrail.guard.passed", result.passed)
@@ -325,6 +347,44 @@ class TelemetryProvider:
             span.set_attribute("guardrail.guard.latency_ms", round(result.latency_ms, 2))
             if result.blocked and StatusCode is not None:
                 span.set_status(StatusCode.ERROR, "blocked")
+
+    def _record_llm_usage(self, result: "CheckResult", guard_name: str, stage: str, span) -> None:
+        """Token metrics for a check whose guard called a model (or hit its cache)."""
+        from aisg.core.measurement import LLMUsage
+
+        usage = LLMUsage.from_metadata(result.metadata.get("llm_usage"))
+        if usage is None or (usage.calls < 1 and not usage.cache_hit):
+            return
+        base = {
+            "guardrail.guard.name": guard_name,
+            "guardrail.stage": stage,
+            "guardrail.llm.model": usage.model,
+            "guardrail.llm.provider": usage.provider,
+        }
+        self._llm_calls.add(
+            max(usage.calls, 1 if usage.cache_hit else 0),
+            {**base, "guardrail.llm.cache_hit": str(usage.cache_hit)},
+        )
+        for direction, tokens in (("in", usage.tokens_in), ("out", usage.tokens_out)):
+            if tokens is None:
+                continue
+            attrs = {
+                **base,
+                "guardrail.llm.direction": direction,
+                "guardrail.llm.cost_basis": usage.cost_basis,
+            }
+            self._llm_tokens.add(tokens, attrs)
+            if usage.calls >= 1:
+                self._llm_tokens_per_call.record(tokens / usage.calls, attrs)
+        if span is not None:
+            span.set_attribute("guardrail.llm.calls", usage.calls)
+            span.set_attribute("guardrail.llm.model", usage.model)
+            span.set_attribute("guardrail.llm.cost_basis", usage.cost_basis)
+            span.set_attribute("guardrail.llm.cache_hit", usage.cache_hit)
+            if usage.tokens_in is not None:
+                span.set_attribute("guardrail.llm.tokens_in", usage.tokens_in)
+            if usage.tokens_out is not None:
+                span.set_attribute("guardrail.llm.tokens_out", usage.tokens_out)
 
 
 # ------------------------------------------------------------------

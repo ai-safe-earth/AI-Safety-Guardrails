@@ -39,7 +39,14 @@ import json
 import os
 from typing import Literal
 
-from aisg.modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
+from aisg.modules.llm_judges.base import JudgeVerdict, LLMJudgeBase, usage_from_anthropic
+
+# What one call may cost, in the units the estimator reads (`llm_judges/estimate.py`):
+# the completion cap, how much content goes into the prompt, and how much history.
+MAX_TOKENS = 256
+CONTENT_CAP = 3000
+HISTORY_TURNS = 6
+HISTORY_CHARS = 500
 
 # ---------------------------------------------------------------------------
 # Judge prompts
@@ -134,6 +141,8 @@ class ClaudeJudge(LLMJudgeBase):
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         self.name = f"claude_{mode}"
 
+    provider = "anthropic"
+
     async def _call(
         self,
         content: str,
@@ -149,14 +158,18 @@ class ClaudeJudge(LLMJudgeBase):
 
         prompt = self._build_prompt(content, role, conversation_history)
 
-        client = anthropic.AsyncAnthropic(api_key=self.api_key or None)
+        # `timeout` is the SDK's request timeout; without it the stored value was
+        # documentation, and a hung provider hung the guard.
+        client = anthropic.AsyncAnthropic(api_key=self.api_key or None, timeout=self.timeout)
         response = await client.messages.create(
             model=self.model,
-            max_tokens=256,
+            max_tokens=MAX_TOKENS,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()
-        return self._parse(raw)
+        verdict = self._parse(raw)
+        verdict.usage = usage_from_anthropic(response, self.model)
+        return verdict
 
     def _build_prompt(
         self,
@@ -165,24 +178,24 @@ class ClaudeJudge(LLMJudgeBase):
         conversation_history: list[dict] | None,
     ) -> str:
         if self.mode == "injection":
-            return _INJECTION_PROMPT.format(content=content[:3000])
+            return _INJECTION_PROMPT.format(content=content[:CONTENT_CAP])
 
         if self.mode == "toxicity":
-            return _TOXICITY_PROMPT.format(content=content[:3000])
+            return _TOXICITY_PROMPT.format(content=content[:CONTENT_CAP])
 
         # general
         role_label = "user" if role == "user" else "AI assistant"
         history_section = ""
         if conversation_history:
             lines = []
-            for msg in conversation_history[-6:]:  # last 3 turns for context
+            for msg in conversation_history[-HISTORY_TURNS:]:  # last 3 turns for context
                 r = "User" if msg.get("role") == "user" else "Assistant"
-                lines.append(f"{r}: {msg['content'][:500]}")
+                lines.append(f"{r}: {msg['content'][:HISTORY_CHARS]}")
             history_section = "Conversation context:\n" + "\n".join(lines)
 
         return _GENERAL_PROMPT.format(
             role_label=role_label,
-            content=content[:3000],
+            content=content[:CONTENT_CAP],
             history_section=history_section,
         )
 

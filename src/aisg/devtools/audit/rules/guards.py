@@ -378,6 +378,31 @@ def _name_re(name: str) -> re.Pattern[str]:
     return re.compile(rf"\b{re.escape(name)}\b", re.I)
 
 
+# Prose never exercises a guard.
+_EVAL_PROSE_EXTS = frozenset({".md", ".markdown", ".html", ".htm", ".rst", ".txt", ".adoc"})
+_TEST_DIRS = frozenset({"test", "tests", "testing", "evals", "eval", "evaluation", "evaluations"})
+
+
+def _eval_evidence_file(relpath: str) -> bool:
+    """
+    Whether an `evals[]` entry's file is one where a guard's NAME means the guard is
+    exercised: an eval tool's config or data file, or a test module. A README that says
+    `aisg measure` and names a guard measures nothing, and neither does the source of a
+    tool that mentions every guard -- this repository's own `aisg decide` was the first
+    file to show that hole.
+    """
+    path = PurePosixPath(relpath)
+    ext = path.suffix.lower()
+    if ext in _EVAL_PROSE_EXTS:
+        return False
+    if ext == ".py":
+        name = path.name.lower()
+        if name.startswith("test_") or name.endswith("_test.py") or name == "conftest.py":
+            return True
+        return any(part.lower() in _TEST_DIRS for part in path.parts[:-1])
+    return True
+
+
 class _Corpus:
     """The eval files of a tree, joined once, so a name lookup is one search rather
     than one compile and one pass per file per guard. The case-folded copy is a
@@ -464,7 +489,10 @@ class GuardUnmeasured(AuditRule):
         report_names.discard("")
         texts: list[str] = []
         for entry in _entries(ctx, "evals"):
-            text = file_text(ctx, str(entry.get("file") or "")) if entry.get("file") else None
+            file = str(entry.get("file") or "")
+            if not file or not _eval_evidence_file(file):
+                continue
+            text = file_text(ctx, file)
             if text:
                 texts.append(text)
         eval_texts = _Corpus(texts)
@@ -473,6 +501,15 @@ class GuardUnmeasured(AuditRule):
         sites_by_file: dict[str, list[_GuardSite]] = {}
         for site in guard_sites:
             sites_by_file.setdefault(site.file, []).append(site)
+        # A judge-backed guard whose measure report never let the judge run: measured in
+        # name only. Its catch rate counts the regex path and its tokens are estimates, so
+        # it gets the `cost` sub-finding rather than being read as covered by the report.
+        not_exercised: dict[str, str] = {}
+        for record in reports:
+            for guard in _report_guards(record):
+                name = str(guard.get("name") or "").lower()
+                if name and guard.get("llm_configured") is True and not guard.get("llm_exercised"):
+                    not_exercised.setdefault(name, str(getattr(record, "file", "") or ""))
 
         # One group per (unit, guard). An aisg guard is identified by its registry name
         # whether a preset enables it or code constructs it; a third-party library is
@@ -494,6 +531,25 @@ class GuardUnmeasured(AuditRule):
             if lib in (_PRESET_LIB, _AISG_LIB) and sites_by_file.get(file):
                 for site in sites_by_file[file]:
                     if not site.enabled:
+                        continue
+                    if site.name in not_exercised:
+                        groups.setdefault((unit_id, "cost", site.name), []).append(
+                            _Candidate(
+                                site=_SiteRef(
+                                    file, site.line, _line(text, site.line) or f"{site.name}:"
+                                ),
+                                unit=unit,
+                                sub="cost",
+                                evidence_kind=EvidenceKind.REPORT,
+                                match_kind=MatchKind.STRUCTURED,
+                                notes=(
+                                    f"guard {site.name} wires an LLM judge; the measure report "
+                                    f"{not_exercised[site.name]} did not exercise it (offline "
+                                    "run): its catch rate counts the regex path and its tokens "
+                                    "are estimates"
+                                ),
+                            )
+                        )
                         continue
                     if site.name in report_names or _named(site.name, eval_texts):
                         continue
@@ -1060,10 +1116,153 @@ def _literal_words(text: str, line: int) -> int:
     return len(_QUOTED_RE.findall("\n".join(collected)))
 
 
+def _decision_reports(ctx: AuditContext) -> list[Any]:
+    return sorted(
+        (r for r in ctx.reports or [] if getattr(r, "kind", None) == "decision"),
+        key=lambda r: getattr(r, "file", ""),
+    )
+
+
+# `over_budget` entries of a decision row -> the sub-finding that names the budget.
+_BUDGET_SUBS: dict[str, str] = {
+    "p99": "latency",
+    "usd/request": "cost",
+    "usd/month": "cost",
+    "human": "human",
+    "benign": "benign",
+}
+
+
+class GuardReportedOverBudget(AuditRule):
+    """AUD-806: an `aisg decide` document on disk says a wired guard exceeds a budget the
+    operator declared (latency, cost, human review or benign breakage)."""
+
+    id = "AUD-806"
+    title = "Reported guard over the declared budget"
+    priority = 8
+    severity = Severity.HIGH
+    basis = Basis.MEASURED
+    evidence_kind = EvidenceKind.REPORT
+    match_kind = MatchKind.STRUCTURED
+    measured_precision = None
+    tier = Tier.T1
+    controls = (
+        "ASI01",
+        "LLM10",
+        "EU:Art.15",
+        "NIST:MEASURE-2.7",
+        "NIST:MANAGE-1.3",
+    )
+    related_lint_rules = ("ALIGN-004",)
+    known_failure_modes = (
+        "The budgets are the operator's declarations (the system card's traffic and "
+        "budgets blocks, or `aisg decide` flags); a wrong declaration produces a wrong "
+        "overrun, and the finding says which figure was compared with which.",
+        "A row whose tokens were ESTIMATED offline is compared like a measured one; the "
+        "decision document labels it, and the finding repeats the label.",
+        "The price table behind a dollar figure has an `as_of` date; a stale table is "
+        "flagged in the document, not here.",
+        "The decision describes the configuration at the time `aisg decide` ran; a guard "
+        "re-tuned since is still reported from the old figures (the age is shown).",
+    )
+    recommendation = Recommendation(
+        tier=Tier.T1,
+        summary=(
+            "Apply the configuration change the decision names (judge off, cache, stage "
+            "order, flag instead of block), or raise the budget in the system card with a "
+            "reason; then re-run `aisg measure` and `aisg decide` so the figures describe "
+            "the new configuration."
+        ),
+        alternatives=(
+            "Switch the costly judge path off for the guard and keep its regex path, then "
+            "measure again to see what coverage that gave up.",
+            "Route the guard's verdicts to review (FLAG) instead of rejecting (BLOCK) where "
+            "benign breakage is the overrun, and size the review queue to the human rate.",
+            "Move the guard off the interactive path (batch or asynchronous screening) when "
+            "the latency budget is the one exceeded and the guard's catch rate is worth it.",
+        ),
+        package=Package(
+            mechanism="measurement",
+            symbols=("aisg decide", "aisg measure"),
+            same_control=False,
+            leaves_open=(
+                "The budgets come from the operator's card and traffic profile; the tool "
+                "compares, it does not set them. A changed configuration needs a new measure "
+                "run and a new decide run before the figures describe it."
+            ),
+        ),
+    )
+
+    def evaluate(self, ctx: AuditContext) -> list[Finding]:
+        wired: dict[str, _GuardSite] = {}
+        for site in _guard_sites(ctx):
+            current = wired.get(site.name)
+            if current is None or (site.enabled and not current.enabled):
+                wired[site.name] = site
+
+        findings: list[Finding] = []
+        for record in _decision_reports(ctx):
+            report_file = str(getattr(record, "file", "") or "")
+            body = getattr(record, "body", None)
+            controls = body.get("controls") if isinstance(body, dict) else None
+            for row in controls if isinstance(controls, list) else []:
+                if not isinstance(row, dict):
+                    continue
+                name = str(row.get("control") or "")
+                over = row.get("over_budget")
+                if not name or not isinstance(over, list) or not over:
+                    continue
+                site = wired.get(name)
+                if site is not None and not site.enabled:
+                    continue
+                provenance = str(row.get("provenance") or "UNMEASURED")
+                rec = (
+                    row.get("recommendation") if isinstance(row.get("recommendation"), dict) else {}
+                )
+                verdict = str(rec.get("verdict") or "")
+                subs: list[str] = []
+                for budget in over:
+                    sub = _BUDGET_SUBS.get(str(budget))
+                    if sub and sub not in subs:
+                        subs.append(sub)
+                status = (
+                    f"wired in {site.file}"
+                    if site is not None
+                    else "no guard config in the tree names this guard"
+                )
+                for sub in subs:
+                    budgets = [b for b in over if _BUDGET_SUBS.get(str(b)) == sub]
+                    snippet = f"{name}: over {', '.join(str(b) for b in budgets)} ({provenance})"
+                    evidence = [Evidence(role="report", file=report_file, line=0, snippet=snippet)]
+                    if site is not None:
+                        evidence.append(
+                            Evidence(
+                                role="config",
+                                file=site.file,
+                                line=site.line,
+                                snippet=_line(file_text(ctx, site.file), site.line) or name,
+                            )
+                        )
+                    findings.append(
+                        self.finding(
+                            file=report_file,
+                            line=0,
+                            snippet=snippet,
+                            evidence=evidence,
+                            scope=Scope(kind="file", name=report_file),
+                            sub=sub,
+                            report=record.finding_report(),
+                            notes=f"{snippet}; decision: {verdict or 'none recorded'}; {status}",
+                        )
+                    )
+        return findings
+
+
 RULES: list[type[AuditRule]] = [
     GuardUnmeasured,
     GuardFailOpen,
     GuardReportedBelowThreshold,
     LLMJudgeWithoutCredentialsOrTimeout,
     KeywordOnlyFilter,
+    GuardReportedOverBudget,
 ]
