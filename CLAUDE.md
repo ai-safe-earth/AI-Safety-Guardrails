@@ -24,6 +24,13 @@ Guardrails", and so does the repo, `github.com/ai-safe-earth/AI-Safety-Guardrail
 install; `examples/*.py` still self-bootstrap with `sys.path.insert(..., "src")`.
 Run commands from the repo root.
 
+`import aisg` loads `AuditLogger` and `TelemetryProvider` lazily (PEP 562
+`__getattr__` in `src/aisg/__init__.py`): `otel.py` pulls in the OpenTelemetry
+SDK, a quarter of a second every CLI run and every agent hook would otherwise
+pay. Guards stay eager because `@register_guard` fills the registry
+`GuardrailPipeline.from_config` reads; `tests/unit/test_package_lazy.py` pins
+both halves. Keep new heavy, non-guard imports lazy the same way.
+
 YAML presets exist twice on purpose: `src/aisg/config/*.yaml` ships in the
 wheel as package data (read it with `aisg.config.preset_path()` /
 `load_preset()`, never a hard-coded path), and repo-root `config/` is the
@@ -504,6 +511,21 @@ AUD-101 to AUD-1003, ordered by blast radius; the registry lists them all and
   the `gitignored` flag still says so): measure and probe reports written
   there must be discovered as evidence (`REPORTED <age>`) whether or not they
   are committed, so the skip is by content, not by directory.
+- **The audit's run time is budgeted** (2026-10-19: this repo 8 s, AdalFlow 428
+  files 11 s, VaiVia 342 files 9 s, down from 28/45/19 s) because hooks, CI and
+  the fleet all pay for it. Four caches hold the figure and none changes a result:
+  `patterns.comment_spans` is `lru_cache`d per `(text, lang)` and its dict is
+  read-only for every caller; `AuditContext.cache` holds derived views several
+  rules share (`guards.sites`, returned as copies); `_Module.unparse` memoises
+  `ast.unparse` per node for the module's lifetime; and pydeep's gate-text pass
+  checks `vocab.GATE_TEXT_ANCHORS` against a node's full rendering before paying
+  for the collapsed one, which is sound because collapsing only removes
+  characters. Every branch of `APPROVAL_SYMBOLS` / `GATE_BYPASS` must keep an
+  anchor there -- `test_audit_pydeep.py` pins one example per branch -- and the
+  anchors live in `vocab.py`, not in `pydeep.py`, because the self-audit reads a
+  bypass literal in a non-vocabulary file as a finding. `guards._python_guards`
+  scans a file once with one alternation over all registry and class names,
+  anchored on the first code occurrence.
 - **pydeep reads the approval gate literally.** `ToolPolicyGuard(
   require_approval=[])`, `None` or `()` is an inert gate ("require_approval
   is empty") and `approval_callback=None` is no callback, so AUD-201 fires;

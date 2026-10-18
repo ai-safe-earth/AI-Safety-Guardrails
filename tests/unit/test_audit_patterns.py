@@ -1719,3 +1719,12 @@ def test_no_compliance_language_in_patterns_module() -> None:
 def test_patterns_module_is_ascii_outside_invisible_char_table() -> None:
     text = PATTERNS_PY.read_text(encoding="utf-8")
     assert text.isascii()
+
+
+def test_comment_spans_is_cached_per_text_and_language() -> None:
+    text = "a = 1  # c\n'''doc'''\nb = 2\n"
+    before = p.comment_spans.cache_info().hits
+    first = p.comment_spans(text, "python")
+    assert p.comment_spans(text, "python") is first
+    assert p.comment_spans.cache_info().hits > before
+    assert first == {1: [(7, 10)], 2: [(0, 9)]}

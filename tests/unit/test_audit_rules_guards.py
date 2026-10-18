@@ -944,3 +944,57 @@ def test_texts_describe_evidence_not_verdicts(tmp_path: Path, audit_context, aud
             assert evidence.snippet.isascii()
             assert "\\" not in evidence.file
         assert not any(p in (finding.notes or "").lower() for p in banned)
+
+
+# --------------------------------------------------------------------------- #
+# Guard-site scan: one pass over the file, anchored on the first code occurrence;
+# computed once per run and shared by the rules that read it.
+# --------------------------------------------------------------------------- #
+
+
+def test_python_guards_anchor_on_the_first_code_occurrence_in_one_pass() -> None:
+    text = (
+        '"""PIIDetector and tool_policy are named here, in the docstring."""\n'
+        "import aisg  # ToolPolicyGuard in a comment is a mention\n"
+        "\n"
+        'guard = aisg.ToolPolicyGuard(require_approval=["send_email"])\n'
+        'detector = PIIDetector(action="tokenize")\n'
+        "other = pii_detector\n"
+    )
+    sites = guards_module._python_guards(text, "app.py")
+    assert [(s.name, s.line, s.enabled) for s in sites] == [
+        ("tool_policy", 4, True),
+        ("pii_detector", 5, True),
+    ]
+
+
+def test_python_guards_token_table_covers_every_registry_name_and_class() -> None:
+    tokens = set(guards_module._GUARD_TOKENS)
+    assert tokens == set(guards_module._GUARD_CLASSES) | set(guards_module._GUARD_CLASSES.values())
+    for name, klass in guards_module._GUARD_CLASSES.items():
+        assert guards_module._GUARD_TOKENS[name] == name
+        assert guards_module._GUARD_TOKENS[klass] == name
+
+
+def test_guard_sites_are_computed_once_per_context_and_copied(tmp_path: Path) -> None:
+    from aisg.devtools.audit.model import AuditContext, Inventory
+
+    inventory = Inventory()
+    inventory.guardrails = [{"file": "app.py", "lib": "aisg", "line": 1}]
+    ctx = AuditContext(root=tmp_path, inventory=inventory)
+    # `file_text` reads only files the walk enumerated; seed its cache instead.
+    ctx.texts["app.py"] = "from aisg import ToolPolicyGuard\nToolPolicyGuard()\n"
+    first = guards_module._guard_sites(ctx)
+    assert [s.name for s in first] == ["tool_policy"]
+    assert "guards.sites" in ctx.cache
+    first.clear()  # a caller's copy, not the cache
+    assert [s.name for s in guards_module._guard_sites(ctx)] == ["tool_policy"]
+
+
+def test_named_corpus_matches_whole_words_case_insensitively() -> None:
+    corpus = guards_module._Corpus(["uses Prompt_Injection in the eval", "and llamaguard"])
+    assert guards_module._named("prompt_injection", corpus)
+    assert guards_module._named("LlamaGuard", corpus)
+    assert not guards_module._named("prompt", corpus)  # a word boundary, not a substring
+    assert not guards_module._named("pii_detector", corpus)
+    assert guards_module._named("llamaguard", ["x", "LLAMAGUARD"])  # a plain list still works

@@ -17,6 +17,8 @@ Static code analyzer (use in CI / pre-commit):
     # or via CLI: euaiact-lint src/
 """
 
+import importlib
+
 from aisg.core.base import (
     Action,
     CheckResult,
@@ -41,10 +43,6 @@ from aisg.modules.input.rate_limiter import RateLimiter
 # LLM judges (the base class; concrete judges need their provider SDK)
 from aisg.modules.llm_judges.base import LLMJudgeBase
 
-# Observability (`otel.py` guards its optional opentelemetry import itself)
-from aisg.modules.observability.audit_logger import AuditLogger
-from aisg.modules.observability.otel import TelemetryProvider
-
 # Output modules
 from aisg.modules.output.llm_output_filter import LLMOutputFilter
 from aisg.modules.output.toxicity import ToxicityFilter
@@ -65,6 +63,31 @@ from aisg.modules.policy.nist_ai_rmf import ImpactLevel, NISTAIRMFCompliance
 # Processing modules
 from aisg.modules.processing.llm_tool_filter import LLMToolFilter
 from aisg.modules.processing.tool_policy import ToolPolicy, ToolPolicyGuard
+
+# Observability is imported on first use (PEP 562). `otel.py` pulls in the
+# OpenTelemetry SDK, about a quarter of a second that every `aisg` CLI run and every
+# agent hook would otherwise pay before doing anything; `otel.py` still guards the
+# optional dependency itself. Guards stay eager: `@register_guard` fills the registry
+# `GuardrailPipeline.from_config` reads, and a lazy guard would be an unregistered name.
+_LAZY_ATTRIBUTES = {
+    "AuditLogger": ("aisg.modules.observability.audit_logger", "AuditLogger"),
+    "TelemetryProvider": ("aisg.modules.observability.otel", "TelemetryProvider"),
+}
+
+
+def __getattr__(name: str):
+    target = _LAZY_ATTRIBUTES.get(name)
+    if target is None:
+        raise AttributeError(f"module 'aisg' has no attribute {name!r}")
+    module = importlib.import_module(target[0])
+    value = getattr(module, target[1])
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))
+
 
 __version__ = "0.1.0"
 __all__ = [

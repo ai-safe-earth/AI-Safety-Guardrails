@@ -206,6 +206,19 @@ _EMPTY_CTORS = (["list"], ["tuple"], ["set"], ["dict"], ["frozenset"])
 # Gates that exist only through their keywords: with `**name` in place of them there
 # is nothing to read, and the site is UNKNOWN rather than a gate of either kind.
 _CONFIGURED_GATES = frozenset({"ToolPolicyGuard"})
+# The gate-text pass reads a node with its nested calls collapsed to `...`; that text
+# is the node's full unparse minus characters, so a branch of the gate vocabulary whose
+# literal is absent from the full text cannot match the collapsed one. Checking the
+# full text first skips the collapse-and-unparse (the costly part) for almost every
+# call. The literals live in vocab.py, which is the vocabulary file.
+_GATE_ANCHORS = vocab.GATE_TEXT_ANCHORS
+
+
+def _gate_possible(text: str) -> bool:
+    """False only when no branch of the gate vocabulary can match a collapsed rendering."""
+    return any(anchor in text for anchor in _GATE_ANCHORS)
+
+
 # The rules that consume a tool-gate join; an UNKNOWN about an unresolvable gate names them.
 _UNRESOLVED_GATE_RULES: tuple[str, ...] = ("AUD-201", "AUD-202")
 _LOOP_CAPS = frozenset(vocab.LOOP_CAP_SYMBOLS)
@@ -799,8 +812,23 @@ class _Module:
         self.llm_nodes: set[int] = set()
         self.call_results: set[str] = set()
         self.loop_sites: dict[ast.AST, LoopSite] = {}
+        # id(node) -> unparsed text. `ast.unparse` is the single most expensive call
+        # of the deep pass and several passes render the same node (legs, prompt
+        # assembly, gate text, taint); the tree outlives this dict, so ids are stable.
+        self._unparsed: dict[int, str] = {}
         self._scopes(tree, self.module_scope, "")
         self.any_sdk = any(self.provider(v.split(".")) for v in self.alias.values())
+
+    def unparse(self, node: ast.AST | None) -> str:
+        """`_unparse(node)`, memoised for the lifetime of this module's tree."""
+        if node is None:
+            return ""
+        key = id(node)
+        text = self._unparsed.get(key)
+        if text is None:
+            text = _unparse(node)
+            self._unparsed[key] = text
+        return text
 
     # -- construction ------------------------------------------------------
     def _import(self, node: ast.Import | ast.ImportFrom) -> None:
@@ -813,7 +841,7 @@ class _Module:
             mod = "." * node.level + (node.module or "")
             for a in node.names:
                 self.alias[a.asname or a.name] = f"{mod}.{a.name}"
-        if _match(GUARDRAIL_LIBS, _unparse(node)):
+        if _match(GUARDRAIL_LIBS, self.unparse(node)):
             self.guard_names.update(a.asname or a.name.split(".")[0] for a in node.names)
 
     def _scopes(self, node: ast.AST, scope: _Scope, prefix: str) -> None:
@@ -836,7 +864,9 @@ class _Module:
                 for arg in (a.vararg, a.kwarg):
                     if arg is not None:
                         inner.params[arg.arg] = arg.annotation
-                inner.route = any(_ROUTE_RE.search("@" + _unparse(d)) for d in child.decorator_list)
+                inner.route = any(
+                    _ROUTE_RE.search("@" + self.unparse(d)) for d in child.decorator_list
+                )
                 self.def_scope[child] = inner
                 self._scopes(child, inner, qual + ".")
                 continue
@@ -918,10 +948,10 @@ class _Module:
         if kind == "param":
             if scope.route:
                 return True
-            return value is not None and _match(_UNTRUSTED_PY, _unparse(value)) is not None
+            return value is not None and _match(_UNTRUSTED_PY, self.unparse(value)) is not None
         if value is None or (isinstance(value, ast.Call) and _sanitiser_name(_chain(value.func))):
             return False
-        if _match(_UNTRUSTED_PY, _unparse(value)):
+        if _match(_UNTRUSTED_PY, self.unparse(value)):
             return True
         return any(
             self.is_untrusted(n, scope, value.lineno, depth + 1)
@@ -930,7 +960,7 @@ class _Module:
         )
 
     def is_guard_call(self, call: ast.Call, scope: _Scope) -> bool:
-        if _match(GUARDRAIL_LIBS, _unparse(call)):
+        if _match(GUARDRAIL_LIBS, self.unparse(call)):
             return True
         chain = _chain(call.func)
         if chain and chain[0] in self.guard_names:
@@ -1045,7 +1075,7 @@ class _Tainter:
             rooted = isinstance(base, ast.Name) and base.id in mod.call_results
         if not rooted:
             return None
-        src = _unparse(expr)
+        src = mod.unparse(expr)
         hit = _match(LLM_RESPONSE_ACCESSORS, src)
         if hit:
             return _Taint(expr.lineno, hit[0], (), False)
@@ -1098,7 +1128,7 @@ class _Tainter:
     def call(
         self, mod: _Module, scope: _Scope, call: ast.Call, env: dict[str, _Taint], depth: int
     ) -> _Taint | None:
-        if id(call) in mod.llm_nodes and _match(LLM_RESPONSE_ACCESSORS, _unparse(call)):
+        if id(call) in mod.llm_nodes and _match(LLM_RESPONSE_ACCESSORS, mod.unparse(call)):
             return _Taint(call.lineno, "agent_invoke", (), False)
         chain = _chain(call.func)
         qchain = mod.qualify(chain)
@@ -1279,7 +1309,7 @@ class _Analyser:
             if isinstance(node, (ast.JoinedStr, ast.BinOp, ast.Call)):
                 self._assembly(node, scope)
             if mod.active_legs and isinstance(node, _LEG_NODES) and self._leg_worthy(node):
-                self._leg(node, scope, _unparse(node))
+                self._leg(node, scope, mod.unparse(node))
         self._finish_loops()
         self._finish_assemblies()
         self._taint()
@@ -1342,7 +1372,7 @@ class _Analyser:
         mod = self.mod
         scope = mod.def_scope[node]
         for dec in node.decorator_list:  # type: ignore[attr-defined]
-            self._leg(dec, scope, "@" + _unparse(dec))
+            self._leg(dec, scope, "@" + mod.unparse(dec))
             chain = _chain(dec)
             if chain and chain[-1] in _TOOL_DECORATORS:
                 name = node.name  # type: ignore[attr-defined]
@@ -1387,7 +1417,7 @@ class _Analyser:
         self._tool(name.value, node.lineno, "schema_dict", self._fn_nodes(name.value), body)
 
     def _assign(self, node: ast.Assign, scope: _Scope) -> None:
-        if self.mod.has_gate_text:
+        if self.mod.has_gate_text and _gate_possible(self.mod.unparse(node)):
             # Calls are opaque here: a literal inside one belongs to that call's visit.
             self._gate_text(_owned_text(node), node, scope, None)
         target = node.targets[0] if len(node.targets) == 1 else None
@@ -1463,7 +1493,7 @@ class _Analyser:
                 named = _kwarg(node, "name")
                 name = named.value if isinstance(named, ast.Constant) else fn.id
                 self._tool(str(name), node.lineno, "from_function", self._fn_nodes(fn.id), "")
-        if mod.has_gate_text:
+        if mod.has_gate_text and _gate_possible(mod.unparse(node)):
             self._gate_text(_shallow(node), node, scope, node)
 
     def _llm_site(self, node: ast.Call, scope: _Scope, provider: str) -> None:

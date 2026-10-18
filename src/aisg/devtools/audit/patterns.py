@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from functools import lru_cache
 
 from aisg.modules.input.advanced_injection_detectors import UnicodeBypassDetector
 from aisg.modules.input.pii_detector import DEFAULT_ENTITIES, PII_PATTERNS
@@ -1498,10 +1499,15 @@ def _slash_line(line: str, i: int, spans: list[tuple[int, int]]) -> str | None:
     return None
 
 
+@lru_cache(maxsize=2048)
 def comment_spans(text: str, lang: str) -> CommentSpans:
     """Per line (1-based), the ``[start, end)`` column ranges that are a comment or a
     Python triple-quoted string. Lines with no such range are absent. A language with
-    no known comment syntax yields ``{}``: nothing is filtered rather than guessed."""
+    no known comment syntax yields ``{}``: nothing is filtered rather than guessed.
+
+    Cached per (text, lang): discovery and the guard rules each tokenize the same file
+    once, and a second pass over a 100 KB source costs more than the lookup. Callers
+    read the result and never mutate it."""
     style = _COMMENT_STYLE.get(lang or "")
     if style is None:
         return {}

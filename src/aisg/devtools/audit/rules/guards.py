@@ -29,7 +29,9 @@ walk did not enumerate simply has no text.
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -285,24 +287,57 @@ def _code_line_of(text: str, pattern: re.Pattern[str], spans: CommentSpans) -> i
     return 0
 
 
+# One alternation over every registry name and class name: a file is scanned once for
+# all twelve guards instead of twelve times. Longest token first so that, should one
+# token ever prefix another, the regex still tries the longer word before falling back.
+_GUARD_TOKENS: dict[str, str] = {
+    **{name: name for name in _GUARD_CLASSES},
+    **{klass: name for name, klass in _GUARD_CLASSES.items()},
+}
+_GUARD_TOKEN_RE = re.compile(
+    r"\b("
+    + "|".join(re.escape(t) for t in sorted(_GUARD_TOKENS, key=lambda t: (-len(t), t)))
+    + r")\b"
+)
+
+
+def _line_starts(text: str) -> list[int]:
+    starts = [0]
+    pos = text.find("\n")
+    while pos != -1:
+        starts.append(pos + 1)
+        pos = text.find("\n", pos + 1)
+    return starts
+
+
 def _python_guards(text: str, relpath: str) -> list[_GuardSite]:
     """
     Guards a Python file names, by registry name or class name. A name that appears
     only in a comment or a docstring is a mention, not a wired guard, and the site is
     anchored on the first occurrence in code rather than the first occurrence at all.
     """
-    sites: list[_GuardSite] = []
     spans = comment_spans(text, "python")
-    for name, klass in _GUARD_CLASSES.items():
-        pattern = re.compile(rf"\b(?:{re.escape(name)}|{re.escape(klass)})\b")
-        line = _code_line_of(text, pattern, spans)
-        if line:
-            sites.append(_GuardSite(name, relpath, line, True))
+    starts = _line_starts(text)
+    first: dict[str, int] = {}
+    for match in _GUARD_TOKEN_RE.finditer(text):
+        name = _GUARD_TOKENS[match.group(1)]
+        if name in first:
+            continue
+        line = bisect_right(starts, match.start())
+        if not in_comment(spans, line, match.start() - starts[line - 1]):
+            first[name] = line
+    sites = [_GuardSite(name, relpath, line, True) for name, line in first.items()]
     return sorted(sites, key=lambda s: (s.line, s.name))
 
 
 def _guard_sites(ctx: AuditContext) -> list[_GuardSite]:
-    """Every guard the tree wires, from the files carrying a `guardrails[]` entry."""
+    """Every guard the tree wires, from the files carrying a `guardrails[]` entry.
+
+    Three rules read the same list, so it is computed once per run and kept on
+    `ctx.cache`; each caller gets its own copy."""
+    cache = getattr(ctx, "cache", None)
+    if isinstance(cache, dict) and "guards.sites" in cache:
+        return list(cache["guards.sites"])
     sites: list[_GuardSite] = []
     seen: set[str] = set()
     for entry in _entries(ctx, "guardrails"):
@@ -316,6 +351,8 @@ def _guard_sites(ctx: AuditContext) -> list[_GuardSite]:
             sites.extend(_preset_guards(text, file))
         else:
             sites.extend(_python_guards(text, file))
+    if isinstance(cache, dict):
+        cache["guards.sites"] = list(sites)
     return sites
 
 
@@ -336,9 +373,29 @@ def _report_guards(record: Any) -> list[dict[str, Any]]:
     return []
 
 
-def _named(name: str, texts: list[str]) -> bool:
-    pattern = re.compile(rf"\b{re.escape(name)}\b", re.I)
-    return any(pattern.search(text) for text in texts)
+@lru_cache(maxsize=1024)
+def _name_re(name: str) -> re.Pattern[str]:
+    return re.compile(rf"\b{re.escape(name)}\b", re.I)
+
+
+class _Corpus:
+    """The eval files of a tree, joined once, so a name lookup is one search rather
+    than one compile and one pass per file per guard. The case-folded copy is a
+    prefilter: a name whose letters are absent cannot match the regex either."""
+
+    __slots__ = ("blob", "folded")
+
+    def __init__(self, texts: list[str]) -> None:
+        self.blob = "\n".join(texts)
+        self.folded = self.blob.casefold()
+
+    def names(self, name: str) -> bool:
+        return name.casefold() in self.folded and _name_re(name).search(self.blob) is not None
+
+
+def _named(name: str, texts: list[str] | _Corpus) -> bool:
+    corpus = texts if isinstance(texts, _Corpus) else _Corpus(texts)
+    return corpus.names(name)
 
 
 class GuardUnmeasured(AuditRule):
@@ -405,11 +462,12 @@ class GuardUnmeasured(AuditRule):
             str(g.get("name") or "").lower() for r in reports for g in _report_guards(r)
         }
         report_names.discard("")
-        eval_texts: list[str] = []
+        texts: list[str] = []
         for entry in _entries(ctx, "evals"):
             text = file_text(ctx, str(entry.get("file") or "")) if entry.get("file") else None
             if text:
-                eval_texts.append(text)
+                texts.append(text)
+        eval_texts = _Corpus(texts)
 
         guard_sites = _guard_sites(ctx)
         sites_by_file: dict[str, list[_GuardSite]] = {}

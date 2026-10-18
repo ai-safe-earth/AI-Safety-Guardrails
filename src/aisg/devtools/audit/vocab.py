@@ -130,6 +130,38 @@ GATE_BYPASS_CONFIG = re.compile(
     f"(?:{_GATE_BYPASS_KV}" + r"|\bskip_confirmation\b[\"']?\s*[:=]\s*[Tt]rue)"
 )
 
+# One literal run from every branch of APPROVAL_SYMBOLS and GATE_BYPASS, spelled exactly
+# as the regex requires it (case included). pydeep's gate-text pass renders a node with
+# its nested calls collapsed to `...`, which only removes characters from the node's
+# full rendering, so a branch whose literal is absent from the full text cannot match
+# the collapsed one; the pass checks these before paying for the collapse. Every branch
+# above must keep an entry here (tests/unit/test_audit_pydeep.py pins one example per
+# branch), and a new branch gets its literal added in the same change.
+GATE_TEXT_ANCHORS: tuple[str, ...] = (
+    "require_approval",
+    "approval_callback",
+    "human_in_the_loop",
+    "HumanInTheLoop",
+    "interrupt_before",
+    "interrupt_after",
+    "confirm",
+    "ask_user",
+    "request_confirmation",
+    "ToolPolicyGuard",
+    "needs_approval",
+    "approve(",
+    "Command(",
+    "HITL",
+    "pause_for_approval",
+    "input(",
+    "auto_approve",
+    "auto_Approve",
+    "autoapprove",
+    "autoApprove",
+    "skip_confirmation",
+    "-y",
+)
+
 # Names that bound an agent loop (AUD-102). Excludes bare counters (`i`, `n`, `count`,
 # `limit`): a counter compared inside the loop body is a known miss, not a symbol.
 LOOP_CAP_SYMBOLS: tuple[str, ...] = (

@@ -940,3 +940,91 @@ def test_fixture_py_agent(py_agent_facts):
     assert any(a.is_system and a.untrusted_names for a in facts.prompt_assemblies)
     scopes = facts.trifecta_scopes()
     assert scopes and scopes[0].name == "app.py::chat"
+
+
+# --------------------------------------------------------------------------- #
+# Gate-text prefilter: one example per branch of the gate vocabulary. The pass checks
+# vocab.GATE_TEXT_ANCHORS against a node's full rendering before paying for the
+# collapsed one, so every branch of APPROVAL_SYMBOLS and GATE_BYPASS must keep an anchor.
+# --------------------------------------------------------------------------- #
+
+_APPROVAL_EXAMPLES = (
+    "ToolPolicyGuard(require_approval=['send_email'])",
+    "approval_callback=cb",
+    "human_in_the_loop=True",
+    "HumanInTheLoop()",
+    "interrupt_before=['tools']",
+    "interrupt_after=['tools']",
+    "confirm(action)",
+    "ask_user(prompt)",
+    "request_confirmation()",
+    "needs_approval(tool)",
+    "approve(request)",
+    "Command(resume=True)",
+    "HITL",
+    "pause_for_approval()",
+    "input('Proceed? (y/n) ')",
+)
+_BYPASS_EXAMPLES = (
+    "auto_approve = True",
+    "auto_Approve = True",
+    "autoapprove = True",
+    "autoApprove: true",
+    "require_approval = False",
+    "human_in_the_loop = False",
+    "confirm = False",
+    "approval_callback = None",
+    "skip_confirmation",
+    "--yes",
+    "rm -rf build -y",
+)
+
+
+@pytest.mark.parametrize("example", _APPROVAL_EXAMPLES)
+def test_gate_anchors_cover_every_approval_branch(example: str) -> None:
+    from aisg.devtools.audit import pydeep as pydeep_module
+    from aisg.devtools.audit import vocab
+
+    assert vocab.APPROVAL_SYMBOLS.search(example), example
+    assert pydeep_module._gate_possible(example), example
+
+
+@pytest.mark.parametrize("example", _BYPASS_EXAMPLES)
+def test_gate_anchors_cover_every_bypass_branch(example: str) -> None:
+    from aisg.devtools.audit import pydeep as pydeep_module
+    from aisg.devtools.audit import vocab
+
+    assert vocab.GATE_BYPASS.search(example), example
+    assert pydeep_module._gate_possible(example), example
+
+
+def test_gate_prefilter_is_quiet_on_a_plain_call() -> None:
+    from aisg.devtools.audit import pydeep as pydeep_module
+
+    assert not pydeep_module._gate_possible(
+        "client.messages.create(model='claude-sonnet-4-20250514', messages=history)"
+    )
+
+
+def test_every_gate_anchor_is_exercised_by_a_matching_example() -> None:
+    """No anchor without a branch behind it: each one appears in an example that the
+    vocabulary matches, so a stale or misspelled anchor fails here."""
+    from aisg.devtools.audit import vocab
+
+    examples = _APPROVAL_EXAMPLES + _BYPASS_EXAMPLES
+    for anchor in vocab.GATE_TEXT_ANCHORS:
+        assert any(anchor in example for example in examples), anchor
+
+
+def test_module_unparse_is_memoised_per_node(tmp_path: Path) -> None:
+    import ast as ast_module
+
+    from aisg.devtools.audit import pydeep as pydeep_module
+
+    text = "x = call(a, b)\ny = x.attr\n"
+    mod = pydeep_module._Module("m.py", None, ast_module.parse(text), text)
+    node = mod.tree.body[0].value
+    first = mod.unparse(node)
+    assert first == "call(a, b)"
+    assert mod.unparse(node) is first
+    assert mod.unparse(None) == ""

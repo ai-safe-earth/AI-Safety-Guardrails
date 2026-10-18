@@ -937,3 +937,6 @@ class AuditContext:
     # relpath -> decoded text, filled lazily by `rules.file_text()` so rules that
     # need a window of source share one read per file.
     texts: dict[str, str | None] = field(default_factory=dict, repr=False, compare=False)
+    # Per-run memo for derived views several rules compute from the same inputs (the
+    # wired guard sites, for one). Keyed by the owning module's name; never serialised.
+    cache: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
