@@ -5,7 +5,7 @@ check the current docs before writing it into the user's code. Deep analysis is 
 so every AUD-401..406 finding in TypeScript is a co-located grep hit: read the code first.
 
 The `recommendation.package.symbols` in the JSON (`ToolPolicyGuard`, `PIIDetector`,
-`RateLimiter`, ...) are Python-only: this package has no TypeScript runtime, so in phase 3
+`RateLimiter`, ...) are Python-only: this package has no TypeScript runtime, so in phase 4
 a TypeScript unit always takes the outside-package branch whatever `same_control` says.
 The control the rule asks for applies unchanged; this file is how to write it here.
 
@@ -107,7 +107,7 @@ sidecar) or a provider-side moderation endpoint are the usual detectors here.
   its own model call whose output is data.
 - AUD-203: a `dryRun` flag on irreversible tools and an idempotency key per external write.
 
-## Verify (phase 5, with approval)
+## Verify (phase 6, with approval)
 
 `npm test` if `package.json` defines it (`verify.sh` detects and prints it). If the app
 serves an HTTP chat endpoint, `aisg probe http://127.0.0.1:<port>/chat -o probe-report.json`

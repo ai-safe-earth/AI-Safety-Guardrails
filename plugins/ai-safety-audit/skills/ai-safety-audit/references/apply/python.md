@@ -1,7 +1,7 @@
 # Applying controls in Python
 
 Idioms keyed by the **first entry of `recommendation.package.symbols`** in the JSON report.
-Phase 3 of SKILL.md reads that key and jumps to the matching section here; the rule ids in
+Phase 4 of SKILL.md reads that key and jumps to the matching section here; the rule ids in
 each heading say which findings land on it. Every symbol exists at the import path shown
 with the keyword names quoted, checked against `src/aisg` at the version this skill ships
 with (`aisg --version`). For frameworks other than this package, check the current docs
@@ -377,15 +377,16 @@ the edit. A CI workflow file is a rule-4 file. Leaves open, per rule, is the row
 `recommendation.package.leaves_open` in the JSON (`references/controls.md` carries the
 same text); quote it.
 
-## `aisg measure` (AUD-601, 801, 803, 805, 901, 902, 903, 904; phase 5 only)
+## `aisg measure` (AUD-601, 801, 803, 805, 901, 902, 903, 904; offline in phase 3, with provider calls in phase 6)
 
     aisg measure --config config/guardrails.yaml -o .aisg-audit/measure-report.json
 
 Runs the attack AND benign corpora through each aisg guard in isolation, in-process, and
 writes per-guard catch rate, benign breakage, p50/p99 and provenance. Same control for
 AUD-801, AUD-901 and AUD-903 once the report exists and CI runs it. It calls the guards,
-which may call model providers when a judge is configured, so it waits for phase 5 and
-approval. Commit the report (or keep it under `.aisg-audit/`) so the next audit reads it as
+which may call model providers only with `--allow-provider-calls`; that form waits for
+phase 6 and approval, while the offline default (no provider call, judge tokens ESTIMATED)
+may run in phase 3 so `aisg decide` has figures. Commit the report (or keep it under `.aisg-audit/`) so the next audit reads it as
 `REPORTED <age>`; AUD-803 reads `threshold_failures` from it.
 
 Leaves open, in summary (AUD-801): only guards registered with this package can be
@@ -398,11 +399,11 @@ its own benign corpus; benign cases in your own eval config are the control. (AU
 pinning the id is an edit to the call site; measure records the id it saw, it pins
 nothing.
 
-## `aisg decide` (AUD-806; second symbol `aisg measure`; phase 3, needs a measure report)
+## `aisg decide` (AUD-806; second symbol `aisg measure`; phase 3; guard rows are UNMEASURED without a measure report)
 
     aisg decide --format json -o .aisg-audit/decision-report.json
     aisg decide --format markdown -o .aisg-audit/decision.md
-    aisg audit . --format html --decision .aisg-audit/decision-report.json -o .aisg-audit/audit-before.html
+    aisg audit . --format html --decision .aisg-audit/decision-report.json --baseline .aisg-audit/audit-baseline.json -o .aisg-audit/audit-after.html
 
 Joins the audit's proposed controls (`recommendation.package` symbols) with the measure
 report, the dated price table (`prices.yaml`, `as_of` printed on every figure) and the
@@ -434,7 +435,7 @@ compares and does not set them; a changed configuration needs a new measure run 
 decide run before the figures describe it. A dollar figure is as good as the price table's
 `as_of` date and is labelled `stale` past `stale_after_days`.
 
-## `aisg probe` (AUD-902; second symbol on AUD-901, 903; phase 5 only)
+## `aisg probe` (AUD-902; second symbol on AUD-901, 903; phase 6 only)
 
     aisg probe http://127.0.0.1:<port>/chat -o .aisg-audit/probe-report.json
 
@@ -455,8 +456,11 @@ A reviewer still starting with `TODO` counts as no review.
     aisg init --defaults                     # writes ai-system-card.yaml
 
 Same control for AUD-1001: the card is the system description. Its fields are system id,
-name and purpose, role, `risk_tier`, `annex_iii_category`, `affected_persons`, deployment
-and `incident_contact`; there is no model or data field. Every field is the operator's
+name and purpose, role, `risk_tier`, `annex_iii_category`, `affected_persons`, deployment,
+`incident_contact`, the `prompt_audit` block, and the `traffic:` and `budgets:` blocks
+`aisg decide` reads in phase 3 (`null` = unknown, never assumed); there is no model or
+data field. `aisg attest` level 3 reads `system.purpose`, `affected_persons`,
+`incident_contact`, `risk_tier`, `deployment` and a dated `prompt_audit`. Every field is the operator's
 assertion; the `risk_tier` caveat in the rendered file says classification is a legal
 determination and stays. Leave `unknown` in place rather than guessing. `incident_contact`
 is written as a `TODO` placeholder; a blank or `TODO`-prefixed value still counts as absent
@@ -470,6 +474,25 @@ writes the file and the caveat, and cannot check whether the entries are true.
 is a legal determination the operator makes; init only records the answer. (AUD-703):
 `incident_contact` on the card is a place to write the contact down; the runbook -- who
 is paged, how harm is reported, how the system is stopped -- is the control.
+
+## `aisg attest` (phase 7 only; document)
+
+    aisg attest . --check                                   # evaluate, write nothing
+    aisg attest . --owner "<Name <role>>" --html            # attestation.{json,md,html}, badge.json
+    aisg attest . --check --require-level 2                 # the CI line: exit 1 below level 2
+
+Reads `.aisg-audit/audit-report-after.json`, the baseline, the measure, probe and decision
+reports and `ai-system-card.yaml`; evaluates the criteria of `attest-levels.yaml`
+(`references/levels.md`); writes the attestation a named owner signs. A level is the
+highest N with every criterion of levels 0..N met; each criterion row says what it read and
+what is missing. Only reasoned baseline entries count as accepted; an absent input fails
+its criteria, not the run; `--owner` is never a `pyproject.toml` default. The attestation
+is own output: the next audit skips it.
+
+Leaves open: the criteria are the ones in the file, no more; a level says those were met
+on that date by the documents on disk, and the documents go stale as the code changes.
+`--level-criteria PATH` evaluates a team's own file, validated against the rule registry
+and the card schema. Not a compliance verdict, and no renderer calls it one.
 
 ## `mechanism: none` (AUD-101, 106, 107, 404, 603) and the rest of the control
 
@@ -515,9 +538,10 @@ and offer the edit:
 - Anthropic / OpenAI raw tool use: the loop that executes `tool_use` blocks is where the
   gate goes; dispatch by name from a fixed table, never from the model's string.
 
-## Verify (phase 5, with approval)
+## Verify (phase 6, with approval)
 
 `aisg measure` and `aisg probe` as above, through the bootstrap chain (`verify.sh` /
-`verify.ps1` with `AISG_VERIFY_RUN=1`), after the project's own test command. A report
+`verify.ps1` with `AISG_VERIFY_RUN=1`; `AISG_VERIFY_SKIP_TESTS=1` is the phase-3 form that
+runs the offline measure alone), after the project's own test command. A report
 written under `.aisg-audit/` is evidence for the next audit, labelled `REPORTED <age>`,
 never as if the audit had just measured it.

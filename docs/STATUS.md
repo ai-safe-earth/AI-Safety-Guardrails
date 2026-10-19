@@ -20,13 +20,45 @@ reason written there.
 | 1 | tokens and prices, `aisg measure` offline + cost columns, `aisg decide`, `Budget`, AUD-806 | committed `e748021` |
 | 2 | `aisg audit --only`, `aisg hook`, Claude Code plugin, Cursor/Gemini installers, Action, pre-commit, GitLab job | committed `40af8c1` |
 | 3 | P11 persons-and-manipulation rules, `ManipulationGuard`, `AIDisclosureGuard`, corpora, `prompt_audit` | committed `ed7b41b` |
-| 4 | `aisg attest` with levels and a named owner | committed 2026-10-19 (the commit after `ed7b41b`) |
-| 5 | seven-phase skill, SYSTEM.md, CONTRIBUTING, README | next |
-| 6 | `aisg fleet`, bench `--tool audit`, `v0.2.0` | |
+| 4 | `aisg attest` with levels and a named owner | committed `e5ef805` |
+| 5 | seven-phase skill, SYSTEM.md, CONTRIBUTING, README | committed 2026-10-19 (the commit after `e5ef805`) |
+| 6 | `aisg fleet`, bench `--tool audit`, `v0.2.0` | next |
 
 ## Landed 2026-10-19
 
-- **wave 4, `feat(attest)`**: design `docs/plan/03` part C.
+- **wave 5, `feat(skill)`**: design `docs/plan/03` part D.
+  - `SKILL.md` runs seven phases (survey, document 1, decide, apply, document 2,
+    verify, attest) and a closing step that offers `aisg hook install` and the
+    Action by name. Hard rule 8 (which aisg ran: `audit.sh` / `attest.sh` print
+    `aisg: <path> version <v> (pinned <v>)` on stderr, the skill stops on a
+    mismatch) and rule 9 (never push; the PR path commits on a branch and prints
+    the `gh pr create` line). Phase 3 prices the plan with `aisg decide` after
+    the offline measure (`AISG_VERIFY_SKIP_TESTS=1` on `verify.sh|ps1`); phase 7
+    reads every unmet criterion's `missing` text aloud.
+  - New `scripts/attest.sh|ps1` (same chain and pin as `audit.sh`);
+    `references/levels.md` generated whole from the criteria file by
+    `scripts/levels_md.py` (`--check` in the release gate, `test_levels_md.py`);
+    `report-format.md` documents the decision and attestation documents;
+    `apply/python.md` has the `aisg attest` idiom; phase numbers renumbered in
+    every reference. `test_skill_package.py` pins the seven titles in order, the
+    new vocabulary, the stderr line and the skip-tests switch.
+  - `docs/SYSTEM.md` (the flow on one page), `CONTRIBUTING.md`, `SECURITY.md`
+    scope (decide, hook, attest, plugin, CI surface), README and CLAUDE.md.
+  - Two fixes the end-to-end run forced: `aisg attest` printed a sub-finding's
+    display id twice and matched `rules_closed` against display ids instead of
+    rule ids; AUD-903 raised `report models unknown` on every decision document
+    (it names no model by design).
+  - End-to-end on a throwaway clone of VaiVia (`9cdceed`, 349 tracked files),
+    deterministic phases only: phase 1 wrote the report and baseline (14 findings,
+    4 high, 5 UNKNOWN items), phase 2 the before document, phase 3 the decision
+    table (5 `apply`, 3 `unmeasured`; no budgets declared, no pipeline config so
+    no measure report), phase 5 document 2 with the Trade table (0 new, 14
+    unchanged), phase 7 level 0 `audited` with nine unmet criteria named; the
+    re-audit skipped `attestation.json` and `attestation.html` as own output and
+    reported nothing new. Phases 4 and 6 need a person and were not run.
+  - `~/.claude/skills/ai-safety-audit` refreshed from this tree
+    (`aisg skill install --host claude --global --force`; `diff` identical).
+- **wave 4, `feat(attest)` (`e5ef805`)**: design `docs/plan/03` part C.
   - `devtools/attest.py`, `aisg attest`: reads `.aisg-audit/audit-report-after.json`
     (falls back to the survey report with a note), the baseline, the measure, probe
     and decision reports and the system card; evaluates `attest-levels.yaml` (levels
@@ -113,20 +145,21 @@ and `.gitlab-ci-euaiact.yml` keeps its git-tag install (flipped to PyPI in wave 
 
 ## Head
 
-`main` at the wave-4 commit (after `ed7b41b`). Pushed to `origin`
+`main` at the wave-5 commit (after `e5ef805`). Pushed to `origin`
 (`github.com/ai-safe-earth/AI-Safety-Guardrails`). No tags yet.
 
 ## Green
 
-Locally on the wave-4 tree (2026-10-19): **4314 passed, 2 skipped**,
+Locally on the wave-5 tree (2026-10-19): **4314 passed, 2 skipped**,
 `ruff format --check .` and `ruff check .`, `aisg lint src examples
---errors-only` no issues, `aisg misalign` on the new modules no issues (the two
-pre-existing ALIGN-006 hits in `llm_judges/claude_judge.py` are unchanged),
+--errors-only` no issues, `aisg misalign` on the changed modules no issues (the
+two pre-existing ALIGN-006 hits in `llm_judges/claude_judge.py` are unchanged),
 self-audit `baseline: 0 new, 33 unchanged, 0 no longer reported` (32
-fingerprints, 32 reasons; `attest.py` produced no finding), `aisg measure
---max-p99-ms 25` exit 0, `aisg attest . --check` level 0 with the reasons
-above, `sync_skill.py --check` (15 files, 3 mirrors), `controls_md.py --check`
-(54 rules) and `bump_version.py --check` (9 sites) in sync.
+fingerprints, 32 reasons), `aisg measure --max-p99-ms 25` exit 0, `aisg attest
+. --check` level 0 (self-audit is `--no-external`, no committed measure or
+decision document, no card), `sync_skill.py --check` (18 files, 3 mirrors),
+`controls_md.py --check` (54 rules), `levels_md.py --check` (16 criteria) and
+`bump_version.py --check` (9 sites) in sync.
 
 ## Left open on purpose
 
@@ -154,14 +187,17 @@ above, `sync_skill.py --check` (15 files, 3 mirrors), `controls_md.py --check`
   failures; it does not judge the thresholds.
 - AUD-202 fires on the installer's own confirmation flag; four acceptances say
   why.
-- The VaiVia walkthrough in `docs/handoff.md` is still at phase 3 row 2 of 11;
-  the plan's wave 5 verification re-runs it with the seven-phase skill.
+- The VaiVia walkthrough in `docs/handoff.md` (five-phase skill) stopped at
+  apply row 2 of 11; wave 5 re-ran the deterministic phases of the seven-phase
+  skill on a fresh clone (above). The apply and verify phases, and `aisg
+  attest --owner` with a real owner, need a person at the keyboard.
 - `AUD-602`, `AUD-605` and `AUD-106` still report per occurrence; two findings
   can still share a fingerprint (digits stripped). Both are in the plan's risks.
 - `measured_precision` is `None` on every rule; `bench/` has 0 labelled rows;
   wave 6 adds `bench --tool audit`.
-- The stale `~/.claude/skills/ai-safety-audit` copy on this machine (installed
-  Oct 4) is refreshed by `aisg skill install --global --force` once wave 5 lands.
+- `aisg decide` has no bootstrap script of its own; the skill runs it as `aisg
+  decide` (or through `uvx --from 'aisguard==<pin>'`). A `decide.sh` twin is a
+  small follow-up if a host turns out to need it.
 
 ## Known-broken, deliberately left
 
@@ -181,6 +217,7 @@ aisg measure --max-p99-ms 25
 aisg attest . --check                     # level 0 here; each unmet criterion says why
 python scripts/sync_skill.py --check
 python scripts/controls_md.py --check
+python scripts/levels_md.py --check
 python scripts/bump_version.py --check
 aisg audit tests/fixtures/audit/persons_companion --no-external   # the P11 fixture, from a neutral cwd
 gh run list --limit 4

@@ -53,6 +53,7 @@ aisg misalign src/                                        # ALIGN-001..008 rule 
 aisg audit .                                              # AI-surface audit, AUD-101..1003 (see below)
 aisg skill list                                           # where each agent host keeps skills
 aisg attest . --check                                     # which level the written documents reach, and why not more
+python scripts/levels_md.py --check                       # the skill's references/levels.md equals the criteria file
 python scripts/bump_version.py --check                    # every version site equals pyproject; CHANGELOG has the heading
 ```
 
@@ -656,19 +657,30 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   then `own_output_skipped` in that order (`walk._OWN_SARIF_RE`) -- the lint
   SARIF carries `aisg_schema` too, so the marker alone would skip a document
   that is not ours.
-- **The skill runs five phases** (survey, document 1, apply, document 2,
-  verify; design section 7). Every artefact is under `.aisg-audit/` and every
-  command runs from the repo root, because `[tool.aisg-audit]` resolves from
-  the CWD. Phase 3 walks the plan table top-down, one row per approval, and
-  reads `recommendation.package` from the JSON -- never the html prose -- to
-  pick between the package idiom (`references/apply/python.md`, keyed by the
-  first symbol), "in addition to, not instead of", and the outside-package
-  action; after each diff the re-audit, not the diff, is the evidence. The
-  skill proposes the `.gitignore` line for `.aisg-audit/` as a diff and never
-  edits `.gitignore` itself. `test_skill_package.py` pins the vocabulary
-  (`.aisg-audit/`, `--amend-baseline`, `--accept`, `--format html`,
-  `recommendation.package`, `leaves_open`, `same_control`) and that
-  `controls.md`'s Package column covers every registry rule.
+- **The skill runs seven phases** (survey, document 1, decide, apply, document
+  2, verify, attest; design 03 part D), then a closing step that offers `aisg
+  hook install` and the Action by name. Every artefact is under `.aisg-audit/`
+  and every command runs from the repo root, because `[tool.aisg-audit]`
+  resolves from the CWD. Phase 3 runs `aisg decide` (and, with a yes, the
+  offline `aisg measure` through `verify.sh` with `AISG_VERIFY_SKIP_TESTS=1`)
+  so rows are chosen with their cost; phase 4 walks the plan table top-down,
+  one row per approval, and reads `recommendation.package` from the JSON --
+  never the html prose -- to pick between the package idiom
+  (`references/apply/python.md`, keyed by the first symbol), "in addition to,
+  not instead of", and the outside-package action; after each diff the
+  re-audit, not the diff, is the evidence. Phase 7 runs `attest.sh --owner`
+  and reads every unmet criterion's `missing` text aloud
+  (`references/levels.md`). Hard rule 8: `audit.sh` and `attest.sh` print
+  `aisg: <path> version <v> (pinned <v>)` on stderr and the skill stops on a
+  mismatch (on PyPI `aisg` is an unrelated project); rule 9: it never pushes,
+  the `gh pr create` line is printed for the user. The skill proposes the
+  `.gitignore` line for `.aisg-audit/` as a diff and never edits `.gitignore`
+  itself. `test_skill_package.py` pins the seven titles in order, the
+  vocabulary (`.aisg-audit/`, `--amend-baseline`, `--accept`, `--format html`,
+  `recommendation.package`, `leaves_open`, `same_control`, `aisg decide`,
+  `aisg attest`, `--owner`, `--require-level`, `attestation.json`,
+  `pr-body.md`, `gh pr create`, `aisg hook install`) and that `controls.md`'s
+  Package column covers every registry rule.
 - **`controls.md` copies the registry, and the copy is generated.** The
   severity word in each rule heading, every `- Mapping:` line (the rule's
   `controls` tuple, joined `, `, ending `.`) and every `Leaves open:` text
@@ -678,6 +690,12 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   `test_skill_package.py` parses the file against the registry, so hand-edited
   drift fails. `apply/python.md`'s "Leaves open" bullets are a summary; the
   wording to quote in a plan row is the JSON's `leaves_open`.
+  `references/levels.md` is generated the same way, but whole: `python
+  scripts/levels_md.py` renders it from `attest-levels.yaml` (through
+  `attest.load_levels`) and `attest.CRITERION_READS` (what each criterion kind
+  reads; a test pins its keys equal `CRITERION_KINDS`); `--check` is in the
+  release gate and `test_levels_md.py` pins the committed file equals the
+  output. Edit the YAML or the table, never the markdown.
 
 ## `aisg hook`, the plugin and the CI surface
 
@@ -821,7 +839,7 @@ Rules that hold:
 `aisg attest` (`devtools/attest.py`) is the deterministic half of "declaring" a system.
 It reads the documents the other commands wrote (`.aisg-audit/audit-report-after.json`,
 falling back to `audit-report.json` with a stderr note; `audit-baseline.json`;
-`measure-report.json`; `probe-report.json`; `decision.json`; `ai-system-card.yaml`),
+`measure-report.json`; `probe-report.json`; `decision-report.json`; `ai-system-card.yaml`),
 evaluates the criteria in `attest-levels.yaml` (shipped in the wheel, mirrored at
 `config/`, pinned identical; `--level-criteria PATH` for another file) and writes
 `attestation.json`, `attestation.md`, `badge.json` and, with `--html`, `attestation.html`
@@ -869,7 +887,9 @@ under `--out-dir` (`.aisg-audit/`). Rules that hold:
   `owner`, `level` (`reached`, `name`, `statement`, `criteria`), `inputs`,
   `accepted_risks`, `unknown`, `residual`, `next_review_by`, `notes`, `disclaimer`.
   `[tool.aisg-attest]` defaults every other flag. Exit 0 written or met, 1 `--check`
-  not met, 2 fatal, 130 interrupted.
+  not met, 2 fatal, 130 interrupted. `scripts/attest.sh|ps1` is the skill's
+  bootstrap for phase 7 (same resolver chain and pin as `audit.sh`), and
+  `references/levels.md` is the generated table of the criteria.
 
 On this repository `aisg attest . --check` reads level 0: the self-audit runs
 `--no-external` (L1.scanners fails), and there is no committed measure or decision

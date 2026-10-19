@@ -51,6 +51,8 @@ SCRIPTS = (
     "scripts/verify.ps1",
     "scripts/hook.sh",
     "scripts/hook.ps1",
+    "scripts/attest.sh",
+    "scripts/attest.ps1",
 )
 SKIP_DIRS = frozenset({"__pycache__"})
 

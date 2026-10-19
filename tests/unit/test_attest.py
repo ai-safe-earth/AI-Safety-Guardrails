@@ -221,7 +221,7 @@ def _tree(
     if probe is not None:
         (out / "probe-report.json").write_text(json.dumps(probe), encoding="utf-8")
     if decision is not None:
-        (out / "decision.json").write_text(json.dumps(decision), encoding="utf-8")
+        (out / "decision-report.json").write_text(json.dumps(decision), encoding="utf-8")
     if card is not None:
         (root / "ai-system-card.yaml").write_text(
             yaml.safe_dump(card, sort_keys=False), encoding="utf-8"
@@ -550,6 +550,18 @@ class TestCriteria:
             )
         )
         assert evaluate(_criterion("rules_closed", rules=["AUD-901", "AUD-903"]), accepted, NOW).met
+
+    def test_sub_findings_match_their_rule_and_print_their_display_id_once(self, tmp_path: Path):
+        # `id` is already `rule/sub`; the criteria name rules, so AUD-107/inert counts for
+        # AUD-107 and is printed as `AUD-107/inert`, never `AUD-107/inert/inert`.
+        findings = [_finding("AUD-107", "high", FP_HIGH, sub="inert")]
+        inputs = load_inputs(_tree(tmp_path, report=_report(findings=findings)))
+        closed = evaluate(_criterion("rules_closed", rules=["AUD-107"]), inputs, NOW)
+        assert not closed.met and closed.missing == "open: AUD-107/inert"
+        high = evaluate(_criterion("no_open_findings_at_or_above", severity="high"), inputs, NOW)
+        assert not high.met and high.missing == "1 open: AUD-107/inert"
+        other = evaluate(_criterion("rules_closed", rules=["AUD-108"]), inputs, NOW)
+        assert other.met
 
     def test_card_fields_set_treats_placeholders_as_unset(self, tmp_path: Path):
         fields = [

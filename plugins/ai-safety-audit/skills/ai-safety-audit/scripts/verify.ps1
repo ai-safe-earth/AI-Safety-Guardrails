@@ -4,10 +4,12 @@
 # pinned bootstrap chain as audit.ps1 for `aisg measure` and, when AISG_PROBE_URL is set,
 # `aisg probe`. Nothing runs unless AISG_VERIFY_RUN=1: tests, measure and probe may call
 # model providers. This script never adds --i-have-authorization.
+# AISG_VERIFY_SKIP_TESTS=1 leaves the project's tests out (phase 3 runs the offline measure only).
 # Reports go under .aisg-audit/ like every other artefact of the flow; the next audit reads
 # them there as evidence (REPORTED <age>) whether or not .gitignore lists the directory.
 $AISG_VERSION = "0.1.0"   # pinned; test_skill_package.py asserts this equals pyproject.toml [project].version
 $run = if ($env:AISG_VERIFY_RUN) { $env:AISG_VERIFY_RUN } else { "0" }
+$skipTests = if ($env:AISG_VERIFY_SKIP_TESTS) { $env:AISG_VERIFY_SKIP_TESTS } else { "0" }
 $status = 0
 $reportDir = ".aisg-audit"
 $measureReport = "$reportDir/measure-report.json"
@@ -29,7 +31,9 @@ if ($null -eq $testCmd) {
     Write-Output "tests: no test command detected (looked for pyproject.toml/pytest.ini/setup.cfg, package.json test script, go.mod, Cargo.toml)"
 } else {
     Write-Output "tests: $($testCmd -join ' ')"
-    if ($run -eq "1") {
+    if ($skipTests -eq "1") {
+        Write-Output "tests: skipped (AISG_VERIFY_SKIP_TESTS=1)"
+    } elseif ($run -eq "1") {
         $testArgs = @($testCmd | Select-Object -Skip 1)
         & $testCmd[0] @testArgs
         if ($LASTEXITCODE -ne 0) {

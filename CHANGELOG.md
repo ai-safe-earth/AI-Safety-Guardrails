@@ -124,6 +124,19 @@ console script are `aisg`.
   defaults the rest), `--check --require-level N` is the CI form (exit 1 below N), and
   the disclaimer says the tool checked the listed criteria and nothing else. No model
   call, no install, no socket; git is read through `walk.git_meta`.
+- The seven-phase `ai-safety-audit` skill: survey, document 1, decide, apply, document
+  2, verify, attest, plus a closing step that offers `aisg hook install` and the
+  GitHub Action by name. Two new hard rules: the bootstrap prints which `aisg` ran
+  (path, version, pin) and the skill stops on a mismatch; nothing is pushed, the
+  `gh pr create` line is printed for the user (the PR path: a branch, one commit per
+  row with its re-audit result, `pr-body.md` from document 2). New
+  `scripts/attest.sh|ps1`; `references/levels.md` generated from the criteria file by
+  `scripts/levels_md.py` (`--check` in the release gate); the decision and
+  attestation documents in `report-format.md`; `AISG_VERIFY_SKIP_TESTS=1` makes
+  `verify.sh|ps1` run the offline measure alone, which is how phase 3 gets figures.
+- `docs/SYSTEM.md` (the flow on one page: what each step reads, writes and never
+  does) and `CONTRIBUTING.md`; `SECURITY.md` scope now covers `decide`, `hook`,
+  `attest`, the plugin and the CI surface.
 
 ### Changed
 
@@ -135,6 +148,9 @@ console script are `aisg`.
 - `EUAIActCodeAnalyzer.scan_source(source, filename, report)` scans text in hand.
 - `walk` and `discover` treat `"kind": "attestation"` as the toolchain's own output,
   like the audit report and the inventory; `attestation.html` carries the html marker.
+- `scripts/audit.sh|ps1` print `aisg: <path> version <v> (pinned <v>)` on stderr
+  before running. The skill's phases are renumbered: apply is 4, document 2 is 5,
+  verify is 6; the offline `aisg measure` may run in phase 3 with approval.
 - AUD-801 counts an eval file's mention of a guard as evidence that the guard is
   exercised only when the file is an eval tool's config, a data file or a test module.
   A README or a tool's own source that names the guard no longer silences the rule.

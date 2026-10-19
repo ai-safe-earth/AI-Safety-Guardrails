@@ -1,7 +1,7 @@
 # Controls per audit rule
 
 One section per `AUD` rule: the control to propose, its tier, and the control mapping the
-finding carries. Use it in phase 3 together with `apply/<language>.md`.
+finding carries. Use it in phase 4 together with `apply/<language>.md`.
 
 How to read this file:
 
@@ -485,7 +485,7 @@ code before proposing a change.
 
 ### AUD-801 Guard present but unmeasured (medium)
 
-- Control (T2): run `aisg measure --config <pipeline.yaml>` (phase 5, with approval) or an
+- Control (T2): run `aisg measure --config <pipeline.yaml>` (offline in phase 3, with provider calls in phase 6, each with approval) or an
   equivalent eval, commit the report, and keep it newer than the guard config. A guard with
   no measurement is a claim.
 - Package: measurement, same control: yes, `aisg measure`. Leaves open: Only guards

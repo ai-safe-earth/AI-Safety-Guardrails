@@ -30,7 +30,27 @@ MIRRORS = (
     REPO / ".agents" / "skills" / SKILL_NAME,
     REPO / "plugins" / "ai-safety-audit" / "skills" / SKILL_NAME,
 )
-SCRIPTS = ("audit.sh", "audit.ps1", "verify.sh", "verify.ps1", "hook.sh", "hook.ps1")
+SCRIPTS = (
+    "audit.sh",
+    "audit.ps1",
+    "verify.sh",
+    "verify.ps1",
+    "hook.sh",
+    "hook.ps1",
+    "attest.sh",
+    "attest.ps1",
+)
+LEVELS_TOOL = REPO / "scripts" / "levels_md.py"
+# The seven phase titles, in order; `## Phase N -- <title>` is the heading shape.
+PHASES = (
+    "Survey",
+    "Document 1",
+    "Decide",
+    "Apply (one row per approval, top-down)",
+    "Document 2",
+    "Verify",
+    "Attest",
+)
 SYNC_TOOL = REPO / "scripts" / "sync_skill.py"
 CONTROLS_TOOL = REPO / "scripts" / "controls_md.py"
 PYPROJECT = REPO / "pyproject.toml"
@@ -62,6 +82,14 @@ SKILL_MD_NEEDLES = (
     "recommendation.package",
     "leaves_open",
     "same_control",
+    "aisg decide",
+    "aisg attest",
+    "--owner",
+    "--require-level",
+    "attestation.json",
+    "pr-body.md",
+    "gh pr create",
+    "aisg hook install",
 )
 REPORT_FORMAT_NEEDLES = (
     "html",
@@ -72,6 +100,11 @@ REPORT_FORMAT_NEEDLES = (
     "generated_at",
     "--write-baseline",
     "--amend-baseline",
+    "kind: decision",
+    "kind: attestation",
+    "accepted_risks",
+    "next_review_by",
+    "badge.json",
 )
 
 SH = shutil.which("sh")
@@ -209,6 +242,7 @@ class TestPackagedSkill:
             "agents/openai.yaml",
             "references/controls.md",
             "references/hosts.md",
+            "references/levels.md",
             "references/report-format.md",
             "references/apply/python.md",
             "references/apply/typescript.md",
@@ -255,12 +289,13 @@ class TestSkillMd:
 
     def test_scripts_referenced_only_via_skill_placeholder(self):
         text = skill_md()
-        bare = re.findall(r"(?<!<skill>/)scripts/(?:audit|verify)", text)
+        bare = re.findall(r"(?<!<skill>/)scripts/(?:audit|verify|attest)", text)
         assert not bare, bare
         assert "<skill>/scripts/audit" in text
         assert "<skill>/scripts/verify" in text
+        assert "<skill>/scripts/attest" in text
 
-    def test_phase_five_report_differs_from_phase_one(self):
+    def test_document_two_report_differs_from_document_one(self):
         outputs = re.findall(r"-o\s+(\S+\.json)", skill_md())
         assert len(outputs) >= 2, outputs
         first, last = outputs[0], outputs[-1]
@@ -269,14 +304,30 @@ class TestSkillMd:
         assert "--baseline" in skill_md()
 
     @pytest.mark.parametrize("needle", SKILL_MD_NEEDLES)
-    def test_names_the_phase_three_vocabulary(self, needle: str):
+    def test_names_the_flow_vocabulary(self, needle: str):
         assert needle in skill_md(), needle
 
-    def test_five_phases_in_order(self):
+    def test_seven_phases_in_order_with_their_titles(self):
         text = skill_md()
-        positions = [text.find(f"## Phase {n} --") for n in range(1, 6)]
-        assert all(p >= 0 for p in positions), positions
+        headings = [f"## Phase {n} -- {title}" for n, title in enumerate(PHASES, start=1)]
+        positions = [text.find(h) for h in headings]
+        assert all(p >= 0 for p in positions), [h for h, p in zip(headings, positions) if p < 0]
         assert positions == sorted(positions), positions
+        assert text.find("## Phase 8") < 0
+        closing = text.find("## Closing")
+        assert closing > positions[-1]
+
+    def test_hard_rules_eight_and_nine(self):
+        text = skill_md()
+        assert "8. Which aisg ran." in text and "(pinned <version>)" in text
+        assert "9. No push without approval." in text and "never run `git push`" in text
+
+    def test_decide_precedes_apply_and_attest_follows_verify(self):
+        text = skill_md()
+        assert text.find("aisg decide --format json") < text.find("## Phase 4 --")
+        assert text.find("--owner") > text.find("## Phase 7 --")
+        assert "--require-level 2" in text
+        assert "AISG_VERIFY_SKIP_TESTS=1" in text
 
     def test_every_artefact_lives_under_aisg_audit(self):
         # Every `-o <path>` and every `--baseline`/`--write-baseline`/`--amend-baseline
@@ -603,7 +654,7 @@ class TestScripts:
         assert not offending, offending
 
     @needs_sh
-    @pytest.mark.parametrize("name", ["audit.sh", "verify.sh"])
+    @pytest.mark.parametrize("name", ["audit.sh", "verify.sh", "attest.sh", "hook.sh"])
     def test_sh_syntax(self, name: str):
         proc = subprocess.run(
             [SH, "-n", str(CANONICAL / "scripts" / name)],
@@ -615,10 +666,54 @@ class TestScripts:
         assert proc.returncode == 0, proc.stderr
 
     @needs_sh
-    def test_audit_sh_without_aisg_exits_2(self, tmp_path: Path):
-        proc = run_script(CANONICAL / "scripts" / "audit.sh", tmp_path, {"PATH": ""})
+    @pytest.mark.parametrize("name", ["audit.sh", "attest.sh"])
+    def test_front_script_without_aisg_exits_2(self, name: str, tmp_path: Path):
+        proc = run_script(CANONICAL / "scripts" / name, tmp_path, {"PATH": ""})
         assert proc.returncode == 2, (proc.stdout, proc.stderr)
         assert "aisg not found" in proc.stderr
+
+    @needs_sh
+    @pytest.mark.parametrize("name", ["audit.sh", "attest.sh"])
+    def test_front_script_says_which_aisg_ran(self, name: str, tmp_path: Path):
+        # Rule 8: the resolved path and version go to stderr before the command runs; a
+        # fake aisg that prints nothing for --version reads `unknown`, never blank.
+        verb = name.split(".")[0]
+        proc = subprocess.run(
+            [SH, str(CANONICAL / "scripts" / name), ".", "--format", "json"],
+            cwd=tmp_path,
+            env=fake_aisg_env(tmp_path),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        assert proc.returncode == 0, (proc.stdout, proc.stderr)
+        line = proc.stderr.strip().splitlines()[0]
+        assert line.startswith("aisg: ") and f"(pinned {project_version()})" in line, line
+        assert "version unknown" in line, line
+        calls = (tmp_path / FAKE_LOG).read_text(encoding="utf-8").splitlines()
+        assert calls == ["--version", f"{verb} . --format json"]
+
+    @needs_sh
+    def test_verify_sh_skip_tests_runs_the_offline_measure_only(self, tmp_path: Path):
+        # Phase 3: AISG_VERIFY_SKIP_TESTS=1 leaves the project's tests out and runs the
+        # offline measure, so `aisg decide` has figures before anything is applied.
+        write_configs(tmp_path)
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "target"\nversion = "0.0.0"\n', encoding="utf-8"
+        )
+        proc = run_script(
+            CANONICAL / "scripts" / "verify.sh",
+            tmp_path,
+            fake_aisg_env(tmp_path, AISG_VERIFY_RUN="1", AISG_VERIFY_SKIP_TESTS="1"),
+        )
+        assert proc.returncode == 0, (proc.stdout, proc.stderr)
+        assert "tests: pytest" in proc.stdout
+        assert "tests: skipped (AISG_VERIFY_SKIP_TESTS=1)" in proc.stdout
+        calls = (tmp_path / FAKE_LOG).read_text(encoding="utf-8").splitlines()
+        assert calls == [
+            "measure --config config/guardrails.yaml -o .aisg-audit/measure-report.json"
+        ]
 
     @needs_sh
     def test_verify_sh_without_aisg_skips_measure(self, tmp_path: Path):
@@ -766,6 +861,42 @@ class TestMirrors:
             check=False,
         )
         assert proc.returncode == 0, (proc.stdout, proc.stderr)
+
+
+# ---------------------------------------------------------------------------
+# levels.md is generated from the criteria file
+# ---------------------------------------------------------------------------
+
+
+class TestLevelsDoc:
+    def test_criterion_ids_equal_the_yaml(self):
+        try:
+            from aisg.devtools.attest import load_levels
+        except ImportError:
+            pytest.skip("aisg.devtools.attest not importable")
+        text = (CANONICAL / "references" / "levels.md").read_text(encoding="utf-8")
+        in_doc = set(re.findall(r"^\| `(L\d+\.[A-Za-z0-9_]+)` \|", text, re.MULTILINE))
+        in_yaml = {c.id for c in load_levels().criteria()}
+        assert in_doc == in_yaml, {
+            "doc_only": sorted(in_doc - in_yaml),
+            "yaml_only": sorted(in_yaml - in_doc),
+        }
+        assert "## Level 0: audited" in text and "## Level 3: governed" in text
+
+    def test_levels_tool_check_passes(self):
+        proc = subprocess.run(
+            [sys.executable, str(LEVELS_TOOL), "--check"],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        assert proc.returncode == 0, (proc.stdout, proc.stderr)
+
+    def test_skill_md_points_at_levels_before_phase_seven(self):
+        text = skill_md()
+        assert text.find("references/levels.md") < text.find("## Phase 7 --")
 
 
 # ---------------------------------------------------------------------------

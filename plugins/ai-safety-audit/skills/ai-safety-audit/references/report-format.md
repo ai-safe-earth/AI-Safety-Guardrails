@@ -82,7 +82,7 @@ precision figure, so no audit rule compares one; AUD-803 reads `threshold_failur
   8 = detection guards, 9 = evaluation loop, 10 = governance). Findings sort by
   `(priority, severity, file, line)` and AUD-301 is pinned first whenever present.
 - `fingerprint` is stable across renumbered lines and renamed locals; it is what
-  `--baseline` compares and what `--accept` names in phase 3.
+  `--baseline` compares and what `--accept` names in phase 4.
 - `controls` are evidence for a human reviewer: OWASP Agentic (ASI), OWASP LLM (LLM), EU AI
   Act articles and NIST AI RMF functions the finding is relevant to. The terminal and
   markdown renderers print them as one line, `controls: <items>` (comma-separated); a
@@ -120,7 +120,7 @@ present, in this order:
 symbol must sit on the path the finding is about (a `ToolPolicyGuard` only sees calls
 dispatched through `run_processing`; a `TelemetryProvider` only traces calls through
 `run_full`), and `leaves_open` says what is outside it even then. It also does not mean the
-rule will stop firing: only the re-audit in phase 3 shows that. `same_control: false` with
+rule will stop firing: only the re-audit in phase 4 shows that. `same_control: false` with
 symbols means "in addition to, not instead of" the control in `controls.md`; a detector is
 never the control for a P1-P4 finding. aisg symbols are Python-only; on a non-Python unit
 the mechanism is still named, the control still applies, and the symbol does not.
@@ -200,10 +200,11 @@ Key order is fixed; `schema` is first.
 
 ## Inventory keys worth reading out
 
-`inventory.own_output_skipped`: the paths of the audit's own earlier output the walk
+`inventory.own_output_skipped`: the paths of the toolchain's own earlier output the walk
 skipped: a JSON whose head carries `"schema": "aisg/1"` and `"kind": "audit"` (the
-report) or `"kind": "inventory"` (the `--inventory-only` document), and an html whose
-first line is exactly `<!-- # aisg-audit: ignore-file -->`. Without this the phase-1
+report), `"kind": "inventory"` (the `--inventory-only` document) or `"kind":
+"attestation"` (phase 7's document), and an html whose first line is exactly
+`<!-- # aisg-audit: ignore-file -->` (the audit's pages and `attestation.html`). Without this the phase-1
 documents would be scanned as source and their evidence snippets reported as new findings.
 Baseline files are not skipped (they hold no snippets; the reasons are read as text, which
 is why a reason must not quote the literal it accepts), and measure and probe reports are
@@ -236,10 +237,10 @@ is not ASCII, one that contains compliance language, and one that looks like a s
 second `--accept` for the same fingerprint replaces the reason. `--accept` without
 `--amend-baseline` is exit 2.
 
-## The decision document (`"kind": "decision"`)
+## The decision document (`kind: decision`)
 
-`aisg decide --format json -o .aisg-audit/decision-report.json` writes the trade table
-as data. Top-level keys, in order: `schema`, `kind`, `tool`, `generated_at`,
+`aisg decide --format json -o .aisg-audit/decision-report.json` (phase 3) writes the trade
+table as data. Top-level keys, in order: `schema`, `kind`, `tool`, `generated_at`,
 `disclaimer`, `inputs` (`audit`, `measure` or null, `prices` with `as_of` and `stale`,
 `card` or null), `traffic` (`requests_per_day`, `avg_input_tokens`, `avg_output_tokens`,
 `source`), `budgets` (`p99_ms`, `monthly_usd`, `max_usd_per_request`,
@@ -267,6 +268,41 @@ The document is evidence, not own output: the next audit reads it as `REPORTED <
 and AUD-806 turns each over-budget row into a finding (`AUD-806/latency`, `/cost`,
 `/human`, `/benign`). `aisg audit --format html --decision <file>` adds it to the page
 as the "Trade table" section after the plan.
+
+## The attestation document (`kind: attestation`)
+
+`aisg attest . --owner "<Name <role>>" --html` (phase 7) writes `.aisg-audit/attestation.json`,
+`attestation.md`, `attestation.html` and `badge.json`. Top-level keys, in order: `schema`,
+`kind`, `tool`, `target` (`path`, `git_sha`, `dirty`), `generated_at`, `owner`, `level`,
+`inputs`, `accepted_risks`, `unknown`, `residual`, `next_review_by`, `notes`, `disclaimer`.
+
+- `level`: `reached` (0..3, or null when a level-0 criterion is unmet), `name` (`audited`,
+  `triaged`, `measured`, `governed`), `statement` and `criteria`. The statement is literal:
+  `<owner> states that <path> at commit <sha> meets the AISG level <N> (<name>) criteria on
+  <date>.`; with no level it says the tree was checked and reaches no level. Each
+  `criteria[]` row is `id`, `level`, `met`, `evidence` (what was read) and `missing` (empty
+  when met; otherwise what would have to change). The level reached is the highest N with
+  every criterion of levels 0..N met. `references/levels.md` lists the criteria.
+- `inputs`: one row per document the command looked for (`audit`, `baseline`, `measure`,
+  `probe`, `decision`, `card`) with `file`, `generated_at` and `age_days`; an absent
+  document has nulls in all three. Absence fails the criteria that need the document, not
+  the run; a document of the wrong kind or unparseable JSON is fatal (exit 2).
+- `accepted_risks`: `[{fingerprint, rule, file, reason, owner}]`, one per reasoned entry of
+  the baseline, copied with the owner's name. A fingerprint without a reason is not here
+  and its finding stays open for the level criteria: a bare fingerprint is a suppression.
+- `residual`: `findings_by_severity`, `open`, `accepted`. `unknown`: the after report's
+  list, verbatim. `next_review_by`: `generated_at` plus the criteria file's review interval
+  (90 days). `disclaimer`: the audit's disclaimer plus "An attestation is a statement by
+  the named owner; the tool checked the listed criteria and nothing else."
+
+`badge.json` is a shields.io endpoint: `{"schemaVersion": 1, "label": "aisg", "message":
+"level N (<date>)", "color": "informational"}`, `lightgrey` at level 0 or no level, never
+green or red. `--check` evaluates and prints without writing anything; `--check
+--require-level N` exits 1 when N is not reached. `--owner` is required to write and can
+never come from `pyproject.toml` (`[tool.aisg-attest]` defaults every other flag). The
+attestation is the toolchain's own output: a later walk skips `attestation.json` by its
+kind and `attestation.html` by its first line, and lists both under `own_output_skipped`;
+`attestation.md` and `badge.json` stay walked.
 
 ## `--format html`
 

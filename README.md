@@ -84,7 +84,7 @@ ai-safety-guardrails/
 │
 ├── src/aisg/
 │   ├── __init__.py              # Public API surface
-│   ├── cli.py                   # `aisg` entry point: lint, misalign, init, probe, measure, audit, skill
+│   ├── cli.py                   # `aisg` entry point: lint, misalign, init, probe, measure, audit, skill, decide, hook, attest
 │   │
 │   ├── core/
 │   │   ├── base.py              # GuardrailBase, CheckResult, PipelineResult, Severity, Action
@@ -1123,16 +1123,21 @@ aisg skill diff --host all             # exit 1 when an installed copy has drift
 ```
 
 The skill (`ai-safety-audit`, shipped inside the wheel) is what an agent host
-adds on top of the CLI: a five-phase procedure -- survey, document 1, apply,
-document 2, verify -- in which the agent runs `aisg audit` through a
-bootstrap script pinned to this package's version, renders a before document
-of the system (`--format html`), walks the plan one row per user approval
-with the finding's `recommendation.package` as the decision source,
+adds on top of the CLI: a seven-phase procedure -- survey, document 1, decide,
+apply, document 2, verify, attest -- in which the agent runs `aisg audit`
+through a bootstrap script pinned to this package's version (the script says
+which `aisg` ran, from where, at which version), renders a before document of
+the system (`--format html`), prices the proposed controls with `aisg decide`
+against the budgets the operator declares, walks the plan one row per user
+approval with the finding's `recommendation.package` as the decision source,
 re-audits after every diff against the baseline written in phase 1, renders
-the after document, and only then runs tests, `aisg measure` or `aisg probe`.
-Every artefact lands under `.aisg-audit/`. The intelligence stays in the CLI;
-the skill adds explanation and a gated change workflow, and it never edits
-permission files, CI or secrets without a per-diff approval.
+the after document, runs tests, `aisg measure` or `aisg probe` only with
+approval, and finally runs `aisg attest` so a named owner signs the level the
+criteria support (`references/levels.md` lists them). Every artefact lands
+under `.aisg-audit/`. The intelligence stays in the CLI; the skill adds
+explanation and a gated change workflow, never edits permission files, CI or
+secrets without a per-diff approval, and never pushes. `docs/SYSTEM.md` is
+the whole flow on one page.
 
 The audit is evidence, not a compliance verdict: it lists what it found and
 what it could not check. Absence of a finding is not evidence of safety.

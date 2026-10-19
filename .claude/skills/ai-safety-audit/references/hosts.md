@@ -27,7 +27,10 @@ repository skills and `~/.agents/skills` for user-level skills without mentionin
 `aisg hook install --host <name>` writes this adapter's entries into the host's hook
 configuration (it prints the diff and writes only with `--yes` or an interactive yes: those
 files are protected paths) and copies the pinned bootstrap `scripts/hook.sh` / `hook.ps1`
-next to it. `aisg hook list` prints the table for the installed version.
+next to it. `aisg hook list` prints the table for the installed version. In the skill's
+closing step the install is offered by name only: the host's hook file is a protected
+path (rule 4), so the user runs the command, reads the diff and answers yes themselves;
+the skill never writes it for them.
 
 | host | hook config (project) | events wired | ask | verified | source |
 |---|---|---|---|---|---|
@@ -92,8 +95,8 @@ That is the intersection of what the hosts above accept; host-specific metadata 
 
 ## Bootstrap scripts
 
-`scripts/audit.sh`, `audit.ps1`, `verify.sh`, `verify.ps1`, `hook.sh` and `hook.ps1` resolve
-`aisg` in this order:
+`scripts/audit.sh`, `audit.ps1`, `verify.sh`, `verify.ps1`, `hook.sh`, `hook.ps1`,
+`attest.sh` and `attest.ps1` resolve `aisg` in this order:
 `aisg` on PATH, else `uvx --from 'aisguard==<version>'`, else
 `pipx run --spec 'aisguard==<version>'`. `aisguard` is the distribution name; `aisg` is the
 importable name and the console script, and on PyPI it belongs to an unrelated project, so a
@@ -103,3 +106,7 @@ is what AUD-602 flags in targets, and the skill does not get an exception. When 
 three is available, `audit.sh` exits 2 with install hints, `verify.sh` prints
 `measure skipped: aisg not importable in target`, and `hook.sh` exits 0 with
 `hook skipped` on stderr: a hook is a gate on someone else's editor and fails open.
+`audit.sh` / `audit.ps1` and `attest.sh` / `attest.ps1` print one line on stderr before
+running, `aisg: <path> version <version> (pinned <version>)` (or `aisg: uvx
+aisguard==<version> ...`), so the conversation records which aisg ran; when the version
+differs from the pin, stop and say so before reading any result.

@@ -6,7 +6,7 @@ codebase already uses and cite only APIs you have checked.
 
 The `recommendation.package.symbols` in the JSON (`ToolPolicyGuard`, `PIIDetector`,
 `RateLimiter`, ...) are Python-only. Outside Python a unit always takes the
-outside-package branch in phase 3, whatever `same_control` says; the control the rule asks
+outside-package branch in phase 4, whatever `same_control` says; the control the rule asks
 for applies unchanged, and the shapes below are that control without a library. The
 `aisg audit`, `aisg probe` and `aisg init` verbs still run against any repository; only
 `aisg measure` needs a Python pipeline built from this package.

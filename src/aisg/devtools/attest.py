@@ -42,6 +42,7 @@ from aisg.devtools.audit.report import BANNED_PHRASES, tool_version
 
 __all__ = [
     "CRITERION_KINDS",
+    "CRITERION_READS",
     "DISCLAIMER",
     "NOT_CONFIGURABLE",
     "TEMPLATES",
@@ -75,7 +76,7 @@ FALLBACK_REPORT = ".aisg-audit/audit-report.json"
 DEFAULT_BASELINE = ".aisg-audit/audit-baseline.json"
 DEFAULT_MEASURE = ".aisg-audit/measure-report.json"
 DEFAULT_PROBE = ".aisg-audit/probe-report.json"
-DEFAULT_DECISION = ".aisg-audit/decision.json"
+DEFAULT_DECISION = ".aisg-audit/decision-report.json"
 DEFAULT_CARD = "ai-system-card.yaml"
 DEFAULT_OUT_DIR = ".aisg-audit"
 LEVELS_FILE = "attest-levels.yaml"
@@ -107,6 +108,24 @@ CRITERION_KINDS: tuple[str, ...] = (
     "tree_clean",
 )
 DOCUMENTS: tuple[str, ...] = ("measure", "probe", "decision")
+# What each criterion kind reads, in the words the skill's `references/levels.md` prints
+# (`scripts/levels_md.py` generates that file from the criteria YAML and this table).
+CRITERION_READS: dict[str, str] = {
+    "report_present": "audit report: `generated_at`",
+    "report_names_head": "audit report: `target.git_sha`; git HEAD",
+    "unknown_listed": "audit report: `unknown`",
+    "no_open_findings_at_or_above": "audit report: `findings[].severity`, `fingerprint`; baseline: `accepted`",
+    "external_tools_attempted": "audit report: `external_tools[].status`",
+    "accepted_reasons_present": "baseline: `fingerprints`, `accepted`",
+    "document_present": "the named document: `generated_at`",
+    "measure_thresholds": "measure report: `guards[].threshold_failures`, `guards[].unavailable`",
+    "probe_passing_if_present": "probe report: `summary.failed`, `summary.errors`",
+    "rules_closed": "audit report: `findings[].id`; baseline: `accepted`",
+    "card_fields_set": "ai-system-card.yaml: the listed fields",
+    "card_section_fresh": "ai-system-card.yaml: the section's fields and its `date_field`",
+    "accepted_risks_owned": "baseline: `accepted`; `--owner`",
+    "tree_clean": "git: `status --porcelain`",
+}
 _SEVERITIES = ("info", "low", "medium", "high", "critical")
 _OWNER_MAX = 200
 _OWNER_BAD_RE = re.compile(r"[\x00-\x1f\x7f]")
@@ -641,9 +660,7 @@ def _no_open_findings(
     open_ = [f for f in counted if str(f.get("fingerprint") or "") not in accepted]
     evidence = f"{len(counted)} finding(s) at or above {c.params.get('severity', 'high')}, {len(counted) - len(open_)} accepted with a reason"
     if open_:
-        ids = ", ".join(
-            str(f.get("id")) + (f"/{f['sub']}" if f.get("sub") else "") for f in open_[:5]
-        )
+        ids = ", ".join(str(f.get("id")) for f in open_[:5])
         more = f" (+{len(open_) - 5} more)" if len(open_) > 5 else ""
         return _result(c, False, evidence, f"{len(open_)} open: {ids}{more}")
     return _result(c, True, evidence)
@@ -756,13 +773,19 @@ def _probe_passing_if_present(
     return _result(c, True, evidence)
 
 
+def _rule_of(finding: dict[str, Any]) -> str:
+    """The rule behind a finding: `rule_id`, else the display id before any `/sub`."""
+    rule = finding.get("rule_id")
+    return str(rule) if rule else str(finding.get("id") or "").split("/")[0]
+
+
 def _rules_closed(
     c: Criterion, inputs: Inputs, now: datetime, owner: str | None
 ) -> CriterionResult:
     wanted = {str(r) for r in c.params.get("rules") or []}
-    open_ids = sorted(
-        {str(f.get("id")) for f in inputs.open_findings() if str(f.get("id")) in wanted}
-    )
+    # `id` is the display id (`AUD-107/inert`); the criterion names rules, so match on
+    # the rule and report the display id.
+    open_ids = sorted({str(f.get("id")) for f in inputs.open_findings() if _rule_of(f) in wanted})
     evidence = f"rules {', '.join(sorted(wanted))}"
     if open_ids:
         return _result(c, False, evidence, f"open: {', '.join(open_ids)}")
@@ -872,6 +895,7 @@ _EVALUATORS: dict[str, Callable[[Criterion, Inputs, datetime, str | None], Crite
     "tree_clean": _tree_clean,
 }
 assert set(_EVALUATORS) == set(CRITERION_KINDS)
+assert set(CRITERION_READS) == set(CRITERION_KINDS)
 
 
 def evaluate(

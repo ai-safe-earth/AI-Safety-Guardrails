@@ -50,6 +50,7 @@ class TestReleaseWorkflow:
         assert "scripts/bump_version.py --check --tag" in text
         assert "scripts/sync_skill.py --check" in text
         assert "scripts/controls_md.py --check" in text
+        assert "scripts/levels_md.py --check" in text
         assert "pytest -q" in text
         assert "aisg audit . --no-external --fail-on high --baseline audit-baseline.json" in text
 

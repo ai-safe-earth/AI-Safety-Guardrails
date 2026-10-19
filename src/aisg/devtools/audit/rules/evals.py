@@ -486,6 +486,11 @@ class StaleReport(AuditRule):
         inventory_models: list[str],
         entries: list[dict[str, Any]],
     ) -> list[Finding]:
+        if record.kind == "decision":
+            # A decision document prices controls; it names no model and derives its
+            # figures from the measure report, which is checked on its own. Asking it
+            # for a models list would raise an UNKNOWN on every `aisg decide` output.
+            return []
         body = record.body if isinstance(record.body, dict) else {}
         target = body.get("target")
         has_key = "models" in body or (isinstance(target, dict) and "models" in target)

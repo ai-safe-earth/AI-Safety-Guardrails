@@ -6,7 +6,7 @@ lines of a model call sharing an identifier): read the code before proposing a c
 Standard-library names below are stable; for third-party SDKs check the current docs.
 
 The `recommendation.package.symbols` in the JSON (`ToolPolicyGuard`, `PIIDetector`,
-`RateLimiter`, ...) are Python-only: this package has no Go runtime, so in phase 3 a Go
+`RateLimiter`, ...) are Python-only: this package has no Go runtime, so in phase 4 a Go
 unit always takes the outside-package branch whatever `same_control` says. The control the
 rule asks for applies unchanged; this file is how to write it here.
 
@@ -99,7 +99,7 @@ lengths of prompts, not their text (AUD-504). For LLM tracing, OpenTelemetry spa
 - AUD-203: a `DryRun bool` field on irreversible tool inputs and an `Idempotency-Key`
   header (or a stored key) per external write.
 
-## Verify (phase 5, with approval)
+## Verify (phase 6, with approval)
 
 `go test ./...` (`verify.sh` detects it from `go.mod`). If the service exposes an HTTP chat
 endpoint on loopback, `aisg probe http://127.0.0.1:<port>/chat -o probe-report.json` through

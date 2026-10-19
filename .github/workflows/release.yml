@@ -42,6 +42,7 @@ jobs:
           fi
       - run: python scripts/sync_skill.py --check
       - run: python scripts/controls_md.py --check
+      - run: python scripts/levels_md.py --check
       - run: pytest -q
       - name: Self-audit against the committed baseline
         run: aisg audit . --no-external --fail-on high --baseline audit-baseline.json

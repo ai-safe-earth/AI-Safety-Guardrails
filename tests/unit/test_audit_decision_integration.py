@@ -124,6 +124,24 @@ class TestDecisionIsAReport:
         assert record is not None and unknown is None
         assert "decision" not in discover._OWN_OUTPUT_KINDS
 
+    def test_decision_document_raises_no_models_unknown(self, tmp_path, monkeypatch):
+        # AUD-903 asks every on-disk report for its models list; a decision document
+        # has none by design, so it used to add `report models unknown` on every run.
+        from aisg.devtools.audit.main import main as audit_main
+
+        doc = _decision_doc(requests_per_day=20000, avg_input_tokens=400, monthly_usd=50)
+        root = _tree(tmp_path, decision=doc)
+        out = tmp_path / "report.json"
+        monkeypatch.chdir(root)
+        code = audit_main(
+            [".", "--no-external", "--format", "json", "-o", str(out), "--fail-on", "never"]
+        )
+        assert code == 0
+        report = json.loads(out.read_text(encoding="utf-8"))
+        unknown = [u for u in report["unknown"] if u.get("what") == "report models unknown"]
+        assert unknown == [], unknown
+        assert any(r.get("kind") == "decision" for r in report["reports"])
+
     def test_report_entry_lists_only_over_budget_controls(self):
         doc = _decision_doc(requests_per_day=20000, avg_input_tokens=400, monthly_usd=50)
         entry = _report_entry({"kind": "decision", "file": "d.json", "body": doc})

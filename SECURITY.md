@@ -14,10 +14,14 @@ only channel, and it is where you will hear back.
 - The `aisguard` distribution, imported as `aisg` (`aisg.core`, `aisg.modules`,
   `aisg.integrations`, `aisg.config`).
 - The `aisg` command line: `lint`, `misalign`, `measure`, `probe`, `init`,
-  `audit`, `skill`.
+  `audit`, `skill`, `decide`, `hook`, `attest`.
 - The `ai-safety-audit` skill and its bootstrap scripts
   (`src/aisg/skills/ai-safety-audit/scripts/` and the mirrors under
-  `.claude/skills/` and `.agents/skills/`).
+  `.claude/skills/`, `.agents/skills/` and `plugins/ai-safety-audit/skills/`).
+- The agent-host hooks (`aisg hook`, the bootstrap `hook.sh` / `hook.ps1`) and
+  the Claude Code plugin (`.claude-plugin/`, `plugins/ai-safety-audit/`).
+- The CI surface: `action.yml`, `.pre-commit-hooks.yaml` and the GitLab job
+  template `.gitlab-ci-euaiact.yml`.
 
 A guard that misses an attack is a detection gap, not a vulnerability; report
 those as ordinary issues with the payload, or add a case to the probe corpus.
@@ -40,8 +44,10 @@ and that approval is not one of ours.
 
 ## What the tooling sends
 
-`aisg audit` and `aisg lint` never send anything anywhere: no model calls, no
-telemetry, no network sockets from the audit process. The only network use is
+`aisg audit`, `aisg lint`, `aisg misalign`, `aisg decide`, `aisg attest` and
+`aisg hook` never send anything anywhere: no model calls, no telemetry, no
+network sockets from their processes; the hook's only child process is `git`,
+and it writes only under `.aisg-audit/`. The only network use is
 by external scanners you already installed, and each one is listed with its
 `network` flag in every report. `aisg probe` sends its fixed payload corpus to
 the URL you name and nothing else; non-loopback targets need

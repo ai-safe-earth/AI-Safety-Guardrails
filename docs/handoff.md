@@ -3,6 +3,11 @@
 Pick this up cold: read `docs/STATUS.md` first for the repository as a whole,
 then this file for the walkthrough that is half-finished.
 
+> Note (2026-10-19): the skill now runs seven phases (decide and attest were
+> added; apply is phase 4, document 2 is 5, verify is 6). The phase numbers below
+> are those of the five-phase skill this run used. `docs/STATUS.md` records the
+> wave-5 re-run of the deterministic phases on a fresh clone.
+
 `main` is at `bbe722d`, pushed, CI green. Working tree clean.
 
 ## What this is

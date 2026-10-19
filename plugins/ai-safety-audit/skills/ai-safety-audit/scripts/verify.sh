@@ -4,12 +4,14 @@
 # then resolves `aisg` through the same pinned bootstrap chain as audit.sh for
 # `aisg measure` and, when AISG_PROBE_URL is set, `aisg probe`.
 # Nothing runs unless AISG_VERIFY_RUN=1: tests, measure and probe may call model providers.
+# AISG_VERIFY_SKIP_TESTS=1 leaves the project's tests out (phase 3 runs the offline measure only).
 # This script never adds --i-have-authorization; a remote probe target needs the user to add it.
 # Reports go under .aisg-audit/ like every other artefact of the flow; the next audit reads
 # them there as evidence (REPORTED <age>) whether or not .gitignore lists the directory.
 set -u
 AISG_VERSION="0.1.0"   # pinned; test_skill_package.py asserts this equals pyproject.toml [project].version
 run="${AISG_VERIFY_RUN:-0}"
+skip_tests="${AISG_VERIFY_SKIP_TESTS:-0}"
 status=0
 report_dir=".aisg-audit"
 measure_report="$report_dir/measure-report.json"
@@ -31,7 +33,9 @@ if [ -z "$test_cmd" ]; then
   echo "tests: no test command detected (looked for pyproject.toml/pytest.ini/setup.cfg, package.json test script, go.mod, Cargo.toml)"
 else
   echo "tests: $test_cmd"
-  if [ "$run" = "1" ]; then
+  if [ "$skip_tests" = "1" ]; then
+    echo "tests: skipped (AISG_VERIFY_SKIP_TESTS=1)"
+  elif [ "$run" = "1" ]; then
     # shellcheck disable=SC2086  # intentional word splitting of the detected command
     if ! $test_cmd; then
       echo "tests: FAILED ($test_cmd exited non-zero)" >&2
