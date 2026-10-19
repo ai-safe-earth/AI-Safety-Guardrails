@@ -807,6 +807,7 @@ INVENTORY_KEYS: tuple[str, ...] = (
     "loops",
     "ci",
     "incident_path",
+    "person_signals",
     "own_output_skipped",
     "unknown",
 )
@@ -838,6 +839,10 @@ class Inventory:
     loops: list[dict[str, Any]] = field(default_factory=list)
     ci: list[dict[str, Any]] = field(default_factory=list)
     incident_path: list[str] = field(default_factory=list)
+    # P11: where the code or the prompts touch PEOPLE (profiles bound into prompts,
+    # affect inference, scoring, engagement objectives, persona concealment, and the
+    # disclosure / control symbols that answer them). `{file, line, kind, symbol, unit}`.
+    person_signals: list[dict[str, Any]] = field(default_factory=list)
     # The audit's own JSON reports found in the tree and not scanned: their evidence
     # snippets would re-report every finding at a second path. Listed, never silent.
     own_output_skipped: list[str] = field(default_factory=list)
@@ -940,3 +945,7 @@ class AuditContext:
     # Per-run memo for derived views several rules compute from the same inputs (the
     # wired guard sites, for one). Keyed by the owning module's name; never serialised.
     cache: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
+    # lint_bridge.LintFacts: the curated EU AI Act / misalignment lint hits over the
+    # walked Python files, evidence legs for the P11 rules. None when the bridge did
+    # not run; every rule tolerates that.
+    lint: object | None = None

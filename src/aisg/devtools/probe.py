@@ -92,9 +92,13 @@ class ProbeCase:
     # Benign cases carry no detector. They fail when the pipeline BLOCKS
     # them, or when `must_survive` text is missing from the sanitized
     # output -- both exact, neither heuristic.
-    kind: str = "attack"  # attack | benign
+    kind: str = "attack"  # attack | benign | output
     must_survive: str = ""
     tempts: str = ""
+    # Output cases are model RESPONSES for the output-stage guards (`aisg measure` only;
+    # `aisg probe` never sends them): `manipulative` counts as an attack the guard should
+    # fire on, `benign` as traffic it must let through.
+    verdict: str = ""  # manipulative | benign (output cases only)
 
 
 @dataclass
@@ -126,6 +130,7 @@ def load_corpus(
     families: list[str] | None = None,
     system_canary: str | None = None,
     include_benign: bool = False,
+    include_output: bool = False,
 ) -> list[ProbeCase]:
     """
     Load every probes/*.yaml shipped with the package.
@@ -155,9 +160,11 @@ def load_corpus(
         needs_canary = str(data.get("requires", "") or "") == "system_canary"
         reflection_ok = bool(data.get("reflection_is_success", False))
         kind = str(data.get("kind", "attack"))
-        if kind not in ("attack", "benign"):
-            raise SystemExit(f"{entry.name}: kind must be attack or benign, got {kind!r}")
+        if kind not in ("attack", "benign", "output"):
+            raise SystemExit(f"{entry.name}: kind must be attack, benign or output, got {kind!r}")
         if kind == "benign" and not include_benign:
+            continue
+        if kind == "output" and not include_output:
             continue
         for raw in data.get("cases", []):
             det = raw.get("detector") or {}
@@ -167,9 +174,30 @@ def load_corpus(
                     f"{entry.name}: benign case {raw.get('id')} must not carry a "
                     "detector -- benign cases are judged on blocking, not on markers"
                 )
+            verdict = str(raw.get("verdict", "") or "")
+            if kind == "output":
+                if det:
+                    raise SystemExit(
+                        f"{entry.name}: output case {raw.get('id')} must not carry a "
+                        "detector -- a response is judged by the guard, not by a marker"
+                    )
+                if verdict not in ("manipulative", "benign"):
+                    raise SystemExit(
+                        f"{entry.name}: output case {raw.get('id')} needs verdict "
+                        f"manipulative or benign, got {verdict!r}"
+                    )
+                if (
+                    verdict == "benign"
+                    and str(raw.get("must_survive", "") or "") not in raw["payload"]
+                ):
+                    raise SystemExit(
+                        f"{entry.name}: benign output case {raw.get('id')} must name a "
+                        "must_survive text that appears in its payload"
+                    )
             if dtype not in VALID_DETECTORS:
                 raise SystemExit(f"{entry.name}: case {raw.get('id')} has detector type {dtype!r}")
-            behaviour = raw.get("expected_behaviour", "allow" if kind == "benign" else "block")
+            default_behaviour = "allow" if kind == "benign" or verdict == "benign" else "block"
+            behaviour = raw.get("expected_behaviour", default_behaviour)
             if behaviour not in VALID_BEHAVIOURS:
                 raise SystemExit(
                     f"{entry.name}: case {raw.get('id')} has expected_behaviour {behaviour!r}"
@@ -202,6 +230,7 @@ def load_corpus(
                     kind=kind,
                     must_survive=str(raw.get("must_survive", "") or ""),
                     tempts=str(raw.get("tempts", "") or ""),
+                    verdict=verdict,
                 )
             )
     if wanted is not None and not cases:

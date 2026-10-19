@@ -105,9 +105,10 @@ own markers (`analyzer.tool`, default `euaiact-lint`; misalign passes
   the files that ARE the rule vocabulary -- `code_analyzer/rules/__init__.py` and
   `modules/policy/eu_ai_act.py` spell out every prohibited-practice phrase and would
   otherwise report themselves; `# misalignment-check: ignore-file` sits on
-  `devtools/misalignment/rules/__init__.py` for the same reason. A test pins that exactly
-  those files under `src/` carry each marker; a real finding anywhere else gets a line
-  directive, not the marker.
+  `devtools/misalignment/rules/__init__.py` for the same reason, and
+  `devtools/audit/persons_patterns.py` carries all three markers (aisg, lint, misalign):
+  it spells out the P11 phrases. A test pins that exactly those files under `src/` carry
+  each marker; a real finding anywhere else gets a line directive, not the marker.
 - `# euaiact-lint: ignore EU-AIA-005a[, ...]` on the finding's own line suppresses that
   rule there. **The rule id is required**; a bare `ignore` is not honoured, so every
   suppression says what it silences. Not spelled `noqa`: ruff parses every `# noqa`
@@ -412,8 +413,9 @@ orphans a labelled row; tests pin both properties. See `bench/README.md`.
 ## aisg audit and the skill
 
 `aisg audit <path>` (`src/aisg/devtools/audit/`) is walk -> discover -> pydeep ->
-rules -> adapters -> baseline -> report. 47 rules, `AUD-<priority><NN>` from
-AUD-101 to AUD-1003 (AUD-806 reads the decision document), ordered by blast radius;
+rules -> adapters -> baseline -> report. 54 rules, `AUD-<priority><NN>` from
+AUD-101 to AUD-1107 (AUD-806 reads the decision document; AUD-1101..1107 are the
+P11 persons-and-manipulation rules), ordered by blast radius;
 the registry lists them all and `--list-rules` prints them. Invariants the tests pin:
 
 - **Three buckets, all counted.** MEASURED = an adapter ran *during this
@@ -546,7 +548,9 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   accepted finding is neither package work nor an open row in the html plan;
   it sits under the accepted group.
 - **`SUBSYSTEM_OF_RULE` is an exact cover** of the registry: its keys equal
-  the set of rule ids, every value is one of the ten `SUBSYSTEMS`, and
+  the set of rule ids, every value is one of the eleven `SUBSYSTEMS` (the eleventh,
+  `persons`, is appended so the two five-box rows keep their slices and `html._svg`
+  draws `SUBSYSTEMS[10:]` on row three beside the not-attributed strip), and
   `subsystem_of()` looks up the parent id (before `/`) so `AUD-301/structured`
   lands where AUD-301 does. Everything else draws in the `NOT_ATTRIBUTED`
   box. Adding a rule without a row here fails the test, on purpose.
@@ -746,12 +750,82 @@ Rules that hold:
   the `aisg-audit` job in `.gitlab-ci-euaiact.yml` (git pin until wave 6) and the
   `action` dogfood job in `tests.yml`. `test_ci_surface.py` pins the shapes.
 
+## Persons and manipulation (P11)
+
+AUD-1101..1107 (`rules/persons.py`, subsystem `persons`, vocabulary in
+`persons_patterns.py`) report where the code or the prompts touch PEOPLE: a profile bound
+into a prompt, emotion or biometric inference, scoring or automated decisions about
+persons, an engagement objective (`/vulnerable` critical when a vulnerable-group word
+co-occurs in the same file or prompt literal), a concealed AI nature (`/persona`) or no
+disclosure symbol in a user-facing unit (`/no-disclosure`, LOW, unit-level), no
+manipulation control on the response path, no recorded prompt review on the card.
+Every finding carries `persons.LEGAL_CAVEAT`: none of this is a legal determination.
+Rules that hold:
+
+- **Prompt-material gating is what keeps this repository quiet.** The kinds in
+  `persons_patterns.PROMPT_KINDS` (scoring, engagement, vulnerable, persona, profile
+  placeholders and names) and the prose disclosure rows count in code only on a prompt
+  line (a `prompt_assembly` hit or `patterns._PROMPT_LHS`); elsewhere discover records a
+  `person_signal_candidate` that the rule promotes only when a pydeep `PromptLiteral`
+  (`SYSTEM_PROMPT = "..."`, with its line span) covers it, or when a prompt assembly reads
+  the profile name. `eu_ai_act.py` and the linter rules spell these phrases inside
+  `re.compile(...)` calls, which are neither, so they produce nothing. Docs are scanned
+  only under `PROMPT_FILE_GLOBS`, and a template by path (`prompts/x.jinja`) is prompt
+  material whatever its extension. Candidates are not mention-filtered: a triple-quoted
+  prompt literal looks like a docstring to the span finder; the literal gate does that job.
+- **Mention vs use in prompt material.** A doc or config hit inside a quoted span or
+  near a `patterns.DISCUSSION_CUES` word ("explain how we detect social scoring") is a
+  mention and does not count; in code only the cue window applies, because a prompt
+  literal is quoted by nature.
+- **The lint tier is evidence, never a second finding.** `lint_bridge.run_lint` runs the
+  curated EU-AIA/ALIGN rules (`EU_RULE_IDS`, `MISALIGN_RULE_IDS`) through the new
+  `EUAIActCodeAnalyzer.scan_source` seam over the walked Python text, one analyzer per
+  tool so each honours only its own markers and directives; `ctx.lint` holds the hits.
+  A hit in a file that already carries a grep signal of the same kind is a `role: lint`
+  leg; one with no P11 site of its own in that file anchors a candidate, so 013b alone
+  still produces `AUD-1105/persona`. `tests/conftest.py`'s `audit_context` runs the bridge
+  too.
+- **Art. 5(1) letters** are those of Regulation (EU) 2024/1689: (a) manipulation, (b)
+  exploiting vulnerabilities, (c) social scoring, (d) criminal-risk profiling, (e) facial
+  scraping, (f) emotion recognition at work or school, (g) biometric categorisation, (h)
+  real-time remote biometric identification. `eu_ai_act.py` and the linter's 005b used to
+  label biometric identification (d) and predictive policing (e); fixed and pinned.
+- **The two output guards** (`ManipulationGuard`, `manipulation_output`;
+  `AIDisclosureGuard`, `ai_disclosure_output`) are regex tables, FLAG by default, mention-
+  aware, UNMEASURED (`profile = Profile()`), refuse unknown options, and never spell the
+  audit's objective or persona phrases in their source (a test reads
+  `persons_patterns.ENGAGEMENT_OBJECTIVE` against the module). `ManipulationGuard`'s
+  optional judge is `ClaudeJudge(mode="manipulation")`; a failed call is an
+  `llm_judge_error` FLAG, never a swallowed exception. `AIDisclosureGuard` returns REDACT
+  whenever it changed the text (a replaced claim or an appended disclosure), because the
+  pipeline takes `sanitized_content` only on REDACT; the EU AI Act and NIST policy guards
+  now return REDACT for the same reason when they append their disclosure on the output
+  stage. Both presets wire both guards; `eu_high_risk` sets `append_when: never` so the
+  policy guard's disclosure is the only one.
+- **The output corpus** (`probes/manipulation_responses.yaml`, `kind: output`) holds model
+  RESPONSES with a `verdict` (`manipulative` counts as an attack, `benign` as traffic that
+  must survive). `load_corpus(include_output=True)` loads it; `aisg probe` never does, and
+  `available_families()` never lists it. `aisg measure` routes output cases to OUTPUT-
+  stage guards only and counts them in `output_seen/output_caught/output_catch_rate` and
+  in the family matrix, never in the input headline; `catch_rate_meaningful` is true for an
+  output guard once output cases reached it, and the terminal NOTE about output guards
+  prints only when none did. `manipulation_elicitation` is attack family 7 (CI pins 7).
+- **The card's `prompt_audit` block** (`reviewed_at`, `reviewer`, `scope`, `notes`) is
+  what AUD-1107 reads through `discover._build_system_card`, which also passes
+  `affected_persons` through; `aisg init` writes it with a `TODO` reviewer and asks two
+  more questions interactively.
+
 ## Adding a guard
 
 Subclass `GuardrailBase`, set `name`/`stage`, decorate with `@register_guard("name")`, implement
 `async def check`, wire the name into **all four** YAML presets (`config/` and `src/aisg/config/`),
 export from `src/aisg/__init__.py`, add tests. `GuardrailPipeline.from_config` fails loudly on an
-unregistered name.
+unregistered name. Then teach the audit the name (`discover._AISG_GUARD_RE`,
+`rules/guards._GUARD_CLASSES`), add a probe case per detection pattern with its `seed_pattern`
+(an OUTPUT guard's cases go in a `kind: output` corpus), accept the new guard's AUD-801 group in
+`audit-baseline.json` with a reason, and, if an audit rule names the class, add it to
+`CLASS_SYMBOLS` and give `apply/python.md` a heading. The full checklist is
+`.claude/skills/add-guard/SKILL.md`.
 
 ## Git
 

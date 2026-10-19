@@ -286,10 +286,10 @@ severity colour, no ticks, grades, scores or percentages. Sections, in order:
    UNKNOWN count, all above the figure. No severity totals strip.
 4. Document 2 only -- "Since the baseline": What changed (`no_longer_reported`, named,
    and `new`), What is left, What we still do not know.
-5. Fig. 1 -- System map: ten subsystem boxes drawn from the inventory (Data in; Host and
+5. Fig. 1 -- System map: eleven subsystem boxes drawn from the inventory (Data in; Host and
    agent runtime; Model calls and prompts; Tools and actions; Output sinks; Secrets and
-   personal data; Supply chain; Guardrails; Observability; Evals and governance) plus a
-   dashed "Not attributed / UNKNOWN" box. Each box: up to two inventory facts,
+   personal data; Supply chain; Guardrails; Observability; Evals and governance; Persons
+   and manipulation, on a third row) plus a dashed "Not attributed / UNKNOWN" box. Each box: up to two inventory facts,
    "reported n | UNKNOWN m | rules ran k/K", and `[UNMEASURED]`. "No surface found" is
    different from "reported 0". The caption says what the figure deliberately omits.
 6. One section per subsystem: inventory facts with file:line, then the findings placed

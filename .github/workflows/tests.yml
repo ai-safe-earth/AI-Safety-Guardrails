@@ -243,7 +243,7 @@ jobs:
           from aisg.devtools.probe import load_corpus, available_families
           cases = load_corpus(system_canary='CI-CANARY')
           assert len(cases) >= 40, len(cases)
-          assert len(available_families()) == 6
+          assert len(available_families()) == 7
           print(f'{len(cases)} probe cases across {len(available_families())} families')
           "
 

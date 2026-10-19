@@ -324,6 +324,51 @@ construct it once per process. The spans are `guardrail.stage.*` and `guardrail.
 per pipeline stage and guard; the model call itself and tool calls your loop dispatches
 outside the pipeline are not on the trace.
 
+## `ManipulationGuard` (AUD-1104, in addition; first symbol on AUD-1106, same control)
+
+An OUTPUT guard: six categories of influence tactics (false urgency, guilt pressure,
+flattery to comply, emotional dependency, discouraging help, dark-pattern purchase),
+FLAG by default, mention-aware (a quoted or discussed phrase, or the user's own words,
+never drives a block).
+
+```python
+from aisg import GuardrailPipeline, ManipulationGuard
+
+pipeline = GuardrailPipeline(
+    output_guards=[ManipulationGuard(action="flag", min_severity="medium")],
+)
+```
+
+YAML: `output: manipulation_output: {enabled: true, action: flag, min_severity: medium,
+use_llm_judge: false}`. `use_llm_judge: true` adds `ClaudeJudge(mode="manipulation")`,
+one model call per response; a judge failure is a recorded FLAG. Offer `action: block`
+only after `aisg measure` shows the benign corpus survives.
+
+Leaves open (summary; quote the JSON's `leaves_open` in the plan row): the guard reads the
+response, not the prompt objective (AUD-1104) or the ranking logic; paraphrase and
+multi-turn escalation pass the regex; UNMEASURED until `aisg measure` scores it.
+
+## `AIDisclosureGuard` (AUD-1105, same control; second symbol on AUD-1106)
+
+An OUTPUT guard for Art. 50: a response that claims to be human is flagged, rewritten
+(`action: redact` replaces the claim with the disclosure) or blocked, and a disclosure can
+be appended (`append_when`: `on_claim` default, `always`, `never`). A negation ("I am
+not a human") is a disclosure, not a claim.
+
+```python
+from aisg import AIDisclosureGuard
+
+guard = AIDisclosureGuard(action="redact", disclosure="I am an AI assistant.")
+```
+
+YAML: `output: ai_disclosure_output: {enabled: true, action: flag, append_when: on_claim}`.
+With the EU AI Act policy guard's `transparency_disclosure` set, use `append_when: never`
+or the user gets two notices (the `eu_high_risk` preset does this).
+
+Leaves open: a prompt that instructs the model to claim humanity (`/persona`) is deleted
+by hand; a disclosure shown by the UI is outside the guard; `/no-disclosure` is
+closed by any disclosure symbol in the unit, this guard being one.
+
 ## `aisg audit` (AUD-108, 501, 502, 602, 605, 606; detector, in addition)
 
 The symbol is this command in CI. It is a detector, never the control: it reports the
@@ -400,7 +445,12 @@ and exit 2. Remote targets need `--i-have-authorization`, which the user adds th
 Leaves open, in summary (AUD-902): a new run shows what still gets through; fixing the
 guard or the endpoint behind each such case is the work, by hand.
 
-## `aisg init` (AUD-703, 1001, 1002, 1003; document)
+## `aisg init` (AUD-703, 1001, 1002, 1003, 1107; document)
+
+For AUD-1107 the card's `prompt_audit` block (`reviewed_at`, `reviewer`, `scope`, `notes`)
+is what the rule reads: `aisg init` writes it with a `TODO` reviewer, and the operator
+fills in who reviewed the prompts, the ranking and the personalisation logic, and when.
+A reviewer still starting with `TODO` counts as no review.
 
     aisg init --defaults                     # writes ai-system-card.yaml
 

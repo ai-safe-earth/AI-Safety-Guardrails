@@ -1319,8 +1319,9 @@ def test_explicit_fail_on_overrides_pyproject_high(
 ) -> None:
     """
     A cwd whose pyproject sets `fail-on = "high"` (the repo's own self-audit
-    setting) is only a default: on `info_only`, the section leaves the single
-    info finding uncounted, and `--fail-on info` on the command line counts it.
+    setting) is only a default: on `info_only`, the section leaves the info finding
+    finding and the two P11 absences (no disclosure, no prompt review) uncounted, and
+    `--fail-on info` on the command line counts all three.
     """
     (neutral_cwd / "pyproject.toml").write_text(
         '[tool.aisg-audit]\nfail-on = "high"\n', encoding="utf-8"
@@ -1328,7 +1329,7 @@ def test_explicit_fail_on_overrides_pyproject_high(
     target = str(audit_fixture("info_only"))
     assert cli.main(["audit", target, "--no-external"]) == EXIT_OK
     out = capsys.readouterr().out
-    assert "1 below --fail-on high" in out
+    assert "3 below --fail-on high" in out
     assert cli.main(["audit", target, "--no-external", "--fail-on", "info"]) == EXIT_FINDINGS
     out = capsys.readouterr().out
     assert "0 below --fail-on info" in out

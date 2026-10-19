@@ -63,6 +63,8 @@ Safe Response to User
 | Processing | `ToolPolicyGuard` | Role-based tool allow/deny with argument-level constraints and session budgets |
 | Processing | `LLMToolFilter` | LLM judge on tool arguments and results; fail-closed for high-risk tools |
 | Output | `ToxicityFilter` | Pattern + optional API-based output toxicity detection |
+| Output | `ManipulationGuard` | Six influence tactics in responses (urgency, guilt, dependency, discouraging help, ...), FLAG by default, mention-aware, optional judge |
+| Output | `AIDisclosureGuard` | Flags, rewrites or blocks a response that claims to be human; appends an AI disclosure (Art. 50) |
 | Output | `LLMOutputFilter` | LLM judge on model responses before they reach the user |
 | Policy | `EUAIActCompliance` | Regulation (EU) 2024/1689 — Art. 5, 9, 12, 13, 14, 15, 50 |
 | Policy | `NISTAIRMFCompliance` | NIST AI RMF 1.0 — GOVERN, MAP, MEASURE, MANAGE functions |
@@ -104,6 +106,8 @@ ai-safety-guardrails/
 │   │   │
 │   │   ├── output/
 │   │   │   ├── toxicity.py
+│   │   │   ├── manipulation.py   # ManipulationGuard
+│   │   │   ├── ai_disclosure.py  # AIDisclosureGuard
 │   │   │   └── llm_output_filter.py
 │   │   │
 │   │   ├── policy/
@@ -145,7 +149,7 @@ ai-safety-guardrails/
 │   │   ├── probe.py             # Attack corpus against a live endpoint (aisg probe)
 │   │   ├── measure.py           # What each guard catches, breaks and costs (aisg measure)
 │   │   ├── skill.py             # Install the agent skill into host dirs (aisg skill)
-│   │   ├── audit/               # The AI-surface audit, 46 rules (aisg audit)
+│   │   ├── audit/               # The AI-surface audit, 54 rules (aisg audit)
 │   │   └── _config.py           # Reads [tool.*] defaults from pyproject.toml
 │   ├── probes/                  # Attack and benign corpora (YAML, ship in the wheel)
 │   └── skills/ai-safety-audit/  # The agent skill (canonical copy; mirrored below)
@@ -945,13 +949,13 @@ treated as remote even if it would resolve to loopback.
 aisg audit .                                   # terminal report, exit 1 on any finding
 aisg audit . --format json -o audit-report.json
 aisg audit . --inventory-only                  # the AI surface only, no rules
-aisg audit . --list-rules                      # 46 rules: id, priority, severity, tier, precision
+aisg audit . --list-rules                      # 54 rules: id, priority, severity, tier, precision
 ```
 
 `aisg audit <path>` walks a repository, builds an inventory of its AI surface
 -- LLM calls and model ids, tools and the gates in front of them, MCP servers,
 host permission files, data sources, ingress, sinks, guards, evals, on-disk
-reports -- and runs 46 rules over it, ordered by blast radius: `AUD-1xx` host
+reports -- and runs 54 rules over it, ordered by blast radius: `AUD-1xx` host
 permissions and agent loops first, `AUD-10xx` governance last. Python gets an
 AST layer (taint from model output to sinks, gate resolution, the lethal
 trifecta per scope); every other language gets grep-level discovery and the

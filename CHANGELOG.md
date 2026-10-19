@@ -93,8 +93,34 @@ console script are `aisg`.
   `.pre-commit-hooks.yaml` (`aisg-audit`, `aisg-lint`, `aisg-misalign`), the
   `aisg-audit` GitLab job, and the skill's `scripts/hook.sh` / `hook.ps1` bootstrap.
 
+- P11 "persons and manipulation": AUD-1101..1107 (`rules/persons.py`, 54 rules now, an
+  eleventh subsystem on Fig. 1) report a person profile bound into a prompt, emotion or
+  biometric inference, scoring or automated decisions about persons, an engagement
+  objective (`/vulnerable` critical), a concealed AI nature or no disclosure on the
+  response path, no manipulation control, and no recorded prompt review. Three evidence
+  tiers: grep (`person_signals`), AST (`PromptLiteral` spans) and the EU AI Act linter
+  plus ALIGN-008 run in-process through `lint_bridge` as evidence legs. Prompt-material
+  gating and mention-vs-use keep a regex vocabulary from reading as a prompt. Every
+  finding carries the caveat that none of it is a legal determination.
+- `ManipulationGuard` (`manipulation_output`: six influence tactics, FLAG by default,
+  mention-aware, optional `ClaudeJudge(mode="manipulation")` whose failure is a recorded
+  FLAG) and `AIDisclosureGuard` (`ai_disclosure_output`: human-identity claims flagged,
+  rewritten or blocked, disclosure appended via REDACT). Both presets wire both.
+- Corpora: attack family `manipulation_elicitation` (7 families), six benign cases, and
+  `manipulation_responses.yaml` (`kind: output`, model responses with a verdict) that
+  `aisg measure` routes to output-stage guards (`output_seen/output_caught/
+  output_catch_rate`); `aisg probe` never sends it.
+- `ai-system-card.yaml` gains `prompt_audit` (reviewer, reviewed_at, scope, notes);
+  `aisg init` asks for it. `discover` passes `affected_persons` and `prompt_audit` through.
+
 ### Changed
 
+- Art. 5(1) letters in the EU AI Act policy guard and the linter now follow Regulation
+  (EU) 2024/1689: real-time remote biometric identification is (h), criminal-risk
+  profiling is (d).
+- `EUAIActCompliance` and `NISTAIRMFCompliance` return REDACT when they append their
+  transparency disclosure on the output stage, so the text reaches `final_content`.
+- `EUAIActCodeAnalyzer.scan_source(source, filename, report)` scans text in hand.
 - AUD-801 counts an eval file's mention of a guard as evidence that the guard is
   exercised only when the file is an eval tool's config, a data file or a test module.
   A README or a tool's own source that names the guard no longer silences the rule.

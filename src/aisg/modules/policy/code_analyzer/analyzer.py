@@ -370,7 +370,15 @@ class EUAIActCodeAnalyzer:
             report.scanned_files.append(filename)
             report.errors.append(f"Cannot read {filename}: {e}")
             return
+        self.scan_source(source, filename, report)
 
+    def scan_source(self, source: str, filename: str, report: ScanReport) -> None:
+        """
+        Scan `source` as the contents of `filename`, appending to `report`. The same
+        marker, directive and rule logic as `_scan_single` without the read, so a
+        caller that already holds the text (the audit's walk) runs the rules over
+        exactly the bytes it enumerated.
+        """
         if has_ignore_marker(source, self.tool):
             report.skipped_files.append(filename)
             return

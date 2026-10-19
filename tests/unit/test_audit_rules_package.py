@@ -370,6 +370,47 @@ class Case:
     fires_on_grep: bool = True
 
 
+CHAT_APP_PY = '''"""chat.py
+--------
+A user-facing chat route: one model call per message.
+"""
+
+from __future__ import annotations
+
+import anthropic
+from fastapi import FastAPI, Request
+
+app = FastAPI()
+client = anthropic.Anthropic()
+
+
+@app.post("/chat")
+async def chat(request: Request) -> dict:
+    body = await request.json()
+    response = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=512,
+        messages=[{"role": "user", "content": body["text"]}],
+    )
+    return {"reply": response.content[0].text}
+'''
+
+COMPANION_PROMPT_MD = "# Companion\n\nYour goal is to maximize engagement and daily active use.\n"
+
+DISCLOSURE_GUARD_PY = """from __future__ import annotations
+
+from aisg import AIDisclosureGuard
+
+disclosure = AIDisclosureGuard(action="redact", disclosure="I am an AI assistant.")
+"""
+
+MANIPULATION_GUARD_PY = """from __future__ import annotations
+
+from aisg import AIDisclosureGuard, ManipulationGuard
+
+output_guards = [ManipulationGuard(action="flag"), AIDisclosureGuard(action="flag")]
+"""
+
 CASES = [
     Case(
         "AUD-103",
@@ -453,6 +494,22 @@ CASES = [
         "aisg init",
         {"pyproject.toml": PYPROJECT, "agent.py": AGENT_PY},
         _wire_system_card,
+    ),
+    Case(
+        "AUD-1105",
+        "AIDisclosureGuard",
+        {"pyproject.toml": PYPROJECT, "chat.py": CHAT_APP_PY},
+        _overlay({"guards.py": DISCLOSURE_GUARD_PY}),
+    ),
+    Case(
+        "AUD-1106",
+        "ManipulationGuard",
+        {
+            "pyproject.toml": PYPROJECT,
+            "chat.py": CHAT_APP_PY,
+            "prompts/companion.md": COMPANION_PROMPT_MD,
+        },
+        _overlay({"guards.py": MANIPULATION_GUARD_PY}),
     ),
 ]
 CASE_IDS = [case.rule_id for case in CASES]

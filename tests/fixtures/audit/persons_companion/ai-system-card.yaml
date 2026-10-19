@@ -1,0 +1,11 @@
+schema: aisg/1
+system:
+  id: companion-1
+  name: companion
+  purpose: a companion chat app for teenagers
+role: provider
+risk_tier: unknown
+annex_iii_category: null
+affected_persons: teenagers using the companion app
+deployment: eu
+incident_contact: safety@example.invalid

@@ -114,6 +114,17 @@ output:
       - dangerous_instructions
     use_llm_judge: false       # Enable for higher accuracy (+latency)
 
+  manipulation_output:
+    enabled: true
+    action: flag               # flag | block; manipulation is contextual, measure before blocking
+    min_severity: medium       # findings below it are recorded, never acted on
+    use_llm_judge: false       # ClaudeJudge(mode="manipulation"), one model call per response
+
+  ai_disclosure_output:
+    enabled: true
+    action: flag               # flag | redact | block
+    append_when: on_claim      # never | on_claim | always
+
   pii_restorer:
     enabled: false             # Enable when using PIIDetector(action="tokenize") on input
     # Restores <PII:TYPE:N> tokens to original values after LLM response

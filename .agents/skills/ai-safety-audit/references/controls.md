@@ -15,8 +15,9 @@ How to read this file:
   LLM Applications 2025 (LLM01 prompt injection, LLM02 sensitive information disclosure,
   LLM03 supply chain, LLM04 data and model poisoning, LLM05 improper output handling, LLM06
   excessive agency, LLM07 system prompt leakage, LLM08 vector and embedding weaknesses,
-  LLM09 misinformation, LLM10 unbounded consumption); `EU` = EU AI Act article; `NIST` = AI
-  RMF function and subcategory. The `controls` field in the report is the authoritative
+  LLM09 misinformation, LLM10 unbounded consumption); `EU` = EU AI Act article (with the
+  paragraph and letter where one applies, `EU:Art.5(1)(a)`); `GDPR` = GDPR article; `NIST`
+  = AI RMF function and subcategory. The `controls` field in the report is the authoritative
   tuple for the installed version; the tuples below were recorded when this file was
   written. They are evidence for a human reviewer. Never state or imply compliance with any
   of them, and never present a mapping as a verdict.
@@ -84,13 +85,20 @@ How to read this file:
 | AUD-1001 | document | yes | `aisg init` |
 | AUD-1002 | document | no | `aisg init` |
 | AUD-1003 | document | no | `aisg init` |
+| AUD-1101 | detector | no | `PIIDetector`, `ManipulationGuard` |
+| AUD-1102 | none | no | -- |
+| AUD-1103 | gate | no | `ToolPolicyGuard` |
+| AUD-1104 | detector | no | `ManipulationGuard` |
+| AUD-1105 | detector | yes | `AIDisclosureGuard` |
+| AUD-1106 | detector | yes | `ManipulationGuard`, `AIDisclosureGuard` |
+| AUD-1107 | document | no | `aisg init` |
 
-Eleven rules have `same control: yes`. Those are the only rows the plan table can assign to
+Thirteen rules have `same control: yes`. Those are the only rows the plan table can assign to
 "package", and only when the finding's language is Python (by the file's extension; else
 its unit's language; else, for a repo-scoped finding, the root unit's) and the file is not
 a protected path (host permission and MCP files, CI workflows and pipeline files, `.env*`,
 secrets files, `.pre-commit-config.yaml`). An accepted finding is not package work either;
-it sits under the accepted group. Every one of the eleven still has a "leaves open" text;
+it sits under the accepted group. Every one of the thirteen still has a "leaves open" text;
 read it out with the diff.
 
 ## Alternatives table
@@ -612,3 +620,101 @@ code before proposing a change.
   an Annex III domain is a legal determination the operator makes; aisg init only records
   the category or a reason for none.
 - Mapping: EU:Art.6, EU:Art.11, NIST:MAP-1.1, NIST:MAP-5.1.
+
+## P11 Persons and manipulation
+
+Where the code or the prompts touch PEOPLE. None of these is a legal finding: whether a
+practice falls under Art. 5, Art. 50 or Annex III is a legal determination made by the
+operator, and every finding says so in its notes. Three evidence tiers feed one finding per
+decision: the grep tier (`person_signals` in the inventory), the AST tier (prompt assemblies
+and prompt literals) and the lint tier (the EU AI Act linter and ALIGN-008 run in-process;
+their hits are `lint` evidence legs, never findings of their own). Prompt-material gating
+keeps a regex vocabulary in code from reading as an instruction to a model.
+
+### AUD-1101 Person profile bound into a prompt (medium; `/sensitive` high)
+
+- Control (T2): pass the model only the fields the task needs. Drop the behavioural profile
+  from the prompt, reduce it, or pseudonymise it and document the lawful basis. The
+  `/sensitive` sub-finding (a profile whose name says health, religion, sexual, political,
+  ethnic, union, biometric, mental, disability) is special-category data under GDPR Art. 9.
+- Package: detector, same control: no, `PIIDetector`, `ManipulationGuard`. Leaves open:
+  PIIDetector(action="tokenize") removes the entity types it knows from the prompt; a
+  behavioural profile has no entity type and stays in the prompt until it is left out or
+  reduced by hand. ManipulationGuard reads the response, not the profile.
+- Mapping: GDPR:Art.22, GDPR:Art.9, GDPR:Art.5, EU:Art.5(1)(a), EU:Art.10, LLM02,
+  NIST:MAP-5.1, NIST:MEASURE-2.11.
+
+### AUD-1102 Emotion or biometric inference on persons (high; `/workplace`, `/categorisation` critical)
+
+- Control (T3): remove the inference, or restrict it to a documented, lawful use with a legal
+  basis and an Annex III review. Emotion recognition at work or in education and biometric
+  categorisation of protected characteristics are listed practices under Art. 5. Text-only
+  sentiment analysis is not counted.
+- Package: none. Nothing in the package applies; the control is removing or scoping the
+  inference.
+- Mapping: EU:Art.5(1)(f), EU:Art.5(1)(g), EU:Art.6, GDPR:Art.9, NIST:MAP-5.1,
+  NIST:MEASURE-2.11.
+
+### AUD-1103 Scoring, ranking or automated decision about persons (high)
+
+- Control (T2): a human review step before any score, rank or decision about a person takes
+  effect, logged beside the recommendation; a confidence threshold that routes low-confidence
+  cases to review; the use recorded on the system card. `/scoring` is prompt material that
+  scores or ranks persons; `/decision` is an automated decision function that names a person
+  and no review symbol.
+- Package: gate, same control: no, `ToolPolicyGuard`. Leaves open: ToolPolicyGuard gates
+  only a decision dispatched through run_processing as a tool call with a real
+  approval_callback. A score computed and acted on in plain code is not on that path.
+- Mapping: EU:Art.5(1)(c), EU:Art.6, GDPR:Art.22, EU:Art.14, NIST:MAP-5.1,
+  NIST:MEASURE-2.11, NIST:GOVERN-1.1.
+
+### AUD-1104 Engagement or retention objective in prompt or code (high; `/vulnerable` critical)
+
+- Control (T2): rewrite the objective as task completion and the user's own stated goals;
+  remove streak, scarcity and variable-reward mechanics from the model's instructions. The
+  `/vulnerable` sub-finding names the group word that co-occurs in the same prompt file or
+  literal; the finding says what co-occurred, so a reading app with a streak feature can be
+  told apart from a companion app for lonely teens.
+- Package: detector, same control: no, `ManipulationGuard`. Leaves open: ManipulationGuard
+  flags influence tactics in the response text; it does not see the objective in the prompt,
+  which is removed or rewritten by hand.
+- Mapping: EU:Art.5(1)(a), EU:Art.5(1)(b), LLM09, NIST:GOVERN-1.1, NIST:MAP-5.1,
+  NIST:MEASURE-2.11.
+
+### AUD-1105 AI nature concealed or no disclosure on the response path (high; `/no-disclosure`, `/synthetic` low)
+
+- Control (T2): delete any instruction to claim humanity and state the AI nature at first
+  interaction and whenever asked. `/persona` is a concealment instruction in prompt material
+  or a quoted one in code (EU-AIA-013b); `/no-disclosure` is unit-level and LOW: a user-facing
+  unit with model calls and no disclosure symbol anywhere in its code, config or prompt files;
+  `/synthetic` is generated content without a label (EU-AIA-050a/b).
+- Package: detector, same control: yes, `AIDisclosureGuard`. Leaves open: AIDisclosureGuard
+  flags a response that claims to be human and can append the disclosure text on the output
+  stage; a prompt that instructs the model to claim humanity is deleted by hand, and
+  disclosure shown by the UI is outside the guard.
+- Mapping: EU:Art.50(1), EU:Art.50(2), EU:Art.5(1)(a), LLM09, NIST:GOVERN-1.1,
+  NIST:GOVERN-1.7.
+
+### AUD-1106 No manipulation control on the response path (medium)
+
+- Control (T2): a manipulation and a disclosure control on the output stage, then measure
+  them. Fires per unit when the unit takes user input, calls a model, carries a profile,
+  engagement or persona signal, and names no control symbol (ManipulationGuard,
+  AIDisclosureGuard, LLMOutputFilter, NeMo Guardrails, LLM Guard, Lakera, Guardrails Hub).
+- Package: detector, same control: yes, `ManipulationGuard`, `AIDisclosureGuard`. Leaves
+  open: Both guards are regex tables with an optional judge and ship UNMEASURED; they lower
+  the odds that a manipulative response reaches the user and do nothing about the prompt or
+  the ranking logic that produced it.
+- Mapping: EU:Art.5(1)(a), EU:Art.15, LLM09, NIST:MEASURE-2.7, NIST:MANAGE-2.4.
+
+### AUD-1107 Prompt and algorithm audit not recorded (info)
+
+- Control (T2): record on the system card who reviewed the prompts, the ranking and the
+  personalisation logic for manipulation and profiling, and when. `aisg init` writes the
+  `prompt_audit` block with placeholders; a reviewer still starting with TODO counts as no
+  review. Silent without a card (AUD-1001 owns that) and when the tree carries no person
+  signal and the card names no affected persons.
+- Package: document, same control: no, `aisg init`. Leaves open: aisg init writes the
+  prompt_audit block with placeholders; the review it records is done by a person, and
+  whether it was thorough is not something the tool can check.
+- Mapping: EU:Art.9, EU:Art.11, EU:Art.26, NIST:GOVERN-1.1, NIST:GOVERN-1.2, NIST:MAP-1.1.

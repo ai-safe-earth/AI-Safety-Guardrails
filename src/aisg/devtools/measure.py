@@ -120,6 +120,10 @@ class GuardMeasurement:
     human: int = 0
     fail_mode: str = "n/a"
     notes: list[str] = field(default_factory=list)
+    # Output cases (model responses) reach OUTPUT-stage guards only; a manipulative one
+    # is counted here and in `per_family`, never in the input headline above.
+    output_seen: int = 0
+    output_caught: int = 0
 
     @property
     def catch_rate(self) -> float | None:
@@ -128,6 +132,10 @@ class GuardMeasurement:
     @property
     def false_positive_rate(self) -> float | None:
         return self.benign_broken / self.benign_seen if self.benign_seen else None
+
+    @property
+    def output_catch_rate(self) -> float | None:
+        return self.output_caught / self.output_seen if self.output_seen else None
 
     @property
     def benign_modified_rate(self) -> float | None:
@@ -256,7 +264,8 @@ def _context_for(case: ProbeCase, tag: str) -> dict:
     # request, and reusing it here would let PII token maps, session counters
     # and rate-limiter buckets leak between unrelated measurements. The stage
     # key is what `_run_stage` writes for `run_input`, where policy guards run.
-    ctx: dict = {"user_id": f"measure-{case.id}-{tag}", "role": "admin", "guardrail_stage": "input"}
+    stage = "output" if case.kind == "output" else "input"
+    ctx: dict = {"user_id": f"measure-{case.id}-{tag}", "role": "admin", "guardrail_stage": stage}
     if case.family == "tool_abuse":
         ctx["tool_call"] = {"name": "send_email", "arguments": {"body": case.payload}}
     return ctx
@@ -426,6 +435,8 @@ async def measure_guard(
 
     try:
         for case in cases:
+            if case.kind == "output" and m.stage != "output":
+                continue  # a response is not this guard's traffic
             samples: list[float] = []
             result = None
             for pass_no in range(timing_passes):
@@ -480,7 +491,16 @@ async def measure_guard(
                 result.sanitized_content if result.sanitized_content is not None else case.payload
             )
 
-            if case.kind == "attack":
+            if case.kind == "output" and case.verdict == "manipulative":
+                m.output_seen += 1
+                fam = m.per_family.setdefault(case.family, {"seen": 0, "caught": 0})
+                fam["seen"] += 1
+                if fired:
+                    m.output_caught += 1
+                    fam["caught"] += 1
+                elif len(m.missed_examples) < 5:
+                    m.missed_examples.append({"id": case.id, "family": case.family})
+            elif case.kind == "attack":
                 m.attacks_seen += 1
                 fam = m.per_family.setdefault(case.family, {"seen": 0, "caught": 0})
                 fam["seen"] += 1
@@ -514,14 +534,18 @@ async def measure_guard(
     return m
 
 
-def describe_measurement(attacks: int, benign: int, *, provider_calls: bool = False) -> str:
+def describe_measurement(
+    attacks: int, benign: int, *, output: int = 0, provider_calls: bool = False
+) -> str:
     """The `measured_on` provenance string: corpus size, how latency was sampled,
     and whether judge calls were made or estimated."""
     mode = (
         "provider calls allowed" if provider_calls else "offline (judge calls estimated, not made)"
     )
     return (
-        f"aisg probe corpus ({attacks} attack + {benign} benign), "
+        f"aisg probe corpus ({attacks} attack + {benign} benign"
+        + (f" + {output} output" if output else "")
+        + "), "
         f"latency = per-case median of {TIMING_PASSES} calls; {mode}"
     )
 
@@ -636,6 +660,7 @@ def build_report(
     *,
     provider_calls: bool = False,
     include_policy: bool = False,
+    output: int = 0,
 ) -> dict:
     """
     The JSON document `aisg measure` writes. Pure: no I/O beyond reading the
@@ -645,7 +670,9 @@ def build_report(
     cannot ground one), any dollar figure (prices are `aisg decide`'s dated
     table, not a measurement) and any compliance verdict.
     """
-    measured_on = describe_measurement(attacks, benign, provider_calls=provider_calls)
+    measured_on = describe_measurement(
+        attacks, benign, output=output, provider_calls=provider_calls
+    )
     return {
         "schema": SCHEMA_VERSION,
         "generated_at": utc_now_iso(),
@@ -657,6 +684,7 @@ def build_report(
         "corpus": {
             "attacks": attacks,
             "benign": benign,
+            "output": output,
             "timing_passes": TIMING_PASSES,
             "provider_calls": provider_calls,
             "policy_guards_included": include_policy,
@@ -690,9 +718,10 @@ def build_report(
                 "p50_latency_ms": m.p50,
                 "p99_latency_ms": m.p99,
                 "threshold_failures": thresholds.failures(m.to_profile(measured_on)),
-                # An output guard inspects responses and the corpus is user input; a
-                # judge that was not exercised produced no verdicts worth a rate.
-                "catch_rate_meaningful": m.stage != "output"
+                # An output guard inspects responses: its input catch rate measures the
+                # wrong thing unless the output corpus reached it (`output_catch_rate`);
+                # a judge that was not exercised produced no verdicts worth a rate.
+                "catch_rate_meaningful": (m.stage != "output" or m.output_seen > 0)
                 and not (m.llm_configured and not m.llm_exercised),
                 "broken_examples": m.broken_examples,
                 "missed_examples": m.missed_examples,
@@ -716,6 +745,9 @@ def build_report(
                 "fail_mode": m.fail_mode,
                 "benign_modified_rate": m.benign_modified_rate,
                 "notes": list(m.notes),
+                "output_seen": m.output_seen,
+                "output_caught": m.output_caught,
+                "output_catch_rate": m.output_catch_rate,
             }
             for m in measurements
         ],
@@ -908,13 +940,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: {config_path} enables no guards.", file=sys.stderr)
         return 2
 
-    cases = load_corpus(args.families, include_benign=not args.no_benign)
+    cases = load_corpus(args.families, include_benign=not args.no_benign, include_output=True)
     attacks = [c for c in cases if c.kind == "attack"]
     benign = [c for c in cases if c.kind == "benign"]
+    output = [c for c in cases if c.kind == "output"]
 
     print(f"config : {config_path}")
     print(f"guards : {len(guards)}")
-    print(f"corpus : {len(attacks)} attack + {len(benign)} benign")
+    print(f"corpus : {len(attacks)} attack + {len(benign)} benign + {len(output)} output")
     print(
         "judges : "
         + (
@@ -941,7 +974,9 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print(render_family_matrix(measurements))
 
-    output_stage = [m for m in measurements if m.stage == "output" and not m.unavailable]
+    output_stage = [
+        m for m in measurements if m.stage == "output" and not m.unavailable and not m.output_seen
+    ]
     if output_stage:
         names = ", ".join(m.guard_name for m in output_stage)
         print(
@@ -964,7 +999,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     measured_on = describe_measurement(
-        len(attacks), len(benign), provider_calls=args.allow_provider_calls
+        len(attacks), len(benign), output=len(output), provider_calls=args.allow_provider_calls
     )
     report = build_report(
         measurements,
@@ -974,6 +1009,7 @@ def main(argv: list[str] | None = None) -> int:
         thresholds,
         provider_calls=args.allow_provider_calls,
         include_policy=args.include_policy,
+        output=len(output),
     )
 
     demoted = [m for m in measurements if thresholds.failures(m.to_profile(measured_on))]

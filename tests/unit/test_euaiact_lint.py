@@ -706,10 +706,12 @@ class TestComplianceGate:
         """The marker is for files that ARE the rule tables. Nothing else earns it,
         and each tool's marker sits only on that tool's own tables."""
         assert self._marked(DEFAULT_TOOL) == [
+            "src/aisg/devtools/audit/persons_patterns.py",
             "src/aisg/modules/policy/code_analyzer/rules/__init__.py",
             "src/aisg/modules/policy/eu_ai_act.py",
         ]
         assert self._marked(MISALIGN_TOOL) == [
+            "src/aisg/devtools/audit/persons_patterns.py",
             "src/aisg/devtools/misalignment/rules/__init__.py",
         ]
 
@@ -796,3 +798,26 @@ class TestCITemplates:
         assert "|| true" not in text
         assert "EXIT_CODE=1" not in text
         assert "[ $? -eq 1 ]" in text
+
+
+class TestArticleFiveLetters:
+    """Regulation (EU) 2024/1689, Art. 5(1): (c) social scoring, (d) criminal-risk profiling,
+    (f) emotion recognition at work or school, (h) real-time remote biometric identification.
+    The code used to label biometric identification (d) and predictive policing (e)."""
+
+    def test_linter_rule_005b_is_letter_h(self):
+        from aisg.modules.policy.code_analyzer.rules import ALL_RULES
+
+        rule = next(r for r in ALL_RULES if r.rule_id == "EU-AIA-005b")
+        assert rule.article == "Art. 5(1)(h)"
+        assert "(h)" in rule.description and "(d)" not in rule.description
+
+    def test_runtime_guard_labels(self):
+        from aisg.modules.policy.eu_ai_act import PROHIBITED_PATTERNS
+
+        labels = [label for _rx, label in PROHIBITED_PATTERNS]
+        biometric = next(label for label in labels if "biometric" in label.lower())
+        policing = next(label for label in labels if "policing" in label.lower())
+        assert biometric.startswith("Art.5(1)(h)")
+        assert policing.startswith("Art.5(1)(d)")
+        assert not any(label.startswith("Art.5(1)(e)") for label in labels)

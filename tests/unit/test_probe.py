@@ -47,6 +47,7 @@ EXPECTED_FAMILIES = {
     "toxicity_elicitation",
     "encoding_bypass",
     "tool_abuse",
+    "manipulation_elicitation",
 }
 
 

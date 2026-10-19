@@ -44,7 +44,9 @@ from aisg.modules.input.rate_limiter import RateLimiter
 from aisg.modules.llm_judges.base import LLMJudgeBase
 
 # Output modules
+from aisg.modules.output.ai_disclosure import AIDisclosureGuard
 from aisg.modules.output.llm_output_filter import LLMOutputFilter
+from aisg.modules.output.manipulation import ManipulationGuard
 from aisg.modules.output.toxicity import ToxicityFilter
 
 # Policy — static code analyzer
@@ -117,6 +119,8 @@ __all__ = [
     # Output
     "ToxicityFilter",
     "LLMOutputFilter",
+    "ManipulationGuard",
+    "AIDisclosureGuard",
     # LLM judges
     "LLMJudgeBase",
     # Policy — runtime

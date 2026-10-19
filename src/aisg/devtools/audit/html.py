@@ -131,7 +131,7 @@ _T_FIG_CAPTION = (
 )
 _T_ROW_FLOW = "flow, left to right"
 _T_ROW_FOUNDATIONS = "foundations"
-_T_ROW_REST = "everything else"
+_T_ROW_REST = "persons affected, and everything else"
 _T_BOX_STATUS = "reported {n} | UNKNOWN {m}"
 _T_BOX_RULES = "rules ran {k}/{total}"
 _T_BOX_NOT_ATTRIBUTED = "Not attributed / UNKNOWN"
@@ -834,7 +834,7 @@ _X0 = 12
 _ROW1_Y = 34
 _ROW2_Y = 190
 _ROW3_Y = 346
-_ROW3_H = 62
+_ROW3_H = _BOX_H
 _SVG_H = _ROW3_Y + _ROW3_H + 14
 _XS = tuple(_X0 + i * (_BOX_W + _GAP) for i in range(5))
 _ROW_ATTRS = 'fill="var(--panel)" stroke="var(--infra)" stroke-width="1.2"'
@@ -885,16 +885,22 @@ def _svg(report: Report, boxes: dict[str, _Box], inv: dict[str, Any] | None) -> 
             )
     for i, sub in enumerate(SUBSYSTEMS[5:10]):
         out.extend(_svg_box(_XS[i], _ROW2_Y, boxes[sub.key], _box_facts(sub, inv)))
+    # Row three: the subsystems past the first ten (persons and manipulation) take the
+    # leading columns; the not-attributed strip runs from the next column to the edge.
+    extra = list(SUBSYSTEMS[10:])
+    for i, sub in enumerate(extra):
+        out.extend(_svg_box(_XS[i], _ROW3_Y, boxes[sub.key], _box_facts(sub, inv)))
     rest = boxes[NOT_ATTRIBUTED]
+    strip_x = _XS[len(extra)] if extra else _X0
     out.append(
-        f'<rect x="{_X0}" y="{_ROW3_Y}" width="{_SVG_W - 2 * _X0}" height="{_ROW3_H}" rx="10" '
+        f'<rect x="{strip_x}" y="{_ROW3_Y}" width="{_SVG_W - _X0 - strip_x}" height="{_ROW3_H}" rx="10" '
         f"{_UNKNOWN_ATTRS}/>"
     )
-    out.append(_svg_text(_X0 + 8, _ROW3_Y + 22, "svgt", _T_BOX_NOT_ATTRIBUTED))
+    out.append(_svg_text(strip_x + 8, _ROW3_Y + 22, "svgt", _T_BOX_NOT_ATTRIBUTED))
     line = _T_BOX_NOT_ATTRIBUTED_LINE.format(
         m=rest.unknown, n=len(rest.findings), k=rest.ran, total=rest.total
     )
-    out.append(_svg_text(_X0 + 8, _ROW3_Y + 44, "svgm", f"{line} {_T_UNMEASURED}"))
+    out.append(_svg_text(strip_x + 8, _ROW3_Y + 44, "svgm", f"{line} {_T_UNMEASURED}"))
     out.append("</svg>")
     return out
 

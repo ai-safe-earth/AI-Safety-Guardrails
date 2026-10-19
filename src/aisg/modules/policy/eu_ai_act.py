@@ -83,7 +83,7 @@ PROHIBITED_PATTERNS = [
             r"real.?time.{0,30}(biometric|facial recognition|fingerprint).{0,50}(public space|street|crowd|surveillance)",
             re.I,
         ),
-        "Art.5(1)(d) — Real-time remote biometric identification in public spaces",
+        "Art.5(1)(h) — Real-time remote biometric identification in public spaces",
     ),
     # Subliminal / manipulative techniques targeting vulnerabilities
     (
@@ -115,7 +115,7 @@ PROHIBITED_PATTERNS = [
             r"(predict|forecast).{0,30}(criminal|crime|offend).{0,40}(individual|person|profile)",
             re.I,
         ),
-        "Art.5(1)(e) — Predictive policing / criminal risk profiling",
+        "Art.5(1)(d) — Predictive policing / criminal risk profiling",
     ),
 ]
 
@@ -373,12 +373,16 @@ class EUAIActCompliance(GuardrailBase):
 
         # --- Art. 13/50: Inject transparency disclosure into output context ---
         sanitized = content
+        action = Action.ALLOW if not findings else Action.FLAG
         if self.transparency_disclosure and stage == "output":
             sanitized = f"{content}\n\n{self.transparency_disclosure}"
+            # The pipeline takes `sanitized_content` only on REDACT; ALLOW/FLAG would
+            # leave the disclosure out of `final_content`.
+            action = Action.REDACT
 
         return CheckResult(
             passed=True,
-            action=Action.ALLOW if not findings else Action.FLAG,
+            action=action,
             findings=findings,
             sanitized_content=sanitized,
             metadata={

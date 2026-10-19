@@ -56,11 +56,13 @@ VERB_RE = re.compile(r"^aisg [a-z]+$")
 # away). A new symbol is exported and added here before a rule names it.
 CLASS_SYMBOLS = frozenset(
     {
+        "AIDisclosureGuard",
         "AuditLogger",
         "GuardrailPipeline",
         "LLMJudgeBase",
         "LLMOutputFilter",
         "LLMToolFilter",
+        "ManipulationGuard",
         "PIIDetector",
         "PIIRestorer",
         "PromptInjectionGuard",
@@ -85,6 +87,7 @@ EXPECTED_IDS = {
     *(f"AUD-{n}" for n in range(801, 807)),
     *(f"AUD-{n}" for n in range(901, 905)),
     *(f"AUD-{n}" for n in range(1001, 1004)),
+    *(f"AUD-{n}" for n in range(1101, 1108)),
 }
 
 
@@ -394,7 +397,7 @@ def test_every_class_symbol_is_in_the_closed_set() -> None:
 def test_subsystem_keys_are_unique_and_ordered_for_drawing() -> None:
     keys = [s.key for s in SUBSYSTEMS]
     assert len(keys) == len(set(keys))
-    assert len(keys) == 10
+    assert len(keys) == 11
     assert NOT_ATTRIBUTED not in keys, "the catch-all box is not a subsystem"
     for subsystem in SUBSYSTEMS:
         assert subsystem.title.strip()

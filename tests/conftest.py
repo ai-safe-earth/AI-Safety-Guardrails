@@ -65,7 +65,7 @@ def audit_context() -> Callable[..., object]:
     inventory. `options` is duck-typed (any object with `include_home`,
     `trusted_mcp_hosts`, ... attributes); None means defaults.
     """
-    from aisg.devtools.audit import discover, pydeep, walk
+    from aisg.devtools.audit import discover, lint_bridge, pydeep, walk
     from aisg.devtools.audit.model import AuditContext
 
     def build(root: Path, *, deep: bool = True, options: object = None, exclude=()) -> AuditContext:
@@ -77,6 +77,8 @@ def audit_context() -> Callable[..., object]:
         if deep:
             pyfacts = pydeep.analyse_unit([f for f in files if f.lang == "python"], inventory)
             unknown.extend(pyfacts.unknown)
+        texts = {f.relpath: walk.read_text(f.path) for f in files if f.lang == "python"}
+        lint = lint_bridge.run_lint(files, texts)
         return AuditContext(
             root=root,
             inventory=inventory,
@@ -87,6 +89,7 @@ def audit_context() -> Callable[..., object]:
             files=files,
             reports=list(inventory.reports),
             config_facts=facts,
+            lint=lint,
         )
 
     return build

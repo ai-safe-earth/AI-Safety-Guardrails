@@ -291,6 +291,20 @@ class Assembly:
 
 
 @dataclass(frozen=True)
+class PromptLiteral:
+    """A string constant (or f-string) assigned to a prompt-named variable:
+    `SYSTEM_PROMPT = <triple-quoted text>`. `end_line` closes the span, so a text hit inside a
+    multi-line literal can be tied to the prompt it sits in; `is_system` is set by the
+    name or by a later `system=` use, like `Assembly.is_system`."""
+
+    file: str
+    line: int
+    end_line: int
+    name: str
+    is_system: bool
+
+
+@dataclass(frozen=True)
 class TaintPath:
     file: str
     source_line: int
@@ -384,6 +398,7 @@ class PyFacts:
     tool_gate_join: dict[str, GateSite | None] = field(default_factory=dict)
     loops: list[LoopSite] = field(default_factory=list)
     prompt_assemblies: list[Assembly] = field(default_factory=list)
+    prompt_literals: list[PromptLiteral] = field(default_factory=list)
     taint_paths: list[TaintPath] = field(default_factory=list)
     legs: dict[str, dict[str, list[Evidence]]] = field(default_factory=dict)
     fail_open: list[GateSite] = field(default_factory=list)
@@ -402,6 +417,7 @@ class PyFacts:
             "gates",
             "loops",
             "prompt_assemblies",
+            "prompt_literals",
             "taint_paths",
             "fail_open",
             "unknown",
@@ -1281,6 +1297,7 @@ class _Analyser:
         # (index into prompt_assemblies, names it was assigned to): resolved once every
         # `system=` / SystemMessage / role-system use in the module has been seen.
         self.pending_system: list[tuple[int, tuple[str, ...]]] = []
+        self.pending_literal_system: list[tuple[int, tuple[str, ...]]] = []
 
     # -- entry -------------------------------------------------------------
     def run(self) -> PyFacts:
@@ -1416,7 +1433,26 @@ class _Analyser:
         body = desc.value if isinstance(desc, ast.Constant) and isinstance(desc.value, str) else ""
         self._tool(name.value, node.lineno, "schema_dict", self._fn_nodes(name.value), body)
 
+    def _prompt_literal(self, node: ast.Assign) -> None:
+        """Record `PROMPT_NAME = "..."` / `= f"..."` with its line span (P11 reads the
+        span to tell prompt material from code that merely spells a phrase)."""
+        names = tuple(n for t in node.targets for n in _target_names(t))
+        if not names or not any(_PROMPT_NAME_RE.search(n) for n in names):
+            return
+        value = node.value
+        is_text = isinstance(value, ast.Constant) and isinstance(value.value, str)
+        if not is_text and not isinstance(value, ast.JoinedStr):
+            return
+        is_system = any(_SYSTEM_NAME_RE.search(n) for n in names)
+        end = int(getattr(value, "end_lineno", None) or node.lineno)
+        if not is_system:
+            self.pending_literal_system.append((len(self.facts.prompt_literals), names))
+        self.facts.prompt_literals.append(
+            PromptLiteral(self.mod.relpath, node.lineno, end, names[0], is_system)
+        )
+
     def _assign(self, node: ast.Assign, scope: _Scope) -> None:
+        self._prompt_literal(node)
         if self.mod.has_gate_text and _gate_possible(self.mod.unparse(node)):
             # Calls are opaque here: a literal inside one belongs to that call's visit.
             self._gate_text(_owned_text(node), node, scope, None)
@@ -1747,6 +1783,10 @@ class _Analyser:
             if any(n in self.system_uses for n in targets):
                 current = self.facts.prompt_assemblies[index]
                 self.facts.prompt_assemblies[index] = replace(current, is_system=True)
+        for index, targets in self.pending_literal_system:
+            if any(n in self.system_uses for n in targets):
+                literal = self.facts.prompt_literals[index]
+                self.facts.prompt_literals[index] = replace(literal, is_system=True)
 
     def _context(self, node: ast.AST, scope: _Scope) -> tuple[bool, bool, tuple[str, ...]]:
         """(prompt_like, is_system, assigned names) from where the built string flows."""

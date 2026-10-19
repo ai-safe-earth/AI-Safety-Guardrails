@@ -223,7 +223,14 @@ class TestPyAgent:
         assert card is not None
         assert card["file"] == "ai-system-card.yaml"
         assert card["risk_tier"] == "unknown"
-        assert set(card) == {"file", "risk_tier", "annex_iii_category", "incident_contact"}
+        assert set(card) == {
+            "file",
+            "risk_tier",
+            "annex_iii_category",
+            "incident_contact",
+            "affected_persons",
+            "prompt_audit",
+        }
 
     def test_units_and_surface(self) -> None:
         assert self.inv.units[0].id == "u0"

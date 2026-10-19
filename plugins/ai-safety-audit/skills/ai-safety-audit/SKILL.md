@@ -85,8 +85,9 @@ servers and hosts, guardrail and eval tooling present.
     sh <skill>/scripts/audit.sh . --format html -o .aisg-audit/audit-before.html
     powershell -ExecutionPolicy Bypass -File <skill>/scripts/audit.ps1 . --format html -o .aisg-audit/audit-before.html
 
-Tell the user the path. The document is a schematic of THEIR system: Fig. 1 (ten
-subsystem boxes drawn from the inventory, plus a "Not attributed / UNKNOWN" box), one
+Tell the user the path. The document is a schematic of THEIR system: Fig. 1 (eleven
+subsystem boxes drawn from the inventory, the eleventh being "Persons and manipulation",
+plus a "Not attributed / UNKNOWN" box), one
 section per subsystem with the findings placed on it, and the plan table in blast-radius
 order. Walk Fig. 1 top to bottom in the conversation, box by box: what the inventory found
 there, how many findings, how many UNKNOWN items, `[UNMEASURED]` on every box. Then read the

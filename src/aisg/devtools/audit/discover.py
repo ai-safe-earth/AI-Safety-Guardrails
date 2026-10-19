@@ -39,7 +39,7 @@ from urllib.parse import urlparse
 
 import yaml
 
-from aisg.devtools.audit import configs, patterns, vocab, walk
+from aisg.devtools.audit import configs, patterns, persons_patterns, vocab, walk
 from aisg.devtools.audit.configs import CiRecord, EnvBinding, HostRecord, McpServer, OverGrant
 from aisg.devtools.audit.model import (
     SCHEMA_VERSION,
@@ -213,7 +213,8 @@ _AISG_SECTION_RE = re.compile(r"^(?:input|processing|output|policy):\s*$", re.M)
 # before the key and anchor the evidence one line too early.
 _AISG_GUARD_RE = re.compile(
     r"^[ \t]+(?:pii_detector|pii_restorer|prompt_injection|rate_limiter|tool_policy|llm_input_filter"
-    r"|llm_tool_filter|llm_output_filter|toxicity_output|eu_ai_act|nist_ai_rmf|nemo_rails):[ \t]*\r?$",
+    r"|llm_tool_filter|llm_output_filter|toxicity_output|eu_ai_act|nist_ai_rmf|nemo_rails"
+    r"|manipulation_output|ai_disclosure_output):[ \t]*\r?$",
     re.M,
 )
 
@@ -303,7 +304,24 @@ class _Match:
 # LlamaGuard" in a module docstring, `// import { Langfuse }`). Every other table is
 # recorded wherever it matches -- a key in a comment is still a leak, a sink in a
 # commented-out line is still worth a look.
-_MENTION_TABLES = frozenset({"guardrail", "llm_observability", "eval_tool", "model_id"})
+_MENTION_TABLES = frozenset(
+    {
+        "guardrail",
+        "llm_observability",
+        "eval_tool",
+        "model_id",
+        # P11: a docstring saying "detects social scoring" is a mention of the
+        # practice, not the practice. Candidates are NOT filtered: a triple-quoted
+        # prompt literal looks like a docstring to the span finder, and the rule gates
+        # candidates through pydeep prompt literals, which a docstring never is.
+        "person_signal",
+    }
+)
+
+# A prompt variable on the left-hand side: `prompt = ...`, `system: ...`. A P11 prompt-
+# material hit in code counts only on such a line, on a prompt-assembly line, or inside
+# a pydeep prompt literal (resolved by the rule); elsewhere it is a candidate.
+_PROMPT_LHS_RE = re.compile(patterns._PROMPT_LHS, re.I)
 
 
 @dataclass
@@ -743,6 +761,113 @@ def _scan_aisg_preset(ctx: _FileCtx) -> None:
     ctx.add("guardrail", "aisg_preset", number, 1, ctx.lines[number - 1], match.group(0))
 
 
+def _scan_person_signals(ctx: _FileCtx, klass: str) -> None:
+    """
+    P11 person signals for one file. Docs are scanned only under the prompt-file globs
+    (prose about profiling is not profiling); config files take every non-code kind;
+    code takes the code kinds outright and the prompt-material kinds only on a prompt
+    line, else as a `person_signal_candidate` the rule may promote through a pydeep
+    prompt literal. Every table here is mention-filtered.
+    """
+    pp = persons_patterns
+    relpath = ctx.record.relpath
+    if klass == "doc":
+        if _glob_hit(pp.PROMPT_FILE_GLOBS, relpath):
+            _scan_rows(ctx, "person_signal", pp.rows_for(pp.DOC_KINDS))
+        return
+    if klass == "config":
+        _scan_rows(ctx, "person_signal", pp.rows_for(pp.CONFIG_KINDS))
+        return
+    if _glob_hit(pp.PROMPT_FILE_GLOBS, relpath):
+        # A template by path (prompts/x.jinja, agents/x.yaml): prompt material whatever
+        # the extension says; no comment spans apply to a template.
+        for key, rx in pp.rows_for(pp.DOC_KINDS):
+            for number in _candidate_lines(ctx, rx):
+                line = ctx.lines[number - 1]
+                match = rx.search(line)
+                if match is not None:
+                    ctx.add(
+                        "person_signal",
+                        key,
+                        number,
+                        match.start() + 1,
+                        line,
+                        match.group(0),
+                        by_name=True,
+                    )
+        return
+    code_kinds = pp.CODE_KINDS | {"affect", "biometric_cat", "manipulation_control"}
+    code_rows = pp.rows_for(code_kinds) + [
+        (key, rx) for key, rx in pp.DISCLOSURE_SYMBOLS if key in pp.DISCLOSURE_SYMBOL_KEYS
+    ]
+    _scan_rows(ctx, "person_signal", code_rows)
+    prompt_lines = {m.hit.line for m in ctx.out if m.hit.table == "prompt_assembly"}
+    gated_rows = pp.rows_for(pp.PROMPT_KINDS) + [
+        (key, rx) for key, rx in pp.DISCLOSURE_SYMBOLS if key not in pp.DISCLOSURE_SYMBOL_KEYS
+    ]
+    for key, rx in gated_rows:
+        for number in _candidate_lines(ctx, rx):
+            line = ctx.lines[number - 1]
+            match = rx.search(line)
+            if match is None:
+                continue
+            if pp.kind_of(key) == "profile_name" and pp.is_history_name(line):
+                continue
+            prompt_material = number in prompt_lines or _PROMPT_LHS_RE.search(line) is not None
+            table = "person_signal" if prompt_material else "person_signal_candidate"
+            # `by_name`: a prompt literal is a string the span finder cannot tell from a
+            # docstring, so these rows are not mention-filtered; the rule gates them.
+            ctx.add(table, key, number, match.start() + 1, line, match.group(0), by_name=True)
+
+
+def _scan_profile_to_prompt(ctx: _FileCtx) -> None:
+    """A prompt assembled within `_INGRESS_WINDOW` lines after a profile read (an SDK call
+    or a profile-named variable) sharing an identifier: table `profile_to_prompt`, key =
+    the shared identifier. The shape of `_scan_ingress_to_prompt`, for AUD-1101."""
+    profile_kinds = {"profile_sdk", "profile_name"}
+    profiles = [
+        m
+        for m in ctx.out
+        if m.hit.table in ("person_signal", "person_signal_candidate")
+        and persons_patterns.kind_of(m.hit.key) in profile_kinds
+    ]
+    prompts = [m for m in ctx.out if m.hit.table == "prompt_assembly"]
+    if not profiles or not prompts:
+        return
+
+    def idents(number: int) -> set[str]:
+        raw = ctx.lines[number - 1] if number - 1 < len(ctx.lines) else ""
+        return {tok for tok in _IDENT_RE.findall(raw) if tok.lower() not in _IDENT_STOP}
+
+    def profile_idents(number: int) -> set[str]:
+        """The identifiers on a profile line that NAME the profile."""
+        return {tok for tok in idents(number) if persons_patterns.PROFILE_NAME_RE.search(tok)}
+
+    # The assembly line itself may carry a profile name; it is the destination, not a
+    # source, so it is not a profile line here.
+    prompt_lines = {m.hit.line for m in prompts}
+    by_line = {
+        m.hit.line: profile_idents(m.hit.line) for m in profiles if m.hit.line not in prompt_lines
+    }
+    for prompt in prompts:
+        p_line = prompt.hit.line
+        p_idents = idents(p_line)
+        if not p_idents:
+            continue
+        for s_line, s_idents in by_line.items():
+            if not (s_line < p_line <= s_line + _INGRESS_WINDOW):
+                continue
+            for shared in sorted(p_idents & s_idents):
+                ctx.add(
+                    "profile_to_prompt",
+                    shared,
+                    p_line,
+                    prompt.hit.col,
+                    ctx.lines[p_line - 1],
+                    shared,
+                )
+
+
 def _scan_ingress_to_prompt(ctx: _FileCtx) -> None:
     ingress = [m for m in ctx.out if m.hit.table == "ingress"]
     prompts = [m for m in ctx.out if m.hit.table == "prompt_assembly"]
@@ -821,6 +946,8 @@ def _scan_code(ctx: _FileCtx) -> None:
     _scan_rows(ctx, "gate_bypass", _GATE_BYPASS_ROWS)
     _scan_rows(ctx, "loop_cap", _LOOP_CAP_ROWS)
     _scan_ingress_to_prompt(ctx)
+    _scan_person_signals(ctx, "code")
+    _scan_profile_to_prompt(ctx)
 
 
 def _matches(record: FileRecord, text: str) -> list[_Match]:
@@ -838,6 +965,7 @@ def _matches(record: FileRecord, text: str) -> list[_Match]:
         # it ships to the model on every request; PII_FILE_GLOBS decides, not the class.
         if _glob_hit(patterns.PII_FILE_GLOBS, relpath):
             _scan_pii(ctx)
+        _scan_person_signals(ctx, "doc")
         return ctx.out
     _scan_secrets(ctx)
     if _glob_hit(patterns.PII_FILE_GLOBS, relpath):
@@ -866,6 +994,7 @@ def _matches(record: FileRecord, text: str) -> list[_Match]:
         _scan_aisg_preset(ctx)
         if PurePosixPath(relpath).suffix.lower() in _STRUCTURED_EXTS:
             _scan_rows(ctx, "gate_bypass", _GATE_BYPASS_CONFIG_ROWS)
+        _scan_person_signals(ctx, "config")
         return ctx.out
     _scan_code(ctx)
     return ctx.out
@@ -1529,6 +1658,24 @@ def _build_tools(
     return out
 
 
+def _build_person_signals(matches: list[_Match]) -> list[dict[str, Any]]:
+    """`inventory.person_signals`: one row per confirmed `person_signal` hit (candidates
+    stay out of the inventory; a rule may still promote them through a prompt literal)."""
+    out: list[dict[str, Any]] = []
+    for match in matches:
+        hit = match.hit
+        out.append(
+            {
+                "file": hit.file,
+                "line": hit.line,
+                "kind": persons_patterns.kind_of(hit.key),
+                "symbol": match.text,
+                "unit": hit.unit,
+            }
+        )
+    return _sorted(out)
+
+
 def _build_legs(matches: list[_Match]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for match in matches:
@@ -1705,6 +1852,11 @@ def _build_system_card(
             "risk_tier": _risk_tier(card.get("risk_tier")),
             "annex_iii_category": _card_value(card, "annex_iii_category"),
             "incident_contact": _incident_contact(card),
+            # P11 reads these two: who the system touches, and who reviewed the prompts.
+            "affected_persons": card.get("affected_persons"),
+            "prompt_audit": card.get("prompt_audit")
+            if isinstance(card.get("prompt_audit"), dict)
+            else None,
         }, None
     return None, None
 
@@ -1866,6 +2018,7 @@ def discover(
     inventory.incident_path = sorted(
         r.relpath for r in scanned if _glob_hit(patterns.INCIDENT_PATH_GLOBS, r.relpath)
     )
+    inventory.person_signals = _build_person_signals(tables.get("person_signal", []))
 
     surface = ai_surface_units(inventory)
     for unit in inventory.units:

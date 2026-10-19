@@ -124,6 +124,17 @@ output:
     action: block
     use_llm_judge: true
 
+  manipulation_output:
+    enabled: true
+    action: flag               # measured before blocking; see aisg measure
+    min_severity: medium
+    use_llm_judge: false
+
+  ai_disclosure_output:
+    enabled: true
+    action: flag
+    append_when: never         # the eu_ai_act policy guard appends the disclosure here
+
   pii_restorer:
     enabled: false   # Enable only when input uses PIIDetector(action="tokenize")
     # Restores <PII:TYPE:N> tokens back to original values after LLM response

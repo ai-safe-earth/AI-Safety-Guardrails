@@ -60,6 +60,9 @@ class TestRenderCard:
             "affected_persons",
             "deployment",
             "incident_contact",
+            "prompt_audit",
+            "traffic",
+            "budgets",
         ):
             assert key in data, f"missing {key}"
 
@@ -158,7 +161,9 @@ class TestInitCLI:
         """Every prompt takes its default except the contact, which we answer, and the
         first traffic figure; the other seven numeric prompts are left unknown."""
         monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-        answers = iter(["", "", "", "", "", "", "", "pager@example.test", "1200", *[""] * 7])
+        answers = iter(
+            ["", "", "", "", "", "", "", "pager@example.test", "", "", "1200", *[""] * 7]
+        )
         monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
         dest = tmp_path / "c.yaml"
         assert main(["-o", str(dest)]) == 0

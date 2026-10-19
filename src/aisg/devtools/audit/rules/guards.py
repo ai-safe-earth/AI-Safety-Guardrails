@@ -98,6 +98,8 @@ _GUARD_CLASSES: dict[str, str] = {
     "rate_limiter": "RateLimiter",
     "tool_policy": "ToolPolicyGuard",
     "toxicity_output": "ToxicityFilter",
+    "manipulation_output": "ManipulationGuard",
+    "ai_disclosure_output": "AIDisclosureGuard",
 }
 _PRESET_SECTIONS = ("input", "processing", "output", "policy")
 _PRESET_LIB = "aisg_preset"

@@ -442,12 +442,16 @@ class NISTAIRMFCompliance(GuardrailBase):
 
         # --- GOVERN 1.7: Append transparency disclosure on output stage ---
         sanitized = content
+        action = Action.ALLOW if not findings else Action.FLAG
         if self.transparency_disclosure and stage == "output":
             sanitized = f"{content}\n\n{self.transparency_disclosure}"
+            # The pipeline takes `sanitized_content` only on REDACT; ALLOW/FLAG would
+            # leave the disclosure out of `final_content`.
+            action = Action.REDACT
 
         return CheckResult(
             passed=True,
-            action=Action.ALLOW if not findings else Action.FLAG,
+            action=action,
             findings=findings,
             sanitized_content=sanitized,
             metadata={

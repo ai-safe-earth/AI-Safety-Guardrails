@@ -8,7 +8,7 @@
 # asserts on the very phrases the rules look for, and tests/fixtures/ is
 # deliberately non-compliant linter input.
 #
-# Two files under src/ carry `# euaiact-lint: ignore-file` because they ARE
+# Three files under src/ carry `# euaiact-lint: ignore-file` because they ARE
 # the rule vocabulary; the scan reports how many files it skipped and how
 # many findings a line directive silenced, so a clean run says what it did
 # not look at. See CLAUDE.md, "EU AI Act linter suppression".

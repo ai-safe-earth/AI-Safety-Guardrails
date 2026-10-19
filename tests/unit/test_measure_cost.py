@@ -326,6 +326,9 @@ class TestReportShape:
             "fail_mode",
             "benign_modified_rate",
             "notes",
+            "output_seen",
+            "output_caught",
+            "output_catch_rate",
         ]
         assert guard["llm_configured"] is False and guard["cost_basis"] == "none"
         assert guard["llm_calls_per_case"] is None  # a regex guard has no call rate, not 0

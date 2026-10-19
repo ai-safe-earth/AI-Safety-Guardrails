@@ -53,6 +53,15 @@ DEFAULT_CARD = {
     # `aisg audit` (AUD-703, AUD-1001) reads this key; a value still starting
     # with "TODO" counts as no contact, so the placeholder cannot satisfy it.
     "incident_contact": "TODO: who to reach when this system misbehaves (mailbox, pager, queue)",
+    # Who reviewed the prompts, the ranking and the personalisation logic for
+    # manipulation and profiling, and when. `aisg audit` (AUD-1107) reads it; a reviewer
+    # still starting with TODO counts as no review.
+    "prompt_audit": {
+        "reviewed_at": None,
+        "reviewer": "TODO: who reviewed the prompts, ranking and personalisation for manipulation and profiling",
+        "scope": [],
+        "notes": "",
+    },
     # What the operator EXPECTS the system to carry and can afford. `aisg decide`
     # compares measured guard figures against these; nothing verifies them. A null
     # means unknown, and an unknown budget is reported as such, never assumed.
@@ -168,6 +177,14 @@ def render_card(card: dict) -> str:
         "# Who to reach when the system misbehaves: a mailbox, pager or ticket queue.",
         f"incident_contact: {_yaml_scalar(card['incident_contact'])}",
         "",
+        "# Who reviewed the prompts, the ranking and the personalisation logic for",
+        "# manipulation and profiling, and when. `aisg audit` (AUD-1107) reads this",
+        "# block; a reviewer still starting with TODO counts as no review.",
+        "prompt_audit:",
+    ]
+    lines += _prompt_audit_lines(card.get("prompt_audit"))
+    lines += [
+        "",
         "# What you EXPECT this system to carry, and what it can afford. `aisg decide`",
         "# reads these blocks and compares measured guard figures against them; it does",
         "# not verify them. null means unknown, and an unknown budget is reported as",
@@ -179,6 +196,25 @@ def render_card(card: dict) -> str:
     lines += _numeric_lines(card.get("budgets"), NUMERIC_BLOCKS["budgets"])
     lines.append("")
     return "\n".join(lines)
+
+
+def _prompt_audit_lines(block: object) -> list[str]:
+    values = block if isinstance(block, dict) else {}
+    reviewed = values.get("reviewed_at")
+    reviewer = str(values.get("reviewer") or DEFAULT_CARD["prompt_audit"]["reviewer"])
+    scope = values.get("scope") or []
+    notes = str(values.get("notes") or "")
+    out = [
+        f"  reviewed_at: {'null' if not reviewed else _yaml_scalar(str(reviewed))}",
+        f"  reviewer: {_yaml_scalar(reviewer)}",
+    ]
+    if isinstance(scope, list) and scope:
+        out.append("  scope:")
+        out.extend(f"    - {_yaml_scalar(str(item))}" for item in scope)
+    else:
+        out.append("  scope: []")
+    out.append(f"  notes: {_yaml_scalar(notes)}")
+    return out
 
 
 def _numeric_lines(block: object, fields: dict[str, str]) -> list[str]:
@@ -242,6 +278,17 @@ def collect_interactive() -> dict:
     card["incident_contact"] = _prompt(
         "Incident contact (who to reach when it misbehaves)", DEFAULT_CARD["incident_contact"]
     )
+
+    print("\n  Prompt review: who checked the prompts, ranking and personalisation for")
+    print("  manipulation and profiling. Enter = not yet reviewed.")
+    reviewer = _prompt("Prompt reviewer (name and role)", DEFAULT_CARD["prompt_audit"]["reviewer"])
+    reviewed_at = _prompt("Prompt review date (YYYY-MM-DD)", "")
+    card["prompt_audit"] = {
+        "reviewed_at": reviewed_at or None,
+        "reviewer": reviewer,
+        "scope": [],
+        "notes": "",
+    }
 
     print("\n  Traffic and budgets: what you expect the system to carry and can afford.")
     print("  `aisg decide` compares measured guard figures against them. Enter = unknown.")

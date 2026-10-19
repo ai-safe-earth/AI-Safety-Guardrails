@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from aisg.devtools._config import apply_tool_config
-from aisg.devtools.audit import adapters, discover, pydeep, walk
+from aisg.devtools.audit import adapters, discover, lint_bridge, pydeep, walk
 from aisg.devtools.audit.baseline import (
     BASELINE_KIND,
     BaselineDiff,
@@ -625,6 +625,8 @@ def _build_context(options: AuditOptions, root: Path) -> AuditContext:
     if options.deep == "python":
         pyfacts = pydeep.analyse_unit([f for f in files if f.lang == "python"], inventory)
         unknown.extend(pyfacts.unknown)
+    # The curated lint rules over the same Python text, as evidence for the P11 rules.
+    lint = lint_bridge.run_lint(files, _python_texts(files))
     return AuditContext(
         root=root,
         inventory=inventory,
@@ -635,7 +637,17 @@ def _build_context(options: AuditOptions, root: Path) -> AuditContext:
         files=files,
         reports=list(inventory.reports),
         config_facts=facts,
+        lint=lint,
     )
+
+
+def _python_texts(files: Sequence[Any]) -> dict[str, str | None]:
+    """relpath -> text for the Python records, read through the walk's reader."""
+    return {
+        record.relpath: walk.read_text(record.path)
+        for record in files
+        if getattr(record, "lang", None) == "python"
+    }
 
 
 def _dedupe_unknown(items: Sequence[UnknownItem]) -> list[UnknownItem]:

@@ -76,13 +76,13 @@ class Rule_005b_BiometricSurveillance(BaseRule):
     """Flags real-time remote biometric identification in public spaces."""
 
     rule_id = "EU-AIA-005b"
-    article = "Art. 5(1)(d)"
+    article = "Art. 5(1)(h)"
     severity = Severity.ERROR
     title = "Real-time biometric identification in public spaces"
     description = (
         "Code references real-time or live facial recognition / biometric identification, "
         "which is prohibited in publicly accessible spaces except for specific law-enforcement "
-        "exemptions (Art. 5(1)(d))."
+        "exemptions (Art. 5(1)(h))."
     )
     suggestion = (
         "Ensure your use case qualifies for one of the narrow exemptions (Art. 5(2)). "

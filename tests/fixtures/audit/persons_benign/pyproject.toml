@@ -1,0 +1,4 @@
+[project]
+name = "support-bot"
+version = "0.1.0"
+dependencies = ["anthropic"]

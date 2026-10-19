@@ -952,7 +952,13 @@ class TestFixture:
         }
         rules = {p.relative_to(here).as_posix() for p in (here / "rules").glob("*.py")}
         assert rules
-        assert marked == rules | {"adapters.py", "discover.py", "patterns.py", "vocab.py"}
+        assert marked == rules | {
+            "adapters.py",
+            "discover.py",
+            "patterns.py",
+            "persons_patterns.py",
+            "vocab.py",
+        }
         for name in (
             "html.py",
             "main.py",
@@ -961,6 +967,7 @@ class TestFixture:
             "walk.py",
             "baseline.py",
             "pydeep.py",
+            "lint_bridge.py",
         ):
             assert (here / name).is_file(), name
             assert name not in marked

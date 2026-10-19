@@ -88,6 +88,9 @@ SUBSYSTEMS: tuple[Subsystem, ...] = (
     Subsystem("guardrails", "Guardrails", ("guardrails",)),
     Subsystem("observability", "Observability", ("observability",)),
     Subsystem("governance", "Evals and governance", ("evals", "system_card", "incident_path")),
+    # Row three: the people the system touches. Appended, so the two rows above keep
+    # their slices; `html._svg` draws SUBSYSTEMS[10:] beside the not-attributed strip.
+    Subsystem("persons", "Persons and manipulation", ("person_signals",)),
 )
 
 # The box for anything that cannot be placed: a finding with an id outside the
@@ -143,6 +146,13 @@ SUBSYSTEM_OF_RULE: dict[str, str] = {
     "AUD-1001": "governance",
     "AUD-1002": "governance",
     "AUD-1003": "governance",
+    "AUD-1101": "persons",
+    "AUD-1102": "persons",
+    "AUD-1103": "persons",
+    "AUD-1104": "persons",
+    "AUD-1105": "persons",
+    "AUD-1106": "persons",
+    "AUD-1107": "persons",
 }
 
 
@@ -523,7 +533,7 @@ def run_rules(
 
 _RULE_MODULES = (
     "blast_radius irreversible trust_boundary sinks secrets_pii "
-    "supply_chain observability guards evals governance"
+    "supply_chain observability guards evals governance persons"
 ).split()
 
 ALL_RULES: list[type[AuditRule]] = []

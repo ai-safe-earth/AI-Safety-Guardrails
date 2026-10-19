@@ -108,7 +108,7 @@ def site_for_judge(judge: Any) -> CallSite | None:
             content_cap=claude_judge.CONTENT_CAP,
             max_tokens=claude_judge.MAX_TOKENS,
             prompt=lambda content, history, _j=inner: _j._build_prompt(
-                content, "agent" if _j.mode == "toxicity" else "user", history
+                content, "agent" if _j.mode in ("toxicity", "manipulation") else "user", history
             ),
             safe_reply=_claude_safe_reply(inner.mode),
         )
