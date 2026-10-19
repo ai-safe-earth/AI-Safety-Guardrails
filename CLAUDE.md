@@ -468,14 +468,17 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   normalisation collapses whitespace and strips digits from identifiers of
   three or more characters. Line numbers are not part of it, on purpose.
 - **The skill has one canonical copy**, `src/aisg/skills/ai-safety-audit/`
-  (ships in the wheel). `.claude/skills/ai-safety-audit/` and
-  `.agents/skills/ai-safety-audit/` are byte-identical mirrors pinned by
+  (ships in the wheel). `.claude/skills/ai-safety-audit/`,
+  `.agents/skills/ai-safety-audit/` and
+  `plugins/ai-safety-audit/skills/ai-safety-audit/` (the Claude Code plugin's
+  copy) are byte-identical mirrors pinned by
   `tests/unit/test_skill_package.py::test_mirror_is_byte_identical`; edit the
   canonical copy and run `python scripts/sync_skill.py` (`--check` lists
-  drift and exits 1). The bootstrap scripts pin `AISG_VERSION` to the
-  pyproject version, so **every version bump must be followed by
-  `python scripts/sync_skill.py`** or `test_version_pinned_to_pyproject`
-  fails. `aisg skill install --host <name>|all` copies from the installed
+  drift and exits 1). The six bootstrap scripts (`audit`, `verify`, `hook`,
+  `.sh` and `.ps1`) pin `AISG_VERSION` to the pyproject version and
+  `sync_skill.py` also pins `plugin.json`'s `version`, so **every version bump
+  must be followed by `python scripts/sync_skill.py`** or
+  `test_version_pinned_to_pyproject` fails. `aisg skill install --host <name>|all` copies from the installed
   package and `aisg skill diff --host <name>|all` compares; `path` and `list`
   take no host. `codex` and `antigravity` locations are marked unverified and
   say so on stderr.
@@ -619,11 +622,26 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   `incident_contact`, and the `traffic:` / `budgets:` blocks `aisg decide` reads
   (null = unknown, never assumed); there is no model or data field, and the skill
   docs must not invent one.
-- **Three flags are per-invocation actions, never pyproject defaults.**
+- **`--only PATH` is the file-scoped run the hook uses after an edit.** The
+  tree is walked exactly as in a full run (excludes, gitignore, marker, size
+  limit, units), only the records are filtered (`WalkOptions.only`), and the
+  rule set is `main.FILE_LOCAL_RULES` (AUD-101, 108, 501, 502, 505, 602, 605)
+  unless `--rules` is given: the presence rules whose fingerprint is
+  `sha1(rule | this file | this snippet)`, so a partial run reports exactly
+  the fingerprints the full run gives those files and a baseline written by
+  the full run applies unchanged (`test_audit_only.py` pins the equality on
+  the py_agent fixture). Left out on purpose: AUD-601 and AUD-504 (grouped
+  per unit, anchored on the first file by path), AUD-503 (needs the unit
+  inventory) and every absence rule. A path the walk never saw is one UNKNOWN
+  row (`--only path not walked`, category `runtime`), never silence;
+  `target.only` lists the files and the terminal and markdown renderers print
+  `report._T_ONLY` ("partial run: ..."); a full run carries an empty list.
+- **Per-invocation actions are never pyproject defaults.**
   `main.NOT_CONFIGURABLE` (`write_baseline`, `inventory_only`, `list_rules`,
-  with `amend_baseline` and `accept`) is excluded from `[tool.aisg-audit]`
-  resolution: a `true` there would make every audit rewrite a baseline, run
-  no rule, or print the catalogue and exit 0, with no flag to undo it. Two
+  `only`, with `amend_baseline` and `accept`) is excluded from
+  `[tool.aisg-audit]` resolution: a `true` there would make every audit
+  rewrite a baseline, run no rule, or print the catalogue and exit 0, with no
+  flag to undo it, and an `only` there would make every audit partial. Two
   more things the walk never hides: a file over `max_size` is not read, and
   that is an UNKNOWN row (`walk._oversize_item`) plus the inventory line
   `oversize files skipped: N` (`report._T_INV_OVERSIZE`, from
@@ -655,6 +673,78 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   `test_skill_package.py` parses the file against the registry, so hand-edited
   drift fails. `apply/python.md`'s "Leaves open" bullets are a summary; the
   wording to quote in a plan row is the JSON's `leaves_open`.
+
+## `aisg hook`, the plugin and the CI surface
+
+`aisg hook` (`devtools/hook.py`) is the one adapter between an agent host's command
+hooks and the audit; `devtools/hosts.py` is the host table it shares with `aisg skill`
+(`Host.hooks: HookSupport | None`; keys stay `claude, agents, codex, cursor, gemini,
+antigravity`, pinned, and `references/hosts.md` names every host and source URL).
+Rules that hold:
+
+- **It fails OPEN on its own errors** (payload not JSON, audit exception, state
+  unwritable): exit 0, nothing on stdout, the error recorded in
+  `.aisg-audit/hook-state.json` (`kind: hook-state`, last 20 errors and sessions,
+  everything redacted and ASCII, written tmp+`os.replace`) and surfaced as one line at
+  the next SessionStart. A hook is a gate on someone else's editor; one that fails
+  closed on its own bug teaches people to reach for the bypass flags `HOST_OVERGRANT`
+  flags. Two exceptions, both positive: the secret-literal `deny` stays a deny, and a
+  Cursor permission hook gets an explicit `{"permission": "allow"}` on error because
+  there an empty answer is a block. `UnverifiedHostError` (codex) is the same path.
+- **No model, no install, no socket.** The audit runs `--no-external`; `walk._git`
+  is the only child process; the prompt policy drives the injection guard's coroutine
+  with `send(None)` instead of `asyncio.run`, because the loop's internal socket pair
+  on Windows would trip the "no socket" test; nothing imports a provider SDK.
+  `test_hook.py` pins all of it, including that `run` writes only under
+  `.aisg-audit/`.
+- **Policies re-use the audit's tables, nothing is re-spelled**: `patterns.
+  is_protected_path`, `UNSAFE_HOOK_PATTERNS` (deny on `curl_pipe_sh`, `wget_pipe_sh`,
+  `wget_stdout`, `pip_http`, `pip_trusted_host`; ask on `npx_y`), `HOST_OVERGRANT["*"]`
+  (ask), and `discover.grep_file` over the introduced text with a synthetic
+  `FileRecord` for the secret tables (`secret` -> deny, `secret_var` -> ask;
+  `discover.is_excluded_secret_file` applies, so `.env.example` is not a secret but is
+  still a protected path). Deny wins over ask; one decision per event.
+- **The stdout matrix is the contract** (`_emit_claude` / `_emit_cursor` /
+  `_emit_gemini`): JSON only when there is a decision or context, plain text only on
+  Claude SessionStart, Gemini never prose and never an `ask` (`ask-fallback`), Cursor
+  permission events always answer. Claude Stop blocks with `{"decision": "block",
+  "reason"}` once per session (`blocked_at`; never when `stop_hook_active`) and only
+  when a baseline resolves; Cursor's stop is a `followup_message`; Cursor's
+  `afterFileEdit` has no documented answer channel, so the recheck is recorded and
+  surfaces at stop.
+- **The recheck is `aisg audit --only <file>`** in-process with stdout and stderr
+  captured (the audit prints its terminal summary when `-o` is given), debounced per
+  file, or the full tree when a baseline resolves and the last full run took at most
+  `max-audit-seconds`; `.aisg-audit/hook-recheck.json` and `hook-stop.json` are the
+  audit's own output and a later walk skips them by content.
+- **`install` never silently edits a protected file.** It loads the host config as
+  strict JSON, merges only under `hooks` (and Cursor's `version: 1`), identifies its
+  own entries by `COMMAND_MARKER_RE` (the bootstrap name followed by `run`, or the
+  module/console form), replaces them, prints a unified diff and writes only with
+  `--yes` or an interactive yes (exit 1 otherwise, exit 2 on an unparsable file or an
+  unknown host). Project configs get the portable bootstrap (`sh "${CLAUDE_PROJECT_DIR}
+  /.claude/hooks/aisg-hook.sh" run ...`, copied from the packaged skill); `--global`
+  and `--local` get `sys.executable -m aisg.cli hook run ... --origin interpreter:...`.
+  `hook.sh` passes `--origin` and `--expect-version`; `run` records `version_mismatch`
+  in the state instead of spawning a second process. Codex: `install` prints why
+  nothing is written and exits 1.
+- **`[tool.aisg-hook]`** (`HookConfig.load`, from the pyproject at or above the
+  resolved root; `fail-on` falls back to `[tool.aisg-audit]`): a bad value is a
+  recorded problem printed at session start, never a crash. `DEFAULT_POLICIES` are
+  on; `prompt_injection` is opt-in because the agent's own user is the trusted party on
+  a prompt and the guard's benign breakage would be noise.
+- **The Claude Code plugin** is `.claude-plugin/marketplace.json` (name
+  `ai-safe-earth`) plus `plugins/ai-safety-audit/{.claude-plugin/plugin.json,
+  hooks/hooks.json, README.md, skills/ai-safety-audit/**}`; the skill copy is mirror #3
+  of `sync_skill.py`, which also pins `plugin.json`'s version (`bump_version.py` lists
+  it as a site). Hook commands use `sh "${CLAUDE_PLUGIN_ROOT}/skills/ai-safety-audit/
+  scripts/hook.sh"`. No `.mcp.json`: the audit has nothing to serve.
+- **The CI surface**: `action.yml` (composite; `version` default pinned to pyproject by
+  a test; `install-from: action-path` for dogfooding; three `aisg audit` calls each
+  `|| [ $? -eq 1 ]`; the verdict step exits with the JSON's `summary.exit_code`),
+  `.pre-commit-hooks.yaml` (`aisg-audit` at `pre-push`, `aisg-lint`, `aisg-misalign`),
+  the `aisg-audit` job in `.gitlab-ci-euaiact.yml` (git pin until wave 6) and the
+  `action` dogfood job in `tests.yml`. `test_ci_surface.py` pins the shapes.
 
 ## Adding a guard
 

@@ -22,6 +22,38 @@ prints its resolved destination, because the vendor page (the design-time URL
 repository skills and `~/.agents/skills` for user-level skills without mentioning
 `~/.codex/skills`. Check the printed path against your own Codex layout.
 
+## Hooks
+
+`aisg hook install --host <name>` writes this adapter's entries into the host's hook
+configuration (it prints the diff and writes only with `--yes` or an interactive yes: those
+files are protected paths) and copies the pinned bootstrap `scripts/hook.sh` / `hook.ps1`
+next to it. `aisg hook list` prints the table for the installed version.
+
+| host | hook config (project) | events wired | ask | verified | source |
+|---|---|---|---|---|---|
+| `claude` | `.claude/settings.json` | PreToolUse (edits, Bash), PostToolUse (edits), SessionStart, Stop; UserPromptSubmit with `--policies prompt_injection` | yes | yes | https://code.claude.com/docs/en/hooks |
+| `cursor` | `.cursor/hooks.json` | beforeShellExecution, beforeMCPExecution, afterFileEdit, stop; beforeSubmitPrompt with the prompt policy | yes | yes | https://cursor.com/docs/agent/hooks |
+| `gemini` | `.gemini/settings.json` | BeforeTool (`write_file`, `replace`, `run_shell_command`), AfterTool (`write_file`, `replace`), SessionStart | no | yes | https://geminicli.com/docs/hooks/reference/ |
+| `codex` | `.codex/config.toml` | none: command hooks are not documented for the Codex CLI; `install` prints this and writes nothing | no | no | https://developers.openai.com/codex/config-reference |
+
+What the hooks decide, on every host that has the event: a secret-shaped literal about to be
+written is denied; an edit to a protected path (host permission file, CI workflow, `.env*`,
+`.secrets*`, `.pre-commit-config.yaml`) asks; `curl ... | sh`, `wget -O- ... | sh` and
+plain-http `pip install` are denied; `npx -y`, a permission-bypass flag and a shell write to
+a protected path ask; after an edit, `aisg audit --only <file>` runs against the baseline and
+new findings on that file become context; at Stop, a full audit against the baseline blocks
+once when a new finding at or above `fail-on` appears. Cursor has no pre-edit event, so its
+file checks are advisory and run after the edit; shell and MCP gating is enforced. Gemini
+has no "ask", so an `ask` follows `[tool.aisg-hook].ask-fallback` (`allow`, recorded, or
+`deny`). The adapter fails OPEN on its own errors, records them in
+`.aisg-audit/hook-state.json` and says so at the next session start; it never calls a model,
+never installs anything and never opens a socket.
+
+The Claude Code plugin (`claude plugin marketplace add ai-safe-earth/AI-Safety-Guardrails`,
+then `claude plugin install ai-safety-audit@ai-safe-earth`) carries the same hooks in
+`hooks/hooks.json` and this skill as `skills/ai-safety-audit/`, so no settings file is
+edited at all.
+
 ## The `all` rule
 
 `--host all` installs into `claude` and `agents` always, and into any other host only when
@@ -60,12 +92,14 @@ That is the intersection of what the hosts above accept; host-specific metadata 
 
 ## Bootstrap scripts
 
-`scripts/audit.sh`, `audit.ps1`, `verify.sh` and `verify.ps1` resolve `aisg` in this order:
+`scripts/audit.sh`, `audit.ps1`, `verify.sh`, `verify.ps1`, `hook.sh` and `hook.ps1` resolve
+`aisg` in this order:
 `aisg` on PATH, else `uvx --from 'aisguard==<version>'`, else
 `pipx run --spec 'aisguard==<version>'`. `aisguard` is the distribution name; `aisg` is the
 importable name and the console script, and on PyPI it belongs to an unrelated project, so a
 bootstrap must never install by it. The version is pinned to the package
 that shipped the scripts and a test asserts it equals `pyproject.toml`; an unpinned bootstrap
 is what AUD-602 flags in targets, and the skill does not get an exception. When none of the
-three is available, `audit.sh` exits 2 with install hints and `verify.sh` prints
-`measure skipped: aisg not importable in target`.
+three is available, `audit.sh` exits 2 with install hints, `verify.sh` prints
+`measure skipped: aisg not importable in target`, and `hook.sh` exits 0 with
+`hook skipped` on stderr: a hook is a gate on someone else's editor and fails open.

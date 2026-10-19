@@ -1,0 +1,14 @@
+{
+  "session_id": "gem-1",
+  "cwd": "{root}",
+  "hook_event_name": "AfterTool",
+  "tool_name": "write_file",
+  "tool_input": {
+    "file_path": "{root}/.mcp.json",
+    "content": "{}"
+  },
+  "tool_response": {
+    "llmContent": "ok",
+    "returnDisplay": "ok"
+  }
+}

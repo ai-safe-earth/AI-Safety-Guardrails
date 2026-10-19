@@ -1,0 +1,15 @@
+{
+  "session_id": "sess-claude-1",
+  "cwd": "{root}",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "{root}/.mcp.json",
+    "old_string": "x",
+    "new_string": "y"
+  },
+  "tool_response": {
+    "filePath": "{root}/.mcp.json",
+    "type": "update"
+  }
+}

@@ -760,25 +760,24 @@ aisg misalign src/ --fail-on-warnings
 
 ### Pre-commit hooks
 
-Add to `.pre-commit-config.yaml`:
+This repository publishes three hook definitions (`.pre-commit-hooks.yaml`), so another
+repository points `repo:` at it and pins a release tag:
 
 ```yaml
 repos:
-  - repo: local
+  - repo: https://github.com/ai-safe-earth/AI-Safety-Guardrails
+    rev: v0.1.0
     hooks:
-      - id: euaiact-lint
-        name: EU AI Act compliance lint
-        entry: aisg lint
-        args: [--errors-only]
-        language: python
-        types: [python]
-
-      - id: misalignment-check
-        name: AI alignment check
-        entry: aisg misalign
-        language: python
-        types: [python]
+      - id: aisg-audit          # pre-push: the AI-surface audit against a baseline
+        args: ["--no-external", "--fail-on", "high", "--baseline", "audit-baseline.json"]
+      - id: aisg-lint           # staged Python files, errors only
+      - id: aisg-misalign       # staged Python files, errors only
 ```
+
+`aisg-audit` runs at `pre-push` on purpose: a full audit is seconds on a small repo and
+about thirty on a 300-file one, too slow for every commit. With `aisg` already installed,
+a `repo: local` entry with `entry: aisg lint` / `aisg misalign` / `aisg audit` works the
+same way (this repository's own `.pre-commit-config.yaml` is the example).
 
 ---
 
@@ -1098,6 +1097,76 @@ permission files, CI or secrets without a per-diff approval.
 
 The audit is evidence, not a compliance verdict: it lists what it found and
 what it could not check. Absence of a finding is not evidence of safety.
+
+### Hooks for coding agents (`aisg hook`)
+
+`aisg hook` is one adapter between an agent host's command hooks and the audit. It
+reads the host's JSON payload on stdin, applies a fixed set of policies, and answers in
+the host's own envelope:
+
+| decision | when | Claude Code | Cursor | Gemini CLI |
+|---|---|---|---|---|
+| deny | a secret-shaped literal is about to be written; a download piped into a shell (curl or wget); plain-http `pip install` | `permissionDecision: deny` | `permission: deny` | `decision: deny` |
+| ask | an edit to a protected path (host permission file, CI, `.env*`, `.secrets*`); `npx -y`; a permission-bypass flag; a shell write to a protected path | `permissionDecision: ask` | `permission: ask` | `ask-fallback` (allow, recorded, or deny) |
+| context | after an edit, `aisg audit --only <file>` against the baseline found something new; the posture at session start | `additionalContext` / plain text | recorded; `followup_message` at stop | `additionalContext` |
+| block | at Stop, a full audit against the baseline shows a new finding at or above `fail-on` (once per session) | `decision: block` | `followup_message` | n/a |
+
+```bash
+aisg hook list                              # host table and which aisg this is
+aisg hook install --host claude --dry-run   # the diff it would apply to .claude/settings.json
+aisg hook install --host claude --yes       # apply; copies the pinned bootstrap to .claude/hooks/
+aisg hook install --host cursor --yes       # .cursor/hooks.json (shell/MCP gating enforced, file checks advisory)
+aisg hook install --host gemini --yes       # .gemini/settings.json
+aisg hook uninstall --host claude --yes     # removes only this adapter's entries
+```
+
+Rules that hold: the hook fails OPEN on its own errors (payload not JSON, audit
+exception, state unwritable), records them in `.aisg-audit/hook-state.json` and says so
+at the next session start; the secret-literal deny is a positive detection and stays a
+deny. It never calls a model, never installs anything, never opens a socket, and writes
+only under `.aisg-audit/`. `install` prints a unified diff and writes only with `--yes`
+or an interactive yes, because the host's hook file is itself a protected path.
+Project configs get the portable bootstrap (`sh .../hooks/aisg-hook.sh`, pinned to this
+version); `--global` and `--local` configs are machine-local and get this interpreter.
+Defaults live in `[tool.aisg-hook]` of `pyproject.toml` (`fail-on`, `policies`,
+`max-audit-seconds`, `stop-max-audit-seconds`, `debounce-seconds`, `baseline`, `report`,
+`ask-fallback`); `prompt_injection` (flag injection-shaped text in a prompt as context) is
+opt-in. Codex is listed but nothing is written: the Codex CLI does not document command
+hooks.
+
+### The Claude Code plugin
+
+The same skill and the same hooks, with no settings file edited:
+
+```bash
+claude plugin marketplace add ai-safe-earth/AI-Safety-Guardrails
+claude plugin install ai-safety-audit@ai-safe-earth
+```
+
+The marketplace is `.claude-plugin/marketplace.json`; the plugin lives in
+`plugins/ai-safety-audit/` (`.claude-plugin/plugin.json`, `hooks/hooks.json`, and
+`skills/ai-safety-audit/`, the third byte-identical mirror of the canonical skill). Every
+hook command runs through the pinned bootstrap inside the mirrored skill.
+
+### GitHub Action and GitLab job
+
+One step audits any repository and fails on a new finding at or above `fail-on`:
+
+```yaml
+- uses: ai-safe-earth/AI-Safety-Guardrails@v0.1.0
+  with:
+    baseline: audit-baseline.json     # optional; only new findings count
+    fail-on: high                     # the step's exit code is the audit's
+    upload-sarif: "true"              # Code Scanning (needs security-events: write)
+```
+
+`action.yml` writes the JSON, SARIF and markdown documents under `.aisg-audit/`, appends
+the markdown to the job summary, uploads the SARIF, optionally posts a sticky
+pull-request comment, and exposes `exit-code`, `findings`, `new-findings` and `report`
+as outputs. `install-from: action-path` installs the checkout the action came from
+(this repository dogfoods it in `tests.yml`). `.gitlab-ci-euaiact.yml` carries the
+matching `aisg-audit` job (`AUDIT_PATH`, `AUDIT_FAIL_ON`, `AUDIT_BASELINE`; SARIF to the
+Security Dashboard).
 
 ---
 

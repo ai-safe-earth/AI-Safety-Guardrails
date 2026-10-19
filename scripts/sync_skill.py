@@ -1,16 +1,18 @@
 """scripts/sync_skill.py
 ---------------------
-Pin the skill's bootstrap scripts to the package version and refresh the two mirrors.
+Pin the skill's bootstrap scripts and the plugin manifest to the package version and refresh the three mirrors.
 
 The canonical skill lives in `src/aisg/skills/ai-safety-audit/` (shipped in the wheel);
-`.claude/skills/ai-safety-audit/` and `.agents/skills/ai-safety-audit/` are byte-identical
-copies pinned by `tests/unit/test_skill_package.py`. This dev tool:
+`.claude/skills/ai-safety-audit/`, `.agents/skills/ai-safety-audit/` and
+`plugins/ai-safety-audit/skills/ai-safety-audit/` are byte-identical copies pinned by
+`tests/unit/test_skill_package.py`. This dev tool:
 
 1. reads `[project].version` from `pyproject.toml`;
-2. rewrites the `AISG_VERSION="..."` / `$AISG_VERSION = "..."` line in the four canonical
+2. rewrites the `AISG_VERSION="..."` / `$AISG_VERSION = "..."` line in the six canonical
    scripts so the bootstrap stays pinned to the release (an unpinned bootstrap is exactly
    what AUD-602 flags in targets);
-3. copies the canonical tree over both mirrors, deleting stale mirror files.
+3. pins `"version"` in `plugins/ai-safety-audit/.claude-plugin/plugin.json`;
+4. copies the canonical tree over the three mirrors, deleting stale mirror files.
 
     python scripts/sync_skill.py          # write
     python scripts/sync_skill.py --check  # list differences, exit 1 if any, write nothing
@@ -38,8 +40,18 @@ CANONICAL = REPO / "src" / "aisg" / "skills" / "ai-safety-audit"
 MIRRORS = (
     REPO / ".claude" / "skills" / "ai-safety-audit",
     REPO / ".agents" / "skills" / "ai-safety-audit",
+    REPO / "plugins" / "ai-safety-audit" / "skills" / "ai-safety-audit",
 )
-SCRIPTS = ("scripts/audit.sh", "scripts/audit.ps1", "scripts/verify.sh", "scripts/verify.ps1")
+PLUGIN_JSON = REPO / "plugins" / "ai-safety-audit" / ".claude-plugin" / "plugin.json"
+PLUGIN_VERSION_LINE = re.compile(r'("version":\s*")([^"]*)(")')
+SCRIPTS = (
+    "scripts/audit.sh",
+    "scripts/audit.ps1",
+    "scripts/verify.sh",
+    "scripts/verify.ps1",
+    "scripts/hook.sh",
+    "scripts/hook.ps1",
+)
 SKIP_DIRS = frozenset({"__pycache__"})
 
 # `AISG_VERSION="0.1.0"` in sh, `$AISG_VERSION = "0.1.0"` in PowerShell; the quoted value is
@@ -97,6 +109,22 @@ def pin_scripts(version: str, write: bool) -> list[str]:
     return diffs
 
 
+def pin_plugin_json(version: str, write: bool) -> list[str]:
+    """Rewrite `"version"` in the Claude Code plugin manifest; return the differences."""
+    if not PLUGIN_JSON.is_file():
+        return [f"missing plugin manifest: {PLUGIN_JSON.relative_to(REPO).as_posix()}"]
+    text = PLUGIN_JSON.read_text(encoding="utf-8")
+    match = PLUGIN_VERSION_LINE.search(text)
+    if match is None:
+        return ["plugin.json has no version field"]
+    if match.group(2) == version:
+        return []
+    if write:
+        new = PLUGIN_VERSION_LINE.sub(lambda m: f"{m.group(1)}{version}{m.group(3)}", text, count=1)
+        PLUGIN_JSON.write_bytes(new.encode("utf-8"))
+    return [f"plugin.json: version is {match.group(2)}, pyproject says {version}"]
+
+
 def sync_mirror(canonical: dict[str, bytes], mirror: Path, write: bool) -> list[str]:
     """Make `mirror` byte-identical to `canonical`; return the differences found."""
     diffs: list[str] = []
@@ -144,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
 
     version = project_version()
     diffs = pin_scripts(version, write)
+    diffs.extend(pin_plugin_json(version, write))
     canonical = tree(CANONICAL)
     for mirror in MIRRORS:
         diffs.extend(sync_mirror(canonical, mirror, write))

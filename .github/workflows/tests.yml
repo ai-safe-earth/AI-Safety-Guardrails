@@ -246,3 +246,33 @@ jobs:
           assert len(available_families()) == 6
           print(f'{len(cases)} probe cases across {len(available_families())} families')
           "
+
+  action:
+    name: composite action (dogfood)
+    # `action.yml` is what other repositories run with one `uses:` line. Run it on
+    # this checkout, installed from the action path rather than PyPI, against our own
+    # baseline: the step's exit code is the audit's, so a new high finding fails here
+    # the same way it would fail a consumer. SARIF upload is off because the job
+    # has no security-events permission; the `audit` job above covers the gate.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        id: dogfood
+        with:
+          install-from: action-path
+          baseline: audit-baseline.json
+          fail-on: high
+          upload-sarif: "false"
+          pr-comment: "false"
+      - name: Outputs are set
+        env:
+          EXIT_CODE: ${{ steps.dogfood.outputs.exit-code }}
+          FINDINGS: ${{ steps.dogfood.outputs.findings }}
+          NEW: ${{ steps.dogfood.outputs.new-findings }}
+          REPORT: ${{ steps.dogfood.outputs.report }}
+        run: |
+          set -eu
+          test "$EXIT_CODE" -eq 0
+          test -f "$REPORT"
+          echo "findings=$FINDINGS new=$NEW report=$REPORT"

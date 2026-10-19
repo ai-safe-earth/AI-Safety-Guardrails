@@ -1,0 +1,10 @@
+{
+  "session_id": "sess-claude-1",
+  "cwd": "{root}",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "NotebookEdit",
+  "tool_input": {
+    "notebook_path": "{root}/analysis.ipynb",
+    "new_source": "client = Anthropic(api_key=\"sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789ABCD\")"
+  }
+}

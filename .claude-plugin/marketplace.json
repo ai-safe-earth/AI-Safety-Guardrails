@@ -1,0 +1,17 @@
+{
+  "name": "ai-safe-earth",
+  "description": "Plugins from AI SAFE EARTH: audit an AI or agent codebase for safety gaps, ordered by blast radius, with hooks that gate protected paths, secret literals and unsafe shell commands. Findings describe evidence, never a compliance verdict.",
+  "owner": {
+    "name": "AI SAFE EARTH",
+    "url": "https://github.com/ai-safe-earth"
+  },
+  "plugins": [
+    {
+      "name": "ai-safety-audit",
+      "source": "./plugins/ai-safety-audit",
+      "description": "Audit an AI/agent codebase for safety gaps ordered by blast radius (aisg audit), plan and apply controls one approval at a time, and gate edits with hooks: protected paths ask, secret literals are denied, unsafe shell commands are denied, edited files are re-audited, and a Stop with a new high finding blocks once. Never a compliance verdict.",
+      "category": "security",
+      "tags": ["ai-safety", "audit", "guardrails", "eu-ai-act", "nist-ai-rmf", "hooks"]
+    }
+  ]
+}

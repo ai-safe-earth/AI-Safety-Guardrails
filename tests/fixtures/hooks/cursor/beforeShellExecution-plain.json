@@ -1,0 +1,10 @@
+{
+  "conversation_id": "conv-1",
+  "generation_id": "gen-1",
+  "hook_event_name": "beforeShellExecution",
+  "command": "git status",
+  "cwd": "{root}",
+  "workspace_roots": [
+    "{root}"
+  ]
+}

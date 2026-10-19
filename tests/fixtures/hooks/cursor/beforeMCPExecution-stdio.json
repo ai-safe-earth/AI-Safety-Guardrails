@@ -1,0 +1,13 @@
+{
+  "conversation_id": "conv-1",
+  "hook_event_name": "beforeMCPExecution",
+  "tool_name": "fetch",
+  "tool_input": {
+    "url": "https://x"
+  },
+  "mcp_server_name": "web",
+  "command": "npx -y @modelcontextprotocol/server-fetch",
+  "workspace_roots": [
+    "{root}"
+  ]
+}

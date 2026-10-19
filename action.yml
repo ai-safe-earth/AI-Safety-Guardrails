@@ -1,0 +1,165 @@
+# action.yml
+# ---------------------------------------------------------------------------
+# `aisg audit` as a composite GitHub Action, so any repository can add one step:
+#
+#   - uses: ai-safe-earth/AI-Safety-Guardrails@v0.1.0
+#     with:
+#       baseline: audit-baseline.json      # optional; only new findings count
+#       fail-on: high
+#
+# The step exits with the audit's own exit code (0 nothing counted, 1 a finding at or
+# above fail-on, 2 fatal), writes the JSON, SARIF and markdown documents under
+# `output-dir`, appends the markdown to the job summary and uploads the SARIF to Code
+# Scanning. Findings describe evidence; no document states a compliance verdict.
+#
+# The version default is pinned to this repository's pyproject by a test; `install-from:
+# action-path` installs the checkout the action was fetched from (dogfooding and forks).
+# ---------------------------------------------------------------------------
+name: aisg audit
+description: Static AI-safety audit of a repository (aisg audit). Findings describe evidence; no compliance verdict.
+author: AI SAFE EARTH
+branding:
+  icon: shield
+  color: gray-dark
+
+inputs:
+  path:
+    description: directory to audit, relative to the workspace
+    default: "."
+  fail-on:
+    description: "minimum severity that fails the step: critical | high | medium | low | info | never"
+    default: high
+  baseline:
+    description: path of an audit-baseline.json (empty = none; only new findings count when set)
+    default: ""
+  extra-args:
+    description: extra flags passed to every aisg audit call (e.g. --exclude vendor)
+    default: ""
+  version:
+    description: aisguard version to install from PyPI (pinned to this repository's release)
+    default: "0.1.0"
+  install-from:
+    description: "pypi | action-path (install the checkout this action came from)"
+    default: pypi
+  python-version:
+    description: Python version for setup-python
+    default: "3.12"
+  upload-sarif:
+    description: upload the SARIF to Code Scanning (the caller needs security-events write)
+    default: "true"
+  sarif-category:
+    description: Code Scanning category for the upload
+    default: aisg-audit
+  step-summary:
+    description: append the markdown report to the job summary
+    default: "true"
+  pr-comment:
+    description: post or update a sticky pull-request comment with the markdown report (needs pull-requests write)
+    default: "false"
+  output-dir:
+    description: where the three documents are written
+    default: .aisg-audit
+
+outputs:
+  exit-code:
+    description: the audit's exit code (0, 1 or 2)
+    value: ${{ steps.verdict.outputs.exit-code }}
+  findings:
+    description: number of findings reported
+    value: ${{ steps.verdict.outputs.findings }}
+  new-findings:
+    description: findings not in the baseline (0 without a baseline)
+    value: ${{ steps.verdict.outputs.new-findings }}
+  report:
+    description: path of the JSON report
+    value: ${{ inputs.output-dir }}/audit-report.json
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install aisguard
+      shell: bash
+      env:
+        AISG_VERSION: ${{ inputs.version }}
+        INSTALL_FROM: ${{ inputs.install-from }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -eu
+        if [ "$INSTALL_FROM" = "action-path" ]; then
+          pip install --quiet "${ACTION_PATH}[devtools]"
+        else
+          pip install --quiet "aisguard[devtools]==${AISG_VERSION}"
+        fi
+        aisg --version
+        python -c "import aisg; print(aisg.__file__)"
+
+    - name: Audit
+      shell: bash
+      env:
+        TARGET: ${{ inputs.path }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        BASELINE: ${{ inputs.baseline }}
+        EXTRA: ${{ inputs.extra-args }}
+        OUT: ${{ inputs.output-dir }}
+      run: |
+        set -eu
+        mkdir -p "$OUT"
+        args=("$TARGET" --no-external --fail-on "$FAIL_ON")
+        if [ -n "$BASELINE" ]; then args+=(--baseline "$BASELINE"); fi
+        # Each call tolerates only exit 1 (findings); a fatal 2 fails the step here.
+        # shellcheck disable=SC2086
+        aisg audit "${args[@]}" $EXTRA --format json -o "$OUT/audit-report.json" || [ $? -eq 1 ]
+        # shellcheck disable=SC2086
+        aisg audit "${args[@]}" $EXTRA --format sarif -o "$OUT/audit-results.sarif" || [ $? -eq 1 ]
+        # shellcheck disable=SC2086
+        aisg audit "${args[@]}" $EXTRA --format markdown -o "$OUT/audit-summary.md" || [ $? -eq 1 ]
+
+    - name: Job summary
+      if: inputs.step-summary == 'true'
+      shell: bash
+      env:
+        OUT: ${{ inputs.output-dir }}
+      run: cat "$OUT/audit-summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload SARIF to Code Scanning
+      if: inputs.upload-sarif == 'true'
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: ${{ inputs.output-dir }}/audit-results.sarif
+        category: ${{ inputs.sarif-category }}
+
+    - name: Sticky pull-request comment
+      if: inputs.pr-comment == 'true' && github.event_name == 'pull_request'
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: aisg-audit
+        path: ${{ inputs.output-dir }}/audit-summary.md
+
+    - name: Verdict
+      id: verdict
+      shell: bash
+      env:
+        REPORT: ${{ inputs.output-dir }}/audit-report.json
+      run: |
+        python - "$REPORT" <<'PY'
+        import json, os, sys
+        report = json.load(open(sys.argv[1], encoding="utf-8"))
+        if report.get("schema") != "aisg/1" or report.get("kind") != "audit":
+            sys.exit(f"not an aisg audit report: {sys.argv[1]}")
+        summary = report["summary"]
+        code = int(summary["exit_code"])
+        new = summary.get("baseline_new")
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+            handle.write(f"exit-code={code}\n")
+            handle.write(f"findings={summary['findings']}\n")
+            handle.write(f"new-findings={0 if new is None else new}\n")
+        print(
+            f"{summary['findings']} finding(s), {summary['unknown_items']} UNKNOWN item(s), "
+            f"exit {code}. Findings describe evidence; absence of a finding is not evidence of safety."
+        )
+        sys.exit(code)
+        PY

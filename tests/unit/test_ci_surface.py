@@ -98,3 +98,134 @@ class TestReleaseWorkflow:
                 uses = step.get("uses")
                 if uses:
                     assert "@" in uses, uses
+
+
+# ---------------------------------------------------------------------------
+# The consumer-facing surface: action.yml, .pre-commit-hooks.yaml, the GitLab job and
+# the dogfood job in tests.yml.
+# ---------------------------------------------------------------------------
+
+ACTION = REPO / "action.yml"
+PRE_COMMIT_HOOKS = REPO / ".pre-commit-hooks.yaml"
+PRE_COMMIT_CONFIG = REPO / ".pre-commit-config.yaml"
+GITLAB = REPO / ".gitlab-ci-euaiact.yml"
+TESTS_WORKFLOW = REPO / ".github" / "workflows" / "tests.yml"
+
+
+def _project_version() -> str:
+    text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    return re.search(r'^version\s*=\s*"([^"]+)"', text, re.M).group(1)
+
+
+class TestCompositeAction:
+    def test_parses_as_a_composite_action_with_the_expected_inputs(self) -> None:
+        doc = _load(ACTION)
+        assert doc["runs"]["using"] == "composite"
+        assert set(doc["inputs"]) == {
+            "path",
+            "fail-on",
+            "baseline",
+            "extra-args",
+            "version",
+            "install-from",
+            "python-version",
+            "upload-sarif",
+            "sarif-category",
+            "step-summary",
+            "pr-comment",
+            "output-dir",
+        }
+        assert set(doc["outputs"]) == {"exit-code", "findings", "new-findings", "report"}
+        assert doc["inputs"]["fail-on"]["default"] == "high"
+        assert doc["inputs"]["install-from"]["default"] == "pypi"
+
+    def test_version_default_is_pinned_to_pyproject(self) -> None:
+        assert _load(ACTION)["inputs"]["version"]["default"] == _project_version()
+
+    def test_install_pins_the_distribution_and_never_the_import_name(self) -> None:
+        text = _steps_text(_load(ACTION)["runs"])
+        assert 'pip install --quiet "aisguard[devtools]==${AISG_VERSION}"' in text
+        assert not re.search(r"pip install[^\n]*\baisg(?:\[|==|\s|\")", text), (
+            "aisg on PyPI is unrelated"
+        )
+        assert '"${ACTION_PATH}[devtools]"' in text
+
+    def test_every_audit_call_tolerates_only_exit_1_and_the_verdict_is_the_json(self) -> None:
+        text = _steps_text(_load(ACTION)["runs"])
+        calls = re.findall(r'^\s*(aisg audit "[^\n]*)', text, re.M)
+        assert len(calls) == 3
+        for call in calls:
+            assert call.rstrip().endswith("|| [ $? -eq 1 ]"), call
+        assert "|| true" not in text
+        assert 'report.get("kind") != "audit"' in text
+        assert 'code = int(summary["exit_code"])' in text and "sys.exit(code)" in text
+
+    def test_no_compliance_verdict_in_the_action_text(self) -> None:
+        text = ACTION.read_text(encoding="utf-8").lower()
+        for phrase in (
+            " ".join(("is", "compliant")),
+            "certi" + "fied",
+            " ".join(("fully", "compliant")),
+        ):
+            assert phrase not in text, phrase
+        assert "no compliance verdict" in text
+
+    def test_third_party_actions_are_pinned_and_sarif_is_conditional(self) -> None:
+        steps = _load(ACTION)["runs"]["steps"]
+        for step in steps:
+            if step.get("uses"):
+                assert "@" in step["uses"], step["uses"]
+        sarif = next(s for s in steps if "upload-sarif" in str(s.get("uses", "")))
+        assert sarif["if"] == "inputs.upload-sarif == 'true'"
+        comment = next(s for s in steps if "sticky-pull-request-comment" in str(s.get("uses", "")))
+        assert "inputs.pr-comment == 'true'" in comment["if"]
+
+
+class TestPreCommitHooks:
+    def test_hook_ids_and_shapes(self) -> None:
+        hooks = {h["id"]: h for h in _load(PRE_COMMIT_HOOKS)}
+        assert set(hooks) == {"aisg-audit", "aisg-lint", "aisg-misalign"}
+        audit = hooks["aisg-audit"]
+        assert audit["entry"] == "aisg audit" and audit["language"] == "python"
+        assert audit["pass_filenames"] is False and audit["always_run"] is True
+        assert audit["stages"] == ["pre-push"]
+        assert audit["args"] == ["--no-external", "--fail-on", "high"]
+        for name in ("aisg-lint", "aisg-misalign"):
+            assert hooks[name]["types"] == ["python"] and hooks[name]["pass_filenames"] is True
+            assert hooks[name]["args"] == ["--errors-only"]
+
+    def test_our_own_config_runs_the_audit_at_push_time_against_the_baseline(self) -> None:
+        doc = _load(PRE_COMMIT_CONFIG)
+        local = next(r for r in doc["repos"] if r["repo"] == "local")
+        audit = next(h for h in local["hooks"] if h["id"] == "aisg-audit")
+        assert audit["stages"] == ["pre-push"]
+        assert audit["args"][-2:] == ["--baseline", "audit-baseline.json"]
+        assert "--no-external" in audit["args"]
+
+
+class TestGitLabAuditJob:
+    def test_job_present_with_variables_and_exit_1_tolerance(self) -> None:
+        doc = _load(GITLAB)
+        job = doc["aisg-audit"]
+        assert job["extends"] == ".eu-ai-act-base"
+        for key in ("AUDIT_PATH", "AUDIT_FAIL_ON", "AUDIT_BASELINE"):
+            assert key in doc["variables"], key
+        scripts = job["script"]
+        assert all(isinstance(entry, str) for entry in scripts)
+        audit_calls = [s for s in scripts if s.startswith("aisg audit")]
+        assert len(audit_calls) == 2 and all(s.endswith("|| [ $? -eq 1 ]") for s in audit_calls)
+        assert any("--format sarif" in s for s in audit_calls)
+        assert job["artifacts"]["reports"]["sast"] == "aisg-audit-results.sarif"
+        assert job["allow_failure"] is False
+
+
+class TestDogfoodJob:
+    def test_tests_workflow_runs_the_action_from_the_action_path(self) -> None:
+        jobs = _load(TESTS_WORKFLOW)["jobs"]
+        job = jobs["action"]
+        step = next(s for s in job["steps"] if s.get("uses") == "./")
+        assert step["with"]["install-from"] == "action-path"
+        assert step["with"]["baseline"] == "audit-baseline.json"
+        assert step["with"]["upload-sarif"] == "false"
+        text = _steps_text(job)
+        assert 'test "$EXIT_CODE" -eq 0' in text

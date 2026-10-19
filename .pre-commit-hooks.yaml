@@ -1,0 +1,47 @@
+# .pre-commit-hooks.yaml
+# ---------------------------------------------------------------------------
+# Hook definitions other repositories can point at:
+#
+#   repos:
+#     - repo: https://github.com/ai-safe-earth/AI-Safety-Guardrails
+#       rev: v0.1.0
+#       hooks:
+#         - id: aisg-audit
+#           args: ["--no-external", "--fail-on", "high", "--baseline", "audit-baseline.json"]
+#         - id: aisg-lint
+#         - id: aisg-misalign
+#
+# `language: python` makes pre-commit install this repository at `rev` into its own
+# environment; the `devtools` extra adds only `tomli` on Python 3.10.
+# ---------------------------------------------------------------------------
+- id: aisg-audit
+  name: aisg audit (AI-surface audit against a baseline)
+  description: Static AI-safety audit of the repository; exit 1 on a new finding at or above --fail-on. Findings describe evidence, never a compliance verdict.
+  entry: aisg audit
+  args: ["--no-external", "--fail-on", "high"]
+  language: python
+  additional_dependencies: ["tomli>=2.0; python_version < '3.11'"]
+  pass_filenames: false
+  always_run: true
+  stages: [pre-push]
+  minimum_pre_commit_version: "3.2.0"
+
+- id: aisg-lint
+  name: aisg lint (EU AI Act static linter)
+  description: EU AI Act compliance linter over the staged Python files; errors only by default.
+  entry: aisg lint
+  args: ["--errors-only"]
+  language: python
+  types: [python]
+  pass_filenames: true
+  minimum_pre_commit_version: "3.2.0"
+
+- id: aisg-misalign
+  name: aisg misalign (ALIGN-001..008)
+  description: AI misalignment static analysis over the staged Python files; errors only by default.
+  entry: aisg misalign
+  args: ["--errors-only"]
+  language: python
+  types: [python]
+  pass_filenames: true
+  minimum_pre_commit_version: "3.2.0"

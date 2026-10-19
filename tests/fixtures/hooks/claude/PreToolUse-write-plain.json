@@ -1,0 +1,10 @@
+{
+  "session_id": "sess-claude-1",
+  "cwd": "{root}",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "{root}/notes.py",
+    "content": "VALUE = 1\n"
+  }
+}

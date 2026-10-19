@@ -130,6 +130,11 @@ class WalkOptions:
     include_ignored: bool = False
     max_size: int = DEFAULT_MAX_SIZE
     follow_symlinks: bool = False
+    # A file-scoped run (`aisg audit --only PATH`): the whole tree is still enumerated,
+    # so gitignore, excludes, the marker and the size limit apply exactly as in a full
+    # run and the units are the same; only the records handed on are filtered. A path
+    # the walk never saw is one UNKNOWN row, never a silent no-op.
+    only: tuple[str, ...] = ()
 
 
 @dataclass
@@ -596,6 +601,13 @@ def walk(
             pending.append(_Pending(full, rel, _lang_for(name), size, gitignored))
 
     pending.sort(key=lambda p: p.relpath)
+    only = tuple(_norm_rel(str(item)) for item in opts.only if str(item).strip())
+    only_missing: list[str] = []
+    if only:
+        seen_rel = {item.relpath for item in pending}
+        only_missing = [rel for rel in only if rel not in seen_rel]
+        wanted = set(only)
+        pending = [item for item in pending if item.relpath in wanted]
     # Provisional unit ids are needed for the root-language vote, so assign in two steps.
     provisional = _build_units(manifests, Counter())
     votes: Counter[tuple[str, str]] = Counter()
@@ -638,6 +650,22 @@ def walk(
         )
     if ignored_dirs:
         unknown.append(_ignored_dirs_item(ignored_dirs))
+    for rel in only_missing:
+        unknown.append(
+            UnknownItem(
+                category=UnknownCategory.RUNTIME,
+                what="--only path not walked",
+                why=(
+                    f"{rel}: excluded, gitignored, over the size limit, carrying the ignore "
+                    "marker, or not found"
+                ),
+                how_to_resolve=(
+                    "Check the path against the walk's excludes and .gitignore; a file the "
+                    "walk never saw was not audited."
+                ),
+                file=rel,
+            )
+        )
     if oversize:
         if oversize_skipped is not None:
             oversize_skipped.extend(sorted(oversize))

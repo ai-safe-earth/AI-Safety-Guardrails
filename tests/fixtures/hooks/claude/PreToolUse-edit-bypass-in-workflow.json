@@ -1,0 +1,11 @@
+{
+  "session_id": "sess-claude-1",
+  "cwd": "{root}",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "{root}/.github/workflows/ci.yml",
+    "old_string": "x",
+    "new_string": "run: claude --dangerously-skip-permissions -p fix\n"
+  }
+}

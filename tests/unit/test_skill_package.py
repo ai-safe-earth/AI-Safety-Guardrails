@@ -28,8 +28,9 @@ CANONICAL = REPO / "src" / "aisg" / "skills" / SKILL_NAME
 MIRRORS = (
     REPO / ".claude" / "skills" / SKILL_NAME,
     REPO / ".agents" / "skills" / SKILL_NAME,
+    REPO / "plugins" / "ai-safety-audit" / "skills" / SKILL_NAME,
 )
-SCRIPTS = ("audit.sh", "audit.ps1", "verify.sh", "verify.ps1")
+SCRIPTS = ("audit.sh", "audit.ps1", "verify.sh", "verify.ps1", "hook.sh", "hook.ps1")
 SYNC_TOOL = REPO / "scripts" / "sync_skill.py"
 CONTROLS_TOOL = REPO / "scripts" / "controls_md.py"
 PYPROJECT = REPO / "pyproject.toml"
@@ -786,3 +787,20 @@ class TestHostsDoc:
         for name in ALWAYS_HOSTS:
             assert f"`{name}`" in text, name
         assert "aisg skill list" in text
+
+
+class TestHostsDocHooks:
+    def test_hosts_md_names_every_hook_host_and_source(self):
+        try:
+            from aisg.devtools.hosts import hook_hosts
+        except ImportError:
+            pytest.skip("aisg.devtools.hosts not importable")
+        text = (CANONICAL / "references" / "hosts.md").read_text(encoding="utf-8")
+        assert "## Hooks" in text and "aisg hook install" in text and "aisg hook list" in text
+        for host in hook_hosts():
+            assert f"`{host.name}`" in text, host.name
+            assert host.hooks.config_project in text, host.name
+            if host.hooks.source:
+                assert host.hooks.source in text, f"{host.name}: {host.hooks.source}"
+        assert "fails OPEN" in text or "fails open" in text
+        assert "claude plugin install ai-safety-audit@ai-safe-earth" in text

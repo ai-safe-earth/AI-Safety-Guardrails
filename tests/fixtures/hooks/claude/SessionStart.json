@@ -1,0 +1,6 @@
+{
+  "session_id": "sess-claude-2",
+  "cwd": "{root}",
+  "hook_event_name": "SessionStart",
+  "source": "startup"
+}

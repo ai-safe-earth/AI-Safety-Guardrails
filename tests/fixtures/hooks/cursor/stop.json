@@ -1,0 +1,9 @@
+{
+  "conversation_id": "conv-1",
+  "hook_event_name": "stop",
+  "status": "completed",
+  "loop_count": 0,
+  "workspace_roots": [
+    "{root}"
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 20,
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/skills/ai-safety-audit/scripts/hook.sh\" run --host claude --event PreToolUse"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 15,
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/skills/ai-safety-audit/scripts/hook.sh\" run --host claude --event PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 45,
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/skills/ai-safety-audit/scripts/hook.sh\" run --host claude --event PostToolUse"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 15,
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/skills/ai-safety-audit/scripts/hook.sh\" run --host claude --event SessionStart"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 120,
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/skills/ai-safety-audit/scripts/hook.sh\" run --host claude --event Stop"
+          }
+        ]
+      }
+    ]
+  }
+}

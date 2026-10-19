@@ -573,11 +573,16 @@ def _scan_whole(ctx: _FileCtx, table: str, rows: Table, key_fn: Any = None) -> N
             ctx.add(table, final_key, number, col, line, match.group(0))
 
 
-def _excluded_secret_file(relpath: str) -> bool:
+def is_excluded_secret_file(relpath: str) -> bool:
+    """A file whose secret-shaped literals are not findings: an example/template file or a
+    test fixture. The hook's secret-literal policy applies the same exclusion."""
     name = PurePosixPath(relpath).name.lower()
     if name.endswith(_EXAMPLE_SUFFIXES):
         return True
     return relpath.startswith("tests/fixtures/") or "/tests/fixtures/" in relpath
+
+
+_excluded_secret_file = is_excluded_secret_file
 
 
 def _is_placeholder(value: str) -> bool:

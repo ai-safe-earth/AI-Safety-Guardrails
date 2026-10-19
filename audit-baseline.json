@@ -1,7 +1,7 @@
 {
   "schema": "aisg/1",
   "kind": "audit-baseline",
-  "generated_at": "2026-10-18T23:40:28Z",
+  "generated_at": "2026-10-19T00:25:09Z",
   "tool": {
     "name": "aisg-audit",
     "version": "0.1.0"
@@ -14,8 +14,11 @@
     "250a3ae263861265",
     "287c0a092b452b24",
     "3128013255a8f070",
+    "376f104087090eef",
     "37a89e88c61c038a",
+    "39818247cb67934e",
     "398588db744fc780",
+    "3f7bdc1d6445753a",
     "4a967929f06e5b9e",
     "630654068440d1a8",
     "78fb1a3c4007a491",
@@ -26,10 +29,12 @@
     "a6efa9a9b5d3a84a",
     "a7550f41ecd36285",
     "bc65de5b165e9ed0",
+    "bcab07f409ae60ef",
     "c264651cc03bd5e7",
     "c8de003db6557853",
     "cd0a20265f703b75",
     "d13c38c0e5c8d27f",
+    "df0830d550f12465",
     "f9320ce6578817f6",
     "ff45027259024d0a"
   ],
@@ -89,6 +94,36 @@
       "reason": "the shipped NeMo Guardrails example config names a floating OpenAI mini alias as its placeholder main model (the comment above it says to replace it); a template, not a deployment. One row covers both copies of the file: the repo-root one is the anchor, the packaged one rides as also evidence."
     },
     {
+      "fingerprint": "a6efa9a9b5d3a84a",
+      "rule": "AUD-801",
+      "file": "config/default.yaml:30",
+      "reason": "pii_detector wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset, the examples and the guard's own module); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+    },
+    {
+      "fingerprint": "10293589c3096cd4",
+      "rule": "AUD-801",
+      "file": "config/default.yaml:42",
+      "reason": "prompt_injection wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset, the examples and the guard's own module); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+    },
+    {
+      "fingerprint": "f9320ce6578817f6",
+      "rule": "AUD-801",
+      "file": "config/default.yaml:62",
+      "reason": "rate_limiter wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset and the package re-export); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+    },
+    {
+      "fingerprint": "9f548b6a204e00cf",
+      "rule": "AUD-801",
+      "file": "config/default.yaml:71",
+      "reason": "tool_policy wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset, the examples and the guard's own module); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+    },
+    {
+      "fingerprint": "80af32970a9c7027",
+      "rule": "AUD-801",
+      "file": "config/default.yaml:107",
+      "reason": "toxicity_output wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset, the examples and the guard's own module); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+    },
+    {
       "fingerprint": "ff45027259024d0a",
       "rule": "AUD-801",
       "file": "config/default.yaml:137",
@@ -125,6 +160,18 @@
       "reason": "Field description string naming LlamaGuard on the default judge provider setting, grouped with the default model-id table inside the LlamaGuard judge's own source; string literals in the library, not a wired guard"
     },
     {
+      "fingerprint": "80f7938a43ad8826",
+      "rule": "AUD-801",
+      "file": "src/aisg/devtools/decide.py:95",
+      "reason": "guard-family table of aisg decide naming llm_input_filter (anchor; grouped with the input package re-export and the guard's own register_guard line); a devtool classifies the guard here, nothing wires it; the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+    },
+    {
+      "fingerprint": "250a3ae263861265",
+      "rule": "AUD-801",
+      "file": "src/aisg/devtools/decide.py:98",
+      "reason": "guard-family table of aisg decide naming nemo_rails (anchor; grouped with aisg measure's offline branch, the integrations package re-export and the guard's own register_guard line); a devtool classifies the guard here, nothing wires it; the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+    },
+    {
       "fingerprint": "80fa4b2f73752472",
       "rule": "AUD-801",
       "file": "src/aisg/integrations/nemo_rails.py:61",
@@ -143,46 +190,34 @@
       "reason": "no system card because this repository is a guardrails library, not an AI system; `aisg init` writes the card for the deployments that use it"
     },
     {
-      "fingerprint": "a6efa9a9b5d3a84a",
-      "rule": "AUD-801",
-      "file": "config/default.yaml:30",
-      "reason": "pii_detector wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset, the examples and the guard's own module); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+      "fingerprint": "376f104087090eef",
+      "rule": "AUD-202",
+      "file": "src/aisg/cli.py:37",
+      "reason": "the aisg CLI epilog shows an example aisg hook install command with the installer's non-interactive confirmation flag: aisg hook install prints the unified diff of the host's hook file first and writes only when the operator passes the flag or answers yes at a tty; the hook's own shell policy asks before an agent runs the installer; no agent approval gate is involved"
     },
     {
-      "fingerprint": "10293589c3096cd4",
-      "rule": "AUD-801",
-      "file": "config/default.yaml:42",
-      "reason": "prompt_injection wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset, the examples and the guard's own module); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+      "fingerprint": "39818247cb67934e",
+      "rule": "AUD-202",
+      "file": "src/aisg/devtools/hook.py:1618",
+      "reason": "the installer's non-interactive confirmation flag: aisg hook install prints the unified diff of the host's hook file first and writes only when the operator passes the flag or answers yes at a tty; the hook's own shell policy asks before an agent runs the installer; no agent approval gate is involved (anchor src/aisg/devtools/hook.py:1618)"
     },
     {
-      "fingerprint": "f9320ce6578817f6",
-      "rule": "AUD-801",
-      "file": "config/default.yaml:62",
-      "reason": "rate_limiter wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset and the package re-export); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+      "fingerprint": "3f7bdc1d6445753a",
+      "rule": "AUD-202",
+      "file": "src/aisg/devtools/hook.py:1493",
+      "reason": "the installer's non-interactive confirmation flag: aisg hook install prints the unified diff of the host's hook file first and writes only when the operator passes the flag or answers yes at a tty; the hook's own shell policy asks before an agent runs the installer; no agent approval gate is involved (anchor src/aisg/devtools/hook.py:1493)"
     },
     {
-      "fingerprint": "9f548b6a204e00cf",
-      "rule": "AUD-801",
-      "file": "config/default.yaml:71",
-      "reason": "tool_policy wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset, the examples and the guard's own module); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+      "fingerprint": "bcab07f409ae60ef",
+      "rule": "AUD-202",
+      "file": "src/aisg/devtools/hook.py:1622",
+      "reason": "the installer's non-interactive confirmation flag: aisg hook install prints the unified diff of the host's hook file first and writes only when the operator passes the flag or answers yes at a tty; the hook's own shell policy asks before an agent runs the installer; no agent approval gate is involved (anchor src/aisg/devtools/hook.py:1622)"
     },
     {
-      "fingerprint": "80af32970a9c7027",
-      "rule": "AUD-801",
-      "file": "config/default.yaml:107",
-      "reason": "toxicity_output wired in the shipped default preset, a template for deployments (grouped with the packaged copy, the eu_high_risk preset, the examples and the guard's own module); the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
-    },
-    {
-      "fingerprint": "80f7938a43ad8826",
-      "rule": "AUD-801",
-      "file": "src/aisg/devtools/decide.py:95",
-      "reason": "guard-family table of aisg decide naming llm_input_filter (anchor; grouped with the input package re-export and the guard's own register_guard line); a devtool classifies the guard here, nothing wires it; the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
-    },
-    {
-      "fingerprint": "250a3ae263861265",
-      "rule": "AUD-801",
-      "file": "src/aisg/devtools/decide.py:98",
-      "reason": "guard-family table of aisg decide naming nemo_rails (anchor; grouped with aisg measure's offline branch, the integrations package re-export and the guard's own register_guard line); a devtool classifies the guard here, nothing wires it; the library defines guards, deployments measure them. CI runs aisg measure over the default preset on every push and keeps the report as a build artifact, which an audit of the tree cannot read"
+      "fingerprint": "df0830d550f12465",
+      "rule": "AUD-101/docs",
+      "file": "plugins/ai-safety-audit/skills/ai-safety-audit/references/controls.md:116",
+      "reason": "the packaged skill's controls reference names the Claude Code permission-bypass flag as a literal to remove from CI and hooks: a documentation mention, not a grant (the Claude Code plugin's mirror of the canonical copy)"
     }
   ],
   "index": {
@@ -221,15 +256,30 @@
       "file": "src/aisg/config/settings.py:329",
       "title": "No kill switch"
     },
+    "376f104087090eef": {
+      "rule": "AUD-202",
+      "file": "src/aisg/cli.py:37",
+      "title": "Inert or bypassed gate"
+    },
     "37a89e88c61c038a": {
       "rule": "AUD-107/inert",
       "file": "src/aisg/config/settings.py:294",
       "title": "No kill switch"
     },
+    "39818247cb67934e": {
+      "rule": "AUD-202",
+      "file": "src/aisg/devtools/hook.py:1618",
+      "title": "Inert or bypassed gate"
+    },
     "398588db744fc780": {
       "rule": "AUD-101/docs",
       "file": "src/aisg/skills/ai-safety-audit/references/controls.md:116",
       "title": "Host permission over-grant"
+    },
+    "3f7bdc1d6445753a": {
+      "rule": "AUD-202",
+      "file": "src/aisg/devtools/hook.py:1493",
+      "title": "Inert or bypassed gate"
     },
     "4a967929f06e5b9e": {
       "rule": "AUD-107",
@@ -281,6 +331,11 @@
       "file": "src/aisg/modules/input/pii_detector.py:130",
       "title": "Guard present but unmeasured"
     },
+    "bcab07f409ae60ef": {
+      "rule": "AUD-202",
+      "file": "src/aisg/devtools/hook.py:1622",
+      "title": "Inert or bypassed gate"
+    },
     "c264651cc03bd5e7": {
       "rule": "AUD-101/docs",
       "file": ".claude/skills/ai-safety-audit/references/controls.md:116",
@@ -300,6 +355,11 @@
       "rule": "AUD-801",
       "file": "src/aisg/__init__.py:39",
       "title": "Guard present but unmeasured"
+    },
+    "df0830d550f12465": {
+      "rule": "AUD-101/docs",
+      "file": "plugins/ai-safety-audit/skills/ai-safety-audit/references/controls.md:116",
+      "title": "Host permission over-grant"
     },
     "f9320ce6578817f6": {
       "rule": "AUD-801",

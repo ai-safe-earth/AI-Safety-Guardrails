@@ -1,0 +1,13 @@
+{
+  "name": "ai-safety-audit",
+  "displayName": "AI Safety Audit",
+  "version": "0.1.0",
+  "description": "Audit an AI/agent codebase for safety gaps ordered by blast radius (aisg audit), plan and apply controls one approval at a time, and gate edits with hooks. Never a compliance verdict.",
+  "author": {
+    "name": "AI SAFE EARTH",
+    "url": "https://github.com/ai-safe-earth"
+  },
+  "homepage": "https://github.com/ai-safe-earth/AI-Safety-Guardrails",
+  "repository": "https://github.com/ai-safe-earth/AI-Safety-Guardrails",
+  "keywords": ["ai-safety", "audit", "guardrails", "eu-ai-act", "nist-ai-rmf", "hooks"]
+}

@@ -73,6 +73,25 @@ console script are `aisg`.
   decision document's over-budget rows; AUD-801/cost marks a judge-backed guard whose
   measure report never exercised the judge; `aisg audit --format html --decision FILE`
   adds the Trade table to the page.
+- `aisg audit --only PATH`: the file-scoped run (walk as usual, filter the records, run
+  the file-local rules) whose fingerprints equal the full run's; an unseen path is an
+  UNKNOWN row; `target.only` and a "partial run" line say the document is partial.
+- `aisg hook run|install|uninstall|list` (`devtools/hook.py`, host table in
+  `devtools/hosts.py`): one adapter for Claude Code, Cursor and Gemini CLI command
+  hooks. Secret-shaped literals and `curl | sh`-style commands are denied, protected
+  paths and permission-bypass flags ask, edited files are re-audited against the
+  baseline, the posture is injected at session start, and a Stop with a new finding
+  at or above `fail-on` blocks once. Fails open on its own errors and records them
+  in `.aisg-audit/hook-state.json`; never a model call, an install or a socket;
+  `install` prints the diff and writes only with `--yes`. `[tool.aisg-hook]`.
+- The Claude Code plugin (`.claude-plugin/marketplace.json`, `plugins/ai-safety-audit/`
+  with `hooks/hooks.json` and the skill as its third mirror): `claude plugin
+  marketplace add ai-safe-earth/AI-Safety-Guardrails`, `claude plugin install
+  ai-safety-audit@ai-safe-earth`.
+- `action.yml` (composite GitHub Action: JSON, SARIF and markdown documents, job
+  summary, Code Scanning upload, optional sticky PR comment, exit code = the audit's),
+  `.pre-commit-hooks.yaml` (`aisg-audit`, `aisg-lint`, `aisg-misalign`), the
+  `aisg-audit` GitLab job, and the skill's `scripts/hook.sh` / `hook.ps1` bootstrap.
 
 ### Changed
 

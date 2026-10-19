@@ -24,6 +24,9 @@ stages:
 variables:
   SCAN_PATH: "src"                    # space-separated; e.g. "src examples"
   FAIL_ON_WARNINGS: "false"
+  AUDIT_PATH: "."                     # what `aisg audit` walks
+  AUDIT_FAIL_ON: "high"               # critical | high | medium | low | info | never
+  AUDIT_BASELINE: ""                  # e.g. "audit-baseline.json"; empty = every finding counts
   AISG_VERSION: "0.1.0"               # a release tag of the project below; pinned
   # Installed from the project's own repository at that tag, because the
   # distribution (`aisguard`) is not on PyPI yet. Do not shorten this to a
@@ -122,3 +125,40 @@ eu-ai-act-weekly-audit:
     expire_in: 365 days
     when: always
   allow_failure: true   # Weekly audit is informational; does not block
+
+# ── AI-surface audit (merge requests and the main branches) ──────────────
+# `aisg audit` walks the repository, reports what talks to a model, what it can
+# reach and what evidence exists for the guards around it, and exits 1 on a
+# finding at or above AUDIT_FAIL_ON (only NEW findings when AUDIT_BASELINE is
+# set). Findings describe evidence; no document states a compliance verdict.
+# The SARIF lands in the Security Dashboard; the verdict step reads the JSON.
+
+aisg-audit:
+  extends: .eu-ai-act-base
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
+  script:
+    - aisg audit $AUDIT_PATH --no-external --fail-on $AUDIT_FAIL_ON ${AUDIT_BASELINE:+--baseline $AUDIT_BASELINE} --format json --output aisg-audit-report.json || [ $? -eq 1 ]
+    - aisg audit $AUDIT_PATH --no-external --fail-on $AUDIT_FAIL_ON ${AUDIT_BASELINE:+--baseline $AUDIT_BASELINE} --format sarif --output aisg-audit-results.sarif || [ $? -eq 1 ]
+    - |
+      python - <<'EOF'
+      import json, sys
+      report = json.load(open("aisg-audit-report.json", encoding="utf-8"))
+      if report.get("schema") != "aisg/1" or report.get("kind") != "audit":
+          sys.exit("not an aisg audit report")
+      s = report["summary"]
+      print(f"findings={s['findings']} unknown_items={s['unknown_items']} "
+            f"new={s.get('baseline_new')} exit_code={s['exit_code']}")
+      sys.exit(int(s["exit_code"]))
+      EOF
+  artifacts:
+    name: "aisg-audit-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - aisg-audit-report.json
+      - aisg-audit-results.sarif
+    reports:
+      sast: aisg-audit-results.sarif
+    expire_in: 90 days
+    when: always
+  allow_failure: false

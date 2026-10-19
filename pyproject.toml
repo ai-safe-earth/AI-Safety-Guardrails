@@ -255,3 +255,16 @@ fail-on = "high"
 # a figure typed in with a date beats a figure nobody can recheck.
 [tool.aisg-decide]
 # prices = "config/prices.yaml"
+
+# `aisg hook` (agent-host hooks). Every key is optional; these are the defaults.
+# fail-on falls back to [tool.aisg-audit].fail-on. `prompt_injection` is opt-in.
+[tool.aisg-hook]
+# fail-on = "high"
+# policies = ["protected_path", "secret_literal", "unsafe_in_hook_config", "shell_unsafe",
+#             "shell_overgrant", "shell_protected_write", "recheck", "posture", "stop_gate"]
+# max-audit-seconds = 10          # PostToolUse re-audits the whole tree only below this
+# stop-max-audit-seconds = 90     # the Stop gate is skipped (context only) above this
+# debounce-seconds = 2
+# baseline = ".aisg-audit/audit-baseline.json"   # else audit-baseline.json at the root
+# report = ".aisg-audit/audit-report.json"
+# ask-fallback = "allow"          # hosts without an ask primitive (Gemini): allow | deny

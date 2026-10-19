@@ -1360,9 +1360,10 @@ def test_pyproject_boolean_fail_on_unknown(py_agent: Path, neutral_cwd: Path) ->
 
 def test_not_configurable_names_every_per_invocation_action() -> None:
     """
-    The five dests a pyproject may never set. `write-baseline` would make every run
+    The dests a pyproject may never set. `write-baseline` would make every run
     rewrite a file and exit 0; `inventory-only` and `list-rules` would make every run
-    skip the rules, and a `true` boolean there has no flag to switch it back off.
+    skip the rules, and a `true` boolean there has no flag to switch it back off;
+    `only` would make every audit partial.
     """
     assert NOT_CONFIGURABLE == {
         "amend_baseline",
@@ -1370,6 +1371,7 @@ def test_not_configurable_names_every_per_invocation_action() -> None:
         "write_baseline",
         "inventory_only",
         "list_rules",
+        "only",
     }
     actions = {action.dest: action for action in build_parser()._actions}
     assert NOT_CONFIGURABLE <= set(actions)

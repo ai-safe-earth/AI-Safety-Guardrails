@@ -1,0 +1,15 @@
+{
+  "session_id": "sess-claude-1",
+  "cwd": "{root}",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "MultiEdit",
+  "tool_input": {
+    "file_path": "{root}/.env.example",
+    "edits": [
+      {
+        "old_string": "A=1",
+        "new_string": "ANTHROPIC_API_KEY=sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789ABCD"
+      }
+    ]
+  }
+}

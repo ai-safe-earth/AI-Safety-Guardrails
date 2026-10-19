@@ -1,0 +1,14 @@
+{
+  "conversation_id": "conv-1",
+  "hook_event_name": "afterFileEdit",
+  "file_path": "{root}/.mcp.json",
+  "edits": [
+    {
+      "old_string": "x",
+      "new_string": "y"
+    }
+  ],
+  "workspace_roots": [
+    "{root}"
+  ]
+}

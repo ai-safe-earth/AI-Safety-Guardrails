@@ -1,0 +1,6 @@
+{
+  "session_id": "sess-claude-1",
+  "cwd": "{root}",
+  "hook_event_name": "Stop",
+  "stop_hook_active": true
+}

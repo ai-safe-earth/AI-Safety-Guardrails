@@ -11,7 +11,7 @@ Single entry point for the AI Safety Guardrails developer tools.
     aisg skill install --host all
 
 Every subcommand is a thin wrapper around a tool in `aisg.devtools`: `lint`,
-`misalign`, `init`, `probe`, `measure`, `audit` and `skill`. Each is imported
+`misalign`, `init`, `probe`, `measure`, `audit`, `skill`, `decide` and `hook`. Each is imported
 only when invoked, so `aisg lint` never pays for the audit engine. Everything
 after the subcommand is handed to the underlying tool untouched, so their
 flags, defaults and exit codes are unchanged:
@@ -44,6 +44,7 @@ Commands:
   audit       Static AI-safety audit of a repository: findings describe evidence, never verdicts
   skill       Install the packaged ai-safety-audit agent skill into host skill directories
   decide      What each proposed control costs (latency, tokens, usd, human load) against the declared budgets
+  hook        Agent-host hooks: gate protected paths, secret literals and unsafe shell; re-audit edits; Stop gate
 
 Run `aisg <command> --help` for a command's own options.
 
@@ -61,6 +62,8 @@ Examples:
   aisg skill install --host all
   aisg skill diff --host all
   aisg decide --requests-per-day 20000 --p99-budget-ms 250 --monthly-budget-usd 300
+  aisg hook install --host claude --yes
+  aisg hook list
 """
 
 
@@ -112,6 +115,12 @@ def _decide(argv: Sequence[str]) -> int:
     return decide_main(list(argv))
 
 
+def _hook(argv: Sequence[str]) -> int:
+    from aisg.devtools.hook import main as hook_main
+
+    return hook_main(list(argv))
+
+
 COMMANDS: dict[str, Callable[[Sequence[str]], int]] = {
     "lint": _lint,
     "misalign": _misalign,
@@ -121,6 +130,7 @@ COMMANDS: dict[str, Callable[[Sequence[str]], int]] = {
     "audit": _audit,
     "skill": _skill,
     "decide": _decide,
+    "hook": _hook,
 }
 
 

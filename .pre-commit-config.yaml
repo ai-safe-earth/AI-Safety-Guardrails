@@ -47,6 +47,25 @@ repos:
         always_run: false
         verbose: true
 
+      # The AI-surface audit against the committed baseline, at push time (a full
+      # run takes seconds here, ~30 s on a 300-file repo; too slow for every commit).
+      # Exit 1 means a NEW finding at high or above; accept it with a reason via
+      # `aisg audit --amend-baseline audit-baseline.json --accept <fp>="<reason>"`.
+      - id: aisg-audit
+        name: aisg audit (AI-surface audit against the baseline)
+        language: python
+        entry: aisg audit
+        args:
+          - "."
+          - --no-external
+          - --fail-on
+          - high
+          - --baseline
+          - audit-baseline.json
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
   # -------------------------------------------------------
   # Recommended companion hooks
   # -------------------------------------------------------

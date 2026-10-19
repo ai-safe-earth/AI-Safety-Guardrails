@@ -57,6 +57,7 @@ __all__ = [
     "EXIT_INTERRUPTED",
     "EXIT_OK",
     "NOT_CONFIGURABLE",
+    "FILE_LOCAL_RULES",
     "AuditOptions",
     "build_parser",
     "main",
@@ -71,7 +72,24 @@ CONFIG_SECTION = "aisg-audit"
 # (`write_baseline`), run no rule (`inventory_only`) or print the catalogue and exit 0
 # (`list_rules`) -- and the two booleans, once `true` there, have no flag to undo them.
 NOT_CONFIGURABLE: frozenset[str] = frozenset(
-    {"amend_baseline", "accept", "write_baseline", "inventory_only", "list_rules"}
+    {"amend_baseline", "accept", "write_baseline", "inventory_only", "list_rules", "only"}
+)
+
+# The rules a file-scoped run (`--only PATH`) evaluates when `--rules` is not given: the
+# presence rules whose fingerprint is `sha1(rule | this file | this snippet)` and whose
+# evidence is one file's own hits or config, so a one-file run reports exactly what the
+# full run reports for that file. Left out on purpose: AUD-601 and AUD-504 (grouped per
+# unit and anchored on the first file by path, which a one-file run gets wrong), AUD-503
+# (`requires_ai_surface`, needs the unit inventory) and every absence rule (each would
+# fire on a one-file inventory).
+FILE_LOCAL_RULES: tuple[str, ...] = (
+    "AUD-101",
+    "AUD-108",
+    "AUD-501",
+    "AUD-502",
+    "AUD-505",
+    "AUD-602",
+    "AUD-605",
 )
 
 # `EXIT_OK` says "nothing counted", on purpose: a zero exit is not a bill of health.
@@ -200,6 +218,7 @@ class AuditOptions:
     redact: bool = True
     pip_audit_env: str | None = None
     decision: str | None = None
+    only: tuple[str, ...] = ()
 
     @classmethod
     def from_namespace(cls, ns: argparse.Namespace | AuditOptions) -> AuditOptions:
@@ -257,6 +276,7 @@ class AuditOptions:
             redact=bool(get("redact", True)),
             pip_audit_env=_opt_str(get("pip_audit_env")),
             decision=_opt_str(get("decision")),
+            only=_csv(get("only")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -454,6 +474,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="walker excludes (csv of globs; repeatable)",
     )
     parser.add_argument(
+        "--only",
+        action=_ExtendCsv,
+        default=None,
+        metavar="PATHS",
+        help=(
+            "file-scoped run: walk the tree as usual but audit only these files (csv of "
+            "paths relative to PATH; repeatable), with the file-local rules unless --rules "
+            "is given; an unseen path is an UNKNOWN row (not settable from pyproject)"
+        ),
+    )
+    parser.add_argument(
         "--timeout",
         type=int,
         default=DEFAULT_TIMEOUT,
@@ -565,7 +596,11 @@ def _build_context(options: AuditOptions, root: Path) -> AuditContext:
     oversize_skipped: list[str] = []
     files, units, walk_unknown = walk.walk(
         root,
-        walk.WalkOptions(exclude=tuple(options.exclude), include_ignored=options.include_ignored),
+        walk.WalkOptions(
+            exclude=tuple(options.exclude),
+            include_ignored=options.include_ignored,
+            only=tuple(options.only),
+        ),
         own_output_skipped=own_output_skipped,
         oversize_skipped=oversize_skipped,
     )
@@ -825,7 +860,10 @@ def run_audit(args: argparse.Namespace | AuditOptions) -> int:
             _note(f"inventory written to {options.output}")
         return EXIT_OK
 
-    rules, notes = select_rules(options.rules, options.experimental)
+    rule_ids = options.rules
+    if rule_ids is None and options.only:
+        rule_ids = FILE_LOCAL_RULES
+    rules, notes = select_rules(rule_ids, options.experimental)
     for note in notes:
         _note(note)
     if options.rules is not None and not rules:

@@ -180,6 +180,7 @@ _T_INV_OWN_OUTPUT_NONE = "none"
 _T_INV_OVERSIZE = "oversize files skipped: {n}"
 _T_INV_OVERSIZE_UNRECORDED = "not recorded"
 _T_BASELINE = "baseline: {new} new, {unchanged} unchanged, {gone} no longer reported ({file})"
+_T_ONLY = "partial run: {n} file(s) via --only; rules restricted to the file-local set"
 _T_SARIF_MESSAGE = "[{label}] {title}"
 _T_EXIT = "exit code: {code}"
 
@@ -247,6 +248,7 @@ _TEMPLATES: tuple[str, ...] = (
     _T_INV_OVERSIZE,
     _T_INV_OVERSIZE_UNRECORDED,
     _T_BASELINE,
+    _T_ONLY,
     _T_SARIF_MESSAGE,
     _T_EXIT,
 )
@@ -414,11 +416,15 @@ def _target(ctx: AuditContext) -> dict[str, Any]:
     # The walker excludes as resolved (CLI flag or `[tool.aisg-audit]`): a reader of the
     # report sees what was not walked without re-deriving it from the pyproject.
     exclude = getattr(ctx.options, "exclude", None) or ()
+    # `only` names the files a partial run was restricted to; a full run carries an
+    # empty list, so a reader can tell the two documents apart.
+    only = getattr(ctx.options, "only", None) or ()
     return {
         "path": _posix(source.get("path") or ctx.root),
         "git_sha": source.get("git_sha"),
         "dirty": source.get("dirty"),
         "exclude": [str(item) for item in exclude],
+        "only": [_posix(item) for item in only],
     }
 
 
@@ -781,6 +787,15 @@ def _unrecorded(count: int | None) -> str:
     return _T_INV_OVERSIZE_UNRECORDED if count is None else str(count)
 
 
+def _only_line(report: Report) -> str | None:
+    """The partial-run line when the document was produced with `--only`; else None."""
+    target = report.target if isinstance(report.target, dict) else {}
+    only = target.get("only") or []
+    if not isinstance(only, list) or not only:
+        return None
+    return _T_ONLY.format(n=len(only))
+
+
 def _baseline_line(report: Report) -> str | None:
     block = report.baseline
     if not block:
@@ -1003,6 +1018,9 @@ def to_markdown(report: Report) -> str:
     baseline_line = _baseline_line(report)
     if baseline_line:
         lines += ["", baseline_line]
+    only_line = _only_line(report)
+    if only_line:
+        lines += ["", only_line]
     lines += [
         "",
         _T_SEVERITY_LINE.format(items=_severity_items(summary)),
@@ -1139,6 +1157,9 @@ def to_terminal(report: Report, quiet: bool = False) -> str:
     baseline_line = _baseline_line(report)
     if baseline_line:
         _emit(out, baseline_line)
+    only_line = _only_line(report)
+    if only_line:
+        _emit(out, only_line)
     measured, asserted_text, unknown_count = _bucket_counts(summary)
     _emit(out, _T_SEVERITY_LINE.format(items=_severity_items(summary)))
     buckets = (

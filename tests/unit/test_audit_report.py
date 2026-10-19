@@ -497,6 +497,7 @@ def test_build_report_pins_trifecta_first_and_fills_blocks():
         "git_sha": "abc123",
         "dirty": False,
         "exclude": [],
+        "only": [],
     }
     assert report.measured == [
         {
