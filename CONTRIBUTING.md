@@ -7,14 +7,14 @@ written for coding agents, and everything in it holds for people too), and
 ## Setup
 
 ```bash
-git clone https://github.com/ai-safe-earth/AI-Safety-Guardrails.git
-cd AI-Safety-Guardrails
+git clone https://github.com/ai-safe-earth/AnyAISafe.git
+cd AnyAISafe
 python -m venv .venv && . .venv/bin/activate      # .venv\Scripts\activate on Windows
 pip install -e ".[devtools,dev]"
 pytest -q                                          # no API keys, no network
 ```
 
-The distribution is `aisguard`; the import name and the console script are `aisg`. On
+The distribution is `anyaisafe`; the import name and the console script are `aisg`. On
 Windows set `PYTHONIOENCODING=utf-8` before running the examples or the CLIs.
 
 ## The gate

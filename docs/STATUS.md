@@ -26,6 +26,13 @@ reason written there.
 
 ## Landed 2026-10-19
 
+- **rename, `chore(name)`**: the project is AnyAISafe. Distribution `anyaisafe`
+  (was `aisguard`, never published), repository `github.com/ai-safe-earth/AnyAISafe`
+  (GitHub redirects the old name), OpenTelemetry service-name default `anyaisafe`,
+  prose everywhere. Unchanged on purpose: the import name and the `aisg` command,
+  `"schema": "aisg/1"`, `.aisg-audit/`, `[tool.aisg-*]`, the ignore markers,
+  `AISG_VERSION`, the skill name `ai-safety-audit`. The PyPI pending publisher
+  below must be registered as `anyaisafe` / `AnyAISafe`.
 - **wave 6, `feat(fleet)`**: design `docs/plan/02` sections 6 and 7.
   - `devtools/_git.py` (`fetch_pinned`, `clone_shallow`, one-line `GitError`; the
     bench's fetch moved into the package, two callers) and `devtools/fleet.py`,
@@ -154,27 +161,27 @@ reason written there.
 ## What the user has to do for `v0.1.0`
 
 Nothing is uploaded without these steps; the plan prepared them and stops here.
-The 0.1.0 CHANGELOG section now includes waves 1-3, since the tag does not
+The 0.1.0 CHANGELOG section now includes waves 1-6 and the rename, since the tag does not
 exist yet and will point at a `main` that carries them.
 
 1. On pypi.org: Your projects -> Publishing -> Add a new pending publisher:
-   project `aisguard`, owner `ai-safe-earth`, repository `AI-Safety-Guardrails`,
-   workflow `release.yml`, environment `pypi`. Check `aisguard` is still
-   unclaimed first (`pip index versions aisguard` should find nothing; it was
-   free on 2026-09-05).
+   project `anyaisafe`, owner `ai-safe-earth`, repository `AnyAISafe`,
+   workflow `release.yml`, environment `pypi`. Check `anyaisafe` is still
+   unclaimed first (`pip index versions anyaisafe` should find nothing; it was
+   free on 2026-10-19, when the name was chosen).
 2. On GitHub: Settings -> Environments -> `pypi` -> required reviewers: you.
    This is the approval step; the publish job waits on it.
 3. `git tag v0.1.0 && git push origin v0.1.0`, approve the `pypi` run, watch
-   the `smoke` job print `smoke: aisguard==0.1.0 audits as expected`.
+   the `smoke` job print `smoke: anyaisafe==0.1.0 audits as expected`.
 
 Until then the skill's bootstrap resolves only against a local checkout or
-`pip install "aisguard[devtools] @ git+https://github.com/ai-safe-earth/AI-Safety-Guardrails"`,
+`pip install "anyaisafe[devtools] @ git+https://github.com/ai-safe-earth/AnyAISafe"`,
 and `.gitlab-ci-euaiact.yml` keeps its git-tag install (flipped to PyPI in wave 6).
 
 ## Head
 
 `main` at the wave-6 commit (after `ab19e68`). Pushed to `origin`
-(`github.com/ai-safe-earth/AI-Safety-Guardrails`). No tags yet.
+(`github.com/ai-safe-earth/AnyAISafe`). No tags yet.
 
 ## Green
 
@@ -225,7 +232,7 @@ criteria) and `bump_version.py --check` (9 sites) in sync.
 - `measured_precision` is `None` on every rule; `bench/` has 0 labelled rows;
   wave 6 adds `bench --tool audit`.
 - `aisg decide` has no bootstrap script of its own; the skill runs it as `aisg
-  decide` (or through `uvx --from 'aisguard==<pin>'`). A `decide.sh` twin is a
+  decide` (or through `uvx --from 'anyaisafe==<pin>'`). A `decide.sh` twin is a
   small follow-up if a host turns out to need it.
 - `aisg fleet` has not been run over the 20-repo bench corpus from this machine
   (it clones 20 repositories); the tests cover two local fixtures, `--jobs 2`,

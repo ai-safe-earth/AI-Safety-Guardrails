@@ -178,7 +178,7 @@ def _retitle_changelog(version: str, root: Path, today: _dt.date) -> list[str]:
         raise SystemExit(f"{CHANGELOG}: no `## [Unreleased]` section to release from")
     head, rest = text.split(marker, 1)
     new = f"{head}{marker}\n## [{version}] - {today.isoformat()}\n\n{rest.lstrip()}"
-    repo_url = "https://github.com/ai-safe-earth/AI-Safety-Guardrails"
+    repo_url = "https://github.com/ai-safe-earth/AnyAISafe"
     new = re.sub(
         r"^\[Unreleased\]:\s+\S+$",
         f"[Unreleased]: {repo_url}/compare/v{version}...HEAD\n"

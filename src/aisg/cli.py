@@ -1,7 +1,7 @@
 """
 src/aisg/cli.py
 ---------------
-Single entry point for the AI Safety Guardrails developer tools.
+Single entry point for the AnyAISafe developer tools.
 
     aisg --version
     aisg lint src/
@@ -11,7 +11,8 @@ Single entry point for the AI Safety Guardrails developer tools.
     aisg skill install --host all
 
 Every subcommand is a thin wrapper around a tool in `aisg.devtools`: `lint`,
-`misalign`, `init`, `probe`, `measure`, `audit`, `skill`, `decide` and `hook`. Each is imported
+`misalign`, `init`, `probe`, `measure`, `audit`, `skill`, `decide`, `hook`, `attest` and
+`fleet`. Each is imported
 only when invoked, so `aisg lint` never pays for the audit engine. Everything
 after the subcommand is handed to the underlying tool untouched, so their
 flags, defaults and exit codes are unchanged:
@@ -156,7 +157,7 @@ COMMANDS: dict[str, Callable[[Sequence[str]], int]] = {
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="aisg",
-        description="AI Safety Guardrails developer tools.",
+        description="AnyAISafe developer tools.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=_EPILOG,
     )

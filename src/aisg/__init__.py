@@ -1,20 +1,20 @@
 """
 __init__.py
 -----------
-AI Safety Guardrails — public API surface.
+AnyAISafe — public API surface.
 
 Runtime guardrails (use in your application):
-    from guardrails import GuardrailPipeline
-    from guardrails import PIIDetector, PromptInjectionGuard
-    from guardrails import ToxicityFilter
-    from guardrails import ToolPolicyGuard, ToolPolicy
-    from guardrails import EUAIActCompliance, RiskTier
-    from guardrails import AuditLogger
+    from aisg import GuardrailPipeline
+    from aisg import PIIDetector, PromptInjectionGuard
+    from aisg import ToxicityFilter
+    from aisg import ToolPolicyGuard, ToolPolicy
+    from aisg import EUAIActCompliance, RiskTier
+    from aisg import AuditLogger
 
 Static code analyzer (use in CI / pre-commit):
-    from guardrails import EUAIActCodeAnalyzer, ScanReport
-    from guardrails import TerminalReporter, JSONReporter, SARIFReporter
-    # or via CLI: euaiact-lint src/
+    from aisg import EUAIActCodeAnalyzer, ScanReport
+    from aisg import TerminalReporter, JSONReporter, SARIFReporter
+    # or via CLI: aisg lint src/
 """
 
 import importlib

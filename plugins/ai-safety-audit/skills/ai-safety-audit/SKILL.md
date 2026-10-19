@@ -49,14 +49,14 @@ repository being audited. Resolve that folder to an absolute path first (on Clau
 `<repo>/.claude/skills/ai-safety-audit/scripts/`, on agentskills hosts
 `<repo>/.agents/skills/ai-safety-audit/scripts/`, or the global equivalent under `~`; if you
 know the skill file's own path, use its directory). `<skill>` below stands for that absolute
-folder. Each script uses `aisg` if installed, otherwise `uvx --from 'aisguard==<pinned
+folder. Each script uses `aisg` if installed, otherwise `uvx --from 'anyaisafe==<pinned
 version>' aisg` (uv provisions Python itself, so this works on a machine with no Python),
 otherwise `pipx run`. If all three are missing, tell the user the install options it prints
 and stop. Every `sh <skill>/scripts/audit.sh ...` line below has a PowerShell twin:
 `powershell -ExecutionPolicy Bypass -File <skill>/scripts/audit.ps1 ...` with the same
 arguments; the same holds for `verify` and `attest`. `aisg decide` has no bootstrap of its
 own: run it as `aisg decide` when `aisg` is on PATH, else as `uvx --from
-'aisguard==<pinned version>' aisg decide` with the version the stderr line printed.
+'anyaisafe==<pinned version>' aisg decide` with the version the stderr line printed.
 
 Every artefact goes under `.aisg-audit/` in the repository root, and **every command in this
 flow runs from the repository root**: `[tool.aisg-audit]` in `pyproject.toml` (`exclude`,
@@ -362,7 +362,7 @@ Not a phase; offers, each needing the user's yes and each outside this skill's o
   edited file, block a Stop that introduced a new finding at or above `fail-on`). The host's
   hook file is a protected path (rule 4): the user runs the command, reads the diff it
   prints and answers yes themselves. `references/hosts.md` has the table.
-- The GitHub Action (`ai-safe-earth/AI-Safety-Guardrails` `action.yml`): the audit on every
+- The GitHub Action (`ai-safe-earth/AnyAISafe` `action.yml`): the audit on every
   push with the SARIF uploaded to Code Scanning, and `aisg attest --check --require-level N`
   as the gate the team chose. A workflow file is a rule-4 file; propose the YAML, do not
   write it.

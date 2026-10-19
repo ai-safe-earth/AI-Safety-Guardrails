@@ -102,7 +102,7 @@ async def run_test(label: str, message: str, context: dict | None = None):
 
 
 async def main():
-    print("AI Safety Guardrails — Quickstart Demo")
+    print("AnyAISafe — Quickstart Demo")
     print("=" * 60)
 
     # 1. Clean message — should pass

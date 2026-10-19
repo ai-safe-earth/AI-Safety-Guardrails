@@ -81,7 +81,7 @@ class TestReleaseWorkflow:
     def test_smoke_runs_the_published_package_through_uvx_with_exact_exit_codes(self) -> None:
         smoke = _load(RELEASE)["jobs"]["smoke"]
         text = _steps_text(smoke)
-        assert 'uvx --from "aisguard==${V}" aisg --version' in text
+        assert 'uvx --from "anyaisafe==${V}" aisg --version' in text
         assert "clean_py" in text and "py_agent" in text
         assert '[ "$rc" -eq 0 ]' in text and '[ "$rc" -eq 1 ]' in text
         assert "mktemp -d" in text  # never from this repo's root: [tool.aisg-audit] would leak
@@ -145,7 +145,7 @@ class TestCompositeAction:
 
     def test_install_pins_the_distribution_and_never_the_import_name(self) -> None:
         text = _steps_text(_load(ACTION)["runs"])
-        assert 'pip install --quiet "aisguard[devtools]==${AISG_VERSION}"' in text
+        assert 'pip install --quiet "anyaisafe[devtools]==${AISG_VERSION}"' in text
         assert not re.search(r"pip install[^\n]*\baisg(?:\[|==|\s|\")", text), (
             "aisg on PyPI is unrelated"
         )

@@ -1,7 +1,7 @@
 """
 core/exceptions.py
 ------------------
-Exception hierarchy for the AI Safety Guardrails library.
+Exception hierarchy for the AnyAISafe library.
 """
 
 

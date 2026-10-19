@@ -25,7 +25,7 @@ pipeline) plus developer tools (`aisg lint|misalign|init|probe|measure|audit|ski
 a five-phase agent skill (`ai-safety-audit`) that runs the deterministic `aisg audit`
 (46 rules, AUD-101..1003), renders a before document, applies controls one row per
 approval, renders an after document, and verifies. Nothing is published: no git tag,
-`aisguard` not on PyPI, so the skill's bootstrap cannot resolve outside this checkout.
+`anyaisafe` not on PyPI, so the skill's bootstrap cannot resolve outside this checkout.
 
 What the user asked for on 2026-10-18, in their words and mapped to what exists:
 
@@ -175,13 +175,13 @@ pre-commit, uvx smoke), and every later wave pays the audit's run time.
   `--changelog-section`) + `tests/unit/test_bump_version.py`.
 - `.github/workflows/release.yml`: gate (checks, pytest, self-audit, sync checks), build,
   publish (`pypa/gh-action-pypi-publish`, OIDC, `environment: pypi`, no password), GitHub
-  release with the changelog section, smoke (`uvx --from aisguard==X aisg --version`,
+  release with the changelog section, smoke (`uvx --from anyaisafe==X aisg --version`,
   `clean_py` exit 0, `py_agent` exit 1). `tests/unit/test_ci_surface.py` pins it.
 - README truth-up: absolute brand image URL (PyPI long description), install says
-  `aisguard`, extras table matches pyproject, devtools tree and test list current, skill
+  `anyaisafe`, extras table matches pyproject, devtools tree and test list current, skill
   phases current, test count current, PyPI note.
-- The user, once: PyPI pending publisher for `aisguard` (owner `ai-safe-earth`, repo
-  `AI-Safety-Guardrails`, workflow `release.yml`, environment `pypi`), GitHub environment
+- The user, once: PyPI pending publisher for `anyaisafe` (owner `ai-safe-earth`, repo
+  `AnyAISafe`, workflow `release.yml`, environment `pypi`), GitHub environment
   `pypi` with themselves as required reviewer. Then `git tag v0.1.0 && git push origin
   v0.1.0`, approve, watch smoke. **This step is theirs; the plan prepares it.**
 
@@ -243,7 +243,7 @@ Size: ~2,600 lines / ~160 tests.
   `plugins/ai-safety-audit/{.claude-plugin/plugin.json, hooks/hooks.json, README.md,
   skills/ai-safety-audit/**}`; the skill copy is mirror #3 of `scripts/sync_skill.py`,
   which also pins `plugin.json`'s version. Install: `claude plugin marketplace add
-  ai-safe-earth/AI-Safety-Guardrails` then `claude plugin install
+  ai-safe-earth/AnyAISafe` then `claude plugin install
   ai-safety-audit@ai-safe-earth`.
 - Cursor (`.cursor/hooks.json`: shell gate enforced, file checks advisory after the
   edit), Gemini (`settings.json` hooks; prints the two enable flags it will not flip),
@@ -418,7 +418,7 @@ corpus list with `--jobs 4` and confirm the aggregate renders and exits 0.
 - **Self-audit noise from the new vocabulary**: `persons_patterns.py`, `prices.yaml` and
   the hoisted judge prompts may surface findings in this repo; each goes in the baseline
   with a reason that does not quote the literal, or the rule is fixed.
-- **`aisguard` must still be free on PyPI** at publish time (free on 2026-09-05).
+- **`anyaisafe` must still be free on PyPI** at publish time (free on 2026-10-19, when the name was chosen; the 2026-09-05 check was for the earlier name `aisguard`).
 - **Windows**: committed hook commands use `sh` and `$CLAUDE_PROJECT_DIR` (Claude Code on
   Windows requires Git Bash); `--shell powershell` is the escape hatch.
 - **Severity of AUD-1104/vulnerable (critical) rests on two regex co-occurrences**; the

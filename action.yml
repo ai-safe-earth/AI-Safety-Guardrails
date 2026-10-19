@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # `aisg audit` as a composite GitHub Action, so any repository can add one step:
 #
-#   - uses: ai-safe-earth/AI-Safety-Guardrails@v0.1.0
+#   - uses: ai-safe-earth/AnyAISafe@v0.1.0
 #     with:
 #       baseline: audit-baseline.json      # optional; only new findings count
 #       fail-on: high
@@ -36,7 +36,7 @@ inputs:
     description: extra flags passed to every aisg audit call (e.g. --exclude vendor)
     default: ""
   version:
-    description: aisguard version to install from PyPI (pinned to this repository's release)
+    description: anyaisafe version to install from PyPI (pinned to this repository's release)
     default: "0.1.0"
   install-from:
     description: "pypi | action-path (install the checkout this action came from)"
@@ -81,7 +81,7 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
-    - name: Install aisguard
+    - name: Install anyaisafe
       shell: bash
       env:
         AISG_VERSION: ${{ inputs.version }}
@@ -92,7 +92,7 @@ runs:
         if [ "$INSTALL_FROM" = "action-path" ]; then
           pip install --quiet "${ACTION_PATH}[devtools]"
         else
-          pip install --quiet "aisguard[devtools]==${AISG_VERSION}"
+          pip install --quiet "anyaisafe[devtools]==${AISG_VERSION}"
         fi
         aisg --version
         python -c "import aisg; print(aisg.__file__)"

@@ -1,8 +1,9 @@
-<img src="https://raw.githubusercontent.com/ai-safe-earth/AI-Safety-Guardrails/main/.github/brand/mark.svg" alt="AI SAFE EARTH" width="72">
+<img src="https://raw.githubusercontent.com/ai-safe-earth/AnyAISafe/main/.github/brand/mark.svg" alt="AI SAFE EARTH" width="72">
 
-# AI Safety Guardrails
+# AnyAISafe
 
-> Modular, self-hostable AI safety guardrails for any LLM-powered application.
+> Audit, measure, price, apply and attest AI-safety controls for any software that
+> calls a model or runs an agent. Runtime guardrails are one part of it, not the whole.
 
 ![Pillar](https://img.shields.io/badge/BUILD-EARLY_STAGE-2E7D74?style=flat-square&labelColor=131A21)
 [![Python](https://img.shields.io/badge/PYTHON-3.10+-1F5D7A?style=flat-square&labelColor=131A21)](https://www.python.org/downloads/)
@@ -24,7 +25,11 @@
 
 ## Overview
 
-This library provides a layered, async-first guardrail system that slots into any LLM pipeline. Every check runs at the right moment:
+AnyAISafe has two parts.
+
+The developer tools are the `aisg` command and the `ai-safety-audit` agent skill. They audit a repository that calls a model or runs an agent, and list its AI-safety gaps in order of blast radius. They measure what each runtime guard catches, breaks and costs, and price each proposed control in latency, tokens and dollars against the budgets you declare. The skill applies the plan one change at a time, each with a person's approval. `aisg attest` checks the documents the other commands wrote against a level's criteria, and a named owner signs the result. The same audit runs from coding-agent hooks, in CI and over a fleet of repositories. See [Audit](#audit) and [System card & live probing](#system-card--live-probing).
+
+The runtime library is the other part: a layered, async-first set of guards that slots into any LLM pipeline. Every check runs at the right moment:
 
 ```
 User Input
@@ -51,7 +56,7 @@ LLM Response
 Safe Response to User
 ```
 
-**What's implemented today:**
+**What the runtime library implements today:**
 
 | Layer | Module | What it does |
 |---|---|---|
@@ -80,7 +85,7 @@ The package lives under `src/aisg/`, so nothing is importable as a bare
 top-level name — everything is `aisg.*`.
 
 ```
-ai-safety-guardrails/
+AnyAISafe/
 │
 ├── src/aisg/
 │   ├── __init__.py              # Public API surface
@@ -193,46 +198,46 @@ text = load_preset("eu_high_risk.yaml")
 
 **Minimum (runtime guards + YAML presets; `pyyaml` and `aiohttp` come with it):**
 ```bash
-pip install aisguard
+pip install anyaisafe
 ```
 
-**With the developer tools (`aisg lint|misalign|init|probe|measure|audit|skill`):**
+**With the developer tools (`aisg lint|misalign|init|probe|measure|audit|skill|decide|hook|attest|fleet`):**
 ```bash
-pip install "aisguard[devtools]"
+pip install "anyaisafe[devtools]"
 ```
 
 **Install optional extras as needed:**
 ```bash
 # Settings and judges
-pip install "aisguard[settings]"          # .env file support (pydantic-settings)
-pip install "aisguard[anthropic]"         # Claude judge (anthropic SDK)
-pip install "aisguard[llamaguard-local]"  # LlamaGuard through transformers + torch (~2 GB)
+pip install "anyaisafe[settings]"          # .env file support (pydantic-settings)
+pip install "anyaisafe[anthropic]"         # Claude judge (anthropic SDK)
+pip install "anyaisafe[llamaguard-local]"  # LlamaGuard through transformers + torch (~2 GB)
 
 # Integrations
-pip install "aisguard[fastapi]"           # FastAPI middleware
-pip install "aisguard[langchain]"         # LangChain callback
-pip install "aisguard[nemo]"              # NVIDIA NeMo Guardrails
+pip install "anyaisafe[fastapi]"           # FastAPI middleware
+pip install "anyaisafe[langchain]"         # LangChain callback
+pip install "anyaisafe[nemo]"              # NVIDIA NeMo Guardrails
 
 # Observability
-pip install "aisguard[otel]"              # OpenTelemetry
-pip install "aisguard[metrics]"           # Prometheus
+pip install "anyaisafe[otel]"              # OpenTelemetry
+pip install "anyaisafe[metrics]"           # Prometheus
 
 # Pre-commit companions (pre-commit, detect-secrets)
-pip install "aisguard[precommit]"
+pip install "anyaisafe[precommit]"
 
 # Everything except the local LlamaGuard weights
-pip install "aisguard[all]"
+pip install "anyaisafe[all]"
 ```
 
-> **Name:** the distribution is `aisguard`; the import and the CLI are `aisg`
-> (`pip install aisguard`, then `from aisg import GuardrailPipeline` and
+> **Name:** the distribution is `anyaisafe`; the import and the CLI are `aisg`
+> (`pip install anyaisafe`, then `from aisg import GuardrailPipeline` and
 > `aisg audit .`). `aisg` on PyPI is an unrelated project — do not install it
 > expecting this one.
 
 > **Releases** are published to PyPI from `v*` tags by `.github/workflows/release.yml`
 > (trusted publishing; a maintainer approves each release). Until the first tag is
 > on PyPI, install from the repository instead:
-> `pip install "aisguard[devtools] @ git+https://github.com/ai-safe-earth/AI-Safety-Guardrails"`.
+> `pip install "anyaisafe[devtools] @ git+https://github.com/ai-safe-earth/AnyAISafe"`.
 
 > **Note:** LlamaGuard via Groq, Together, Ollama or OpenAI needs nothing beyond the core
 > `aiohttp` dependency (the `llamaguard` extra is empty and exists for discoverability).
@@ -773,7 +778,7 @@ repository points `repo:` at it and pins a release tag:
 
 ```yaml
 repos:
-  - repo: https://github.com/ai-safe-earth/AI-Safety-Guardrails
+  - repo: https://github.com/ai-safe-earth/AnyAISafe
     rev: v0.1.0
     hooks:
       - id: aisg-audit          # pre-push: the AI-surface audit against a baseline
@@ -1211,7 +1216,7 @@ hooks.
 The same skill and the same hooks, with no settings file edited:
 
 ```bash
-claude plugin marketplace add ai-safe-earth/AI-Safety-Guardrails
+claude plugin marketplace add ai-safe-earth/AnyAISafe
 claude plugin install ai-safety-audit@ai-safe-earth
 ```
 
@@ -1225,7 +1230,7 @@ hook command runs through the pinned bootstrap inside the mirrored skill.
 One step audits any repository and fails on a new finding at or above `fail-on`:
 
 ```yaml
-- uses: ai-safe-earth/AI-Safety-Guardrails@v0.1.0
+- uses: ai-safe-earth/AnyAISafe@v0.1.0
   with:
     baseline: audit-baseline.json     # optional; only new findings count
     fail-on: high                     # the step's exit code is the audit's
@@ -1258,7 +1263,7 @@ Each pipeline run writes a structured JSON record with stage, latency, findings,
 ### OpenTelemetry traces + metrics
 
 ```bash
-pip install "aisguard[otel]"
+pip install "anyaisafe[otel]"
 # OTLP gRPC backend: pip install opentelemetry-exporter-otlp-proto-grpc
 # OTLP HTTP backend: pip install opentelemetry-exporter-otlp-proto-http
 ```

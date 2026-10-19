@@ -29,16 +29,16 @@ variables:
   AUDIT_BASELINE: ""                  # e.g. "audit-baseline.json"; empty = every finding counts
   AISG_VERSION: "0.1.0"               # a release tag of the project below; pinned
   # Installed from the project's own repository at that tag, because the
-  # distribution (`aisguard`) is not on PyPI yet. Do not shorten this to a
+  # distribution (`anyaisafe`) is not on PyPI yet. Do not shorten this to a
   # PyPI spec by the importable name: `aisg` on PyPI is an unrelated project.
-  AISG_SOURCE: "git+https://github.com/ai-safe-earth/AI-Safety-Guardrails.git"
+  AISG_SOURCE: "git+https://github.com/ai-safe-earth/AnyAISafe.git"
 
 .eu-ai-act-base:
   stage: compliance
   image: python:3.11-slim
   before_script:
     - apt-get update -qq && apt-get install -y -qq git >/dev/null
-    - pip install --quiet "aisguard[devtools] @ ${AISG_SOURCE}@v${AISG_VERSION}"
+    - pip install --quiet "anyaisafe[devtools] @ ${AISG_SOURCE}@v${AISG_VERSION}"
 
 # ── Full scan (all pushes to main/develop) ───────────────────────────────
 

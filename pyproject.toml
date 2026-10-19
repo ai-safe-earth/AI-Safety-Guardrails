@@ -13,17 +13,18 @@ euaiact-lint = "aisg.devtools.euaiact_lint:main"
 misalignment-check = "aisg.devtools.misalignment_check:main"
 
 [project]
-# Distribution name. The importable name stays `aisg` (see CLAUDE.md "Layout"),
-# but `aisg` is taken on PyPI by an unrelated AI-gateway SDK, so the wheel
-# publishes as `aisguard`: pip install "aisguard[devtools]", import aisg.
-name = "aisguard"
+# Distribution name: the project is AnyAISafe. The importable name and the console
+# script stay `aisg` (see CLAUDE.md "Layout"): `aisg` is taken on PyPI by an
+# unrelated AI-gateway SDK, and the short name is what people type.
+# pip install "anyaisafe[devtools]", then import aisg.
+name = "anyaisafe"
 version = "0.1.0"
-description = "Production-ready, modular AI safety guardrails for any LLM pipeline"
+description = "AnyAISafe: audit, measure, price, apply and attest AI-safety controls for any software that calls a model or runs an agent; runtime guardrails included"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 
-keywords = ["AI safety", "guardrails", "LLM", "EU AI Act", "prompt injection", "PII"]
+keywords = ["AI safety", "AI safety audit", "guardrails", "agents", "LLM", "EU AI Act", "prompt injection", "PII"]
 
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -43,8 +44,8 @@ dependencies = [
 [project.urls]
 # SECURITY.md cites the Security URL: GitHub private vulnerability reporting
 # for this repository, so a report never lands in a public issue.
-Repository = "https://github.com/ai-safe-earth/AI-Safety-Guardrails"
-Security = "https://github.com/ai-safe-earth/AI-Safety-Guardrails/security/advisories/new"
+Repository = "https://github.com/ai-safe-earth/AnyAISafe"
+Security = "https://github.com/ai-safe-earth/AnyAISafe/security/advisories/new"
 
 [project.optional-dependencies]
 # PII detection (Presidio)
@@ -100,7 +101,7 @@ claude-judge = [
 
 # All LLM judges
 llm-judges = [
-    "aisguard[anthropic]",
+    "anyaisafe[anthropic]",
 ]
 
 # NVIDIA NeMo Guardrails integration
@@ -130,7 +131,7 @@ devtools = [
 
 # Deprecated alias for `devtools`.
 lint = [
-    "aisguard[devtools]",
+    "anyaisafe[devtools]",
 ]
 
 # Pre-commit companion tools
@@ -141,7 +142,7 @@ precommit = [
 
 # Full install (everything)
 all = [
-    "aisguard[presidio,langchain,fastapi,anthropic,otel,metrics,devtools,precommit,llm-judges,settings,nemo]",
+    "anyaisafe[presidio,langchain,fastapi,anthropic,otel,metrics,devtools,precommit,llm-judges,settings,nemo]",
 ]
 
 # Development

@@ -8,17 +8,17 @@ if (Get-Command aisg -ErrorAction SilentlyContinue) {
     [Console]::Error.WriteLine("aisg: $resolved version $version (pinned $AISG_VERSION)")
     & aisg audit @args
 } elseif (Get-Command uvx -ErrorAction SilentlyContinue) {
-    [Console]::Error.WriteLine("aisg: uvx aisguard==$AISG_VERSION (pinned $AISG_VERSION)")
-    & uvx --from "aisguard==$AISG_VERSION" aisg audit @args
+    [Console]::Error.WriteLine("aisg: uvx anyaisafe==$AISG_VERSION (pinned $AISG_VERSION)")
+    & uvx --from "anyaisafe==$AISG_VERSION" aisg audit @args
 } elseif (Get-Command pipx -ErrorAction SilentlyContinue) {
-    [Console]::Error.WriteLine("aisg: pipx aisguard==$AISG_VERSION (pinned $AISG_VERSION)")
-    & pipx run --spec "aisguard==$AISG_VERSION" aisg audit @args
+    [Console]::Error.WriteLine("aisg: pipx anyaisafe==$AISG_VERSION (pinned $AISG_VERSION)")
+    & pipx run --spec "anyaisafe==$AISG_VERSION" aisg audit @args
 } else {
     [Console]::Error.WriteLine("aisg not found. Install one of:")
-    [Console]::Error.WriteLine("  uv tool install 'aisguard==$AISG_VERSION'   (uv works without a pre-installed Python)")
+    [Console]::Error.WriteLine("  uv tool install 'anyaisafe==$AISG_VERSION'   (uv works without a pre-installed Python)")
     if ((Get-Command python3 -ErrorAction SilentlyContinue) -or (Get-Command python -ErrorAction SilentlyContinue)) {
-        [Console]::Error.WriteLine("  pipx install 'aisguard==$AISG_VERSION'")
-        [Console]::Error.WriteLine("  pip install 'aisguard==$AISG_VERSION'")
+        [Console]::Error.WriteLine("  pipx install 'anyaisafe==$AISG_VERSION'")
+        [Console]::Error.WriteLine("  pip install 'anyaisafe==$AISG_VERSION'")
     } else {
         [Console]::Error.WriteLine("  (no python3/python on PATH: install uv first, e.g. https://docs.astral.sh/uv/getting-started/installation/)")
     }

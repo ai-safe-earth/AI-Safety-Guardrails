@@ -107,9 +107,7 @@ def test_bump_rewrites_every_site_and_retitles_the_changelog(tmp_path: Path) -> 
     text = changelog.read_text("utf-8")
     assert "## [9.8.7] - 2030-01-02\n\n### Added\n\n- A thing." in text
     assert f"## [{old}]" in text  # the previous release keeps its section
-    assert (
-        "[9.8.7]: https://github.com/ai-safe-earth/AI-Safety-Guardrails/releases/tag/v9.8.7" in text
-    )
+    assert "[9.8.7]: https://github.com/ai-safe-earth/AnyAISafe/releases/tag/v9.8.7" in text
     assert "compare/v9.8.7...HEAD" in text
     assert text.count("## [Unreleased]") == 1
 

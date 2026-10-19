@@ -1,7 +1,7 @@
 """
 core/base.py
 ------------
-Core abstractions for the AI Safety Guardrails framework.
+Core abstractions for the AnyAISafe framework.
 All guardrail modules inherit from GuardrailBase.
 """
 

@@ -9,17 +9,17 @@ if command -v aisg >/dev/null 2>&1; then
   echo "aisg: $(command -v aisg) version $v (pinned $AISG_VERSION)" >&2
   exec aisg audit "$@"
 elif command -v uvx >/dev/null 2>&1; then
-  echo "aisg: uvx aisguard==$AISG_VERSION (pinned $AISG_VERSION)" >&2
-  exec uvx --from "aisguard==$AISG_VERSION" aisg audit "$@"
+  echo "aisg: uvx anyaisafe==$AISG_VERSION (pinned $AISG_VERSION)" >&2
+  exec uvx --from "anyaisafe==$AISG_VERSION" aisg audit "$@"
 elif command -v pipx >/dev/null 2>&1; then
-  echo "aisg: pipx aisguard==$AISG_VERSION (pinned $AISG_VERSION)" >&2
-  exec pipx run --spec "aisguard==$AISG_VERSION" aisg audit "$@"
+  echo "aisg: pipx anyaisafe==$AISG_VERSION (pinned $AISG_VERSION)" >&2
+  exec pipx run --spec "anyaisafe==$AISG_VERSION" aisg audit "$@"
 else
   echo "aisg not found. Install one of:" >&2
-  echo "  uv tool install 'aisguard==$AISG_VERSION'   (uv works without a pre-installed Python)" >&2
+  echo "  uv tool install 'anyaisafe==$AISG_VERSION'   (uv works without a pre-installed Python)" >&2
   if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
-    echo "  pipx install 'aisguard==$AISG_VERSION'" >&2
-    echo "  pip install 'aisguard==$AISG_VERSION'" >&2
+    echo "  pipx install 'anyaisafe==$AISG_VERSION'" >&2
+    echo "  pip install 'anyaisafe==$AISG_VERSION'" >&2
   else
     echo "  (no python3/python on PATH: install uv first, e.g. https://docs.astral.sh/uv/getting-started/installation/)" >&2
   fi

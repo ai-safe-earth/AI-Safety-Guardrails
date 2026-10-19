@@ -10,7 +10,9 @@ place the version lives and moves the Unreleased entries under a dated heading;
 
 ## [0.1.0] - 2026-10-19
 
-The first tagged release. The distribution is `aisguard`; the import name and the
+The first tagged release. The project is AnyAISafe (renamed from "AI Safety
+Guardrails" on 2026-10-19, before any release: the earlier distribution name
+`aisguard` was never published). The distribution is `anyaisafe`; the import name and the
 console script are `aisg`.
 
 ### Added
@@ -86,7 +88,7 @@ console script are `aisg`.
   `install` prints the diff and writes only with `--yes`. `[tool.aisg-hook]`.
 - The Claude Code plugin (`.claude-plugin/marketplace.json`, `plugins/ai-safety-audit/`
   with `hooks/hooks.json` and the skill as its third mirror): `claude plugin
-  marketplace add ai-safe-earth/AI-Safety-Guardrails`, `claude plugin install
+  marketplace add ai-safe-earth/AnyAISafe`, `claude plugin install
   ai-safety-audit@ai-safe-earth`.
 - `action.yml` (composite GitHub Action: JSON, SARIF and markdown documents, job
   summary, Code Scanning upload, optional sticky PR comment, exit code = the audit's),
@@ -153,6 +155,11 @@ console script are `aisg`.
 
 ### Changed
 
+- Renamed the project to AnyAISafe: the distribution is `anyaisafe` (was `aisguard`),
+  the repository `github.com/ai-safe-earth/AnyAISafe` (was `AI-Safety-Guardrails`),
+  the OpenTelemetry service-name default `anyaisafe`. The import name, the `aisg`
+  command, the `aisg/1` schema marker, `.aisg-audit/`, the `[tool.aisg-*]` sections
+  and the skill name are unchanged.
 - Art. 5(1) letters in the EU AI Act policy guard and the linter now follow Regulation
   (EU) 2024/1689: real-time remote biometric identification is (h), criminal-risk
   profiling is (d).
@@ -176,5 +183,5 @@ console script are `aisg`.
   `metadata["judge_error"]`, with `unavailable` usage, instead of swallowing it
   silently; the two AUD-802 entries on them left the self-audit baseline.
 
-[Unreleased]: https://github.com/ai-safe-earth/AI-Safety-Guardrails/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/ai-safe-earth/AI-Safety-Guardrails/releases/tag/v0.1.0
+[Unreleased]: https://github.com/ai-safe-earth/AnyAISafe/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/ai-safe-earth/AnyAISafe/releases/tag/v0.1.0

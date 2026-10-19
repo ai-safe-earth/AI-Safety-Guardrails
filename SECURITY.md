@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Report privately through GitHub's vulnerability reporting for this repository:
-https://github.com/ai-safe-earth/AI-Safety-Guardrails/security/advisories/new
+https://github.com/ai-safe-earth/AnyAISafe/security/advisories/new
 
 Do not open a public issue for a vulnerability. There is no separate e-mail
 address and no published response-time commitment; the advisory thread is the
@@ -11,7 +11,7 @@ only channel, and it is where you will hear back.
 
 ## Scope
 
-- The `aisguard` distribution, imported as `aisg` (`aisg.core`, `aisg.modules`,
+- The `anyaisafe` distribution, imported as `aisg` (`aisg.core`, `aisg.modules`,
   `aisg.integrations`, `aisg.config`).
 - The `aisg` command line: `lint`, `misalign`, `measure`, `probe`, `init`,
   `audit`, `skill`, `decide`, `hook`, `attest`, `fleet`.
@@ -28,7 +28,7 @@ those as ordinary issues with the payload, or add a case to the probe corpus.
 
 ## What to include
 
-- The affected version (`pip show aisguard`) or commit.
+- The affected version (`pip show anyaisafe`) or commit.
 - The command, config or input that triggers the problem, minimised.
 - What happens and what you expected; a stack trace or report excerpt if any.
 - Which external scanners were on `PATH`, if `aisg audit` is involved.

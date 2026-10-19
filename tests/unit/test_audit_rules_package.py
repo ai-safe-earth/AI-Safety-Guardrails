@@ -37,7 +37,7 @@ from aisg.devtools.measure import DEFAULT_REPORT, GuardMeasurement, build_report
 # The shared tree: one Anthropic call (the AI surface), optionally three tools
 # ---------------------------------------------------------------------------
 
-PYPROJECT = '[project]\nname = "loop"\ndependencies = ["anthropic", "aisguard"]\n'
+PYPROJECT = '[project]\nname = "loop"\ndependencies = ["anthropic", "anyaisafe"]\n'
 
 AGENT_PY = '''"""agent.py
 --------
@@ -303,7 +303,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install "aisguard[devtools]"
+      - run: pip install "anyaisafe[devtools]"
       - run: aisg measure --config guardrails.yaml --output measure-report.json
 """
 

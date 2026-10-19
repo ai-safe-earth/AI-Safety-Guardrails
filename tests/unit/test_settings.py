@@ -128,7 +128,7 @@ class TestDefaults:
     def test_observability_defaults(self):
         s = make()
         assert s.otel_exporter_otlp_endpoint == ""
-        assert s.otel_service_name == "ai-safety-guardrails"
+        assert s.otel_service_name == "anyaisafe"
         assert s.prometheus_enabled is False
         assert s.prometheus_port == 9090
 

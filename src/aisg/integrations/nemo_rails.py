@@ -15,7 +15,7 @@ Provides two components:
 Install:
     pip install nemoguardrails
     # or
-    pip install "aisguard[nemo]"
+    pip install "anyaisafe[nemo]"
 
 Usage — guard only (embed NeMo inside an existing pipeline):
     from nemoguardrails import LLMRails, RailsConfig
@@ -151,7 +151,7 @@ class NemoRailsGuard(GuardrailBase):
             raise ImportError(
                 "nemoguardrails is required for NemoRailsGuard.\n"
                 "Install with:  pip install nemoguardrails\n"
-                "or:            pip install 'aisguard[nemo]'"
+                "or:            pip install 'anyaisafe[nemo]'"
             )
 
         self._rails = rails  # May be None; built lazily from path
@@ -332,7 +332,7 @@ class NemoRailsMiddleware:
             raise ImportError(
                 "nemoguardrails is required for NemoRailsMiddleware.\n"
                 "Install with:  pip install nemoguardrails\n"
-                "or:            pip install 'aisguard[nemo]'"
+                "or:            pip install 'anyaisafe[nemo]'"
             )
 
         self.pipeline = pipeline

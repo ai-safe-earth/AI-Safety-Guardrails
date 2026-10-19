@@ -1,6 +1,6 @@
 # config/default.yaml
 # -------------------------------------------------------
-# AI Safety Guardrails — Default Pipeline Configuration
+# AnyAISafe — Default Pipeline Configuration
 # -------------------------------------------------------
 # All modules are optional. Set enabled: false to skip any.
 # Override per environment: production.yaml, eu_high_risk.yaml, etc.
@@ -12,7 +12,7 @@ pipeline:
   request_timeout: 30.0        # Max seconds for the LLM call in run_full() (0 = no timeout)
 
 # ⑤ OBSERVABILITY (OpenTelemetry)
-# Install:  pip install "aisguard[otel]"
+# Install:  pip install "anyaisafe[otel]"
 # Pass a TelemetryProvider instance to GuardrailPipeline(telemetry_provider=...).
 # Backends: set exporter to "otlp" and point otlp_endpoint at any OTLP collector
 # (Jaeger, Zipkin, Datadog, Honeycomb, Grafana Tempo, AWS X-Ray via ADOT, etc.)

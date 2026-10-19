@@ -52,7 +52,7 @@ has no "ask", so an `ask` follows `[tool.aisg-hook].ask-fallback` (`allow`, reco
 `.aisg-audit/hook-state.json` and says so at the next session start; it never calls a model,
 never installs anything and never opens a socket.
 
-The Claude Code plugin (`claude plugin marketplace add ai-safe-earth/AI-Safety-Guardrails`,
+The Claude Code plugin (`claude plugin marketplace add ai-safe-earth/AnyAISafe`,
 then `claude plugin install ai-safety-audit@ai-safe-earth`) carries the same hooks in
 `hooks/hooks.json` and this skill as `skills/ai-safety-audit/`, so no settings file is
 edited at all.
@@ -79,8 +79,8 @@ Global (writes under the home directory):
 Without `aisg` on PATH, through a pinned bootstrap (`<version>` is the `AISG_VERSION`
 pinned in `scripts/audit.sh`; never leave it off):
 
-    uvx --from 'aisguard==<version>' aisg skill install --host all
-    pipx run --spec 'aisguard==<version>' aisg skill install --host all
+    uvx --from 'anyaisafe==<version>' aisg skill install --host all
+    pipx run --spec 'anyaisafe==<version>' aisg skill install --host all
 
 Other verbs: `aisg skill path` prints the packaged directory; `aisg skill list` prints the
 host table; `aisg skill diff --host <x>` compares the installed copy with the packaged one
@@ -97,8 +97,8 @@ That is the intersection of what the hosts above accept; host-specific metadata 
 
 `scripts/audit.sh`, `audit.ps1`, `verify.sh`, `verify.ps1`, `hook.sh`, `hook.ps1`,
 `attest.sh` and `attest.ps1` resolve `aisg` in this order:
-`aisg` on PATH, else `uvx --from 'aisguard==<version>'`, else
-`pipx run --spec 'aisguard==<version>'`. `aisguard` is the distribution name; `aisg` is the
+`aisg` on PATH, else `uvx --from 'anyaisafe==<version>'`, else
+`pipx run --spec 'anyaisafe==<version>'`. `anyaisafe` is the distribution name; `aisg` is the
 importable name and the console script, and on PyPI it belongs to an unrelated project, so a
 bootstrap must never install by it. The version is pinned to the package
 that shipped the scripts and a test asserts it equals `pyproject.toml`; an unpinned bootstrap
@@ -108,5 +108,5 @@ three is available, `audit.sh` exits 2 with install hints, `verify.sh` prints
 `hook skipped` on stderr: a hook is a gate on someone else's editor and fails open.
 `audit.sh` / `audit.ps1` and `attest.sh` / `attest.ps1` print one line on stderr before
 running, `aisg: <path> version <version> (pinned <version>)` (or `aisg: uvx
-aisguard==<version> ...`), so the conversation records which aisg ran; when the version
+anyaisafe==<version> ...`), so the conversation records which aisg ran; when the version
 differs from the pin, stop and say so before reading any result.

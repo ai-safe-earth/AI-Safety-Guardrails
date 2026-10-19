@@ -6,11 +6,11 @@ if (Get-Command aisg -ErrorAction SilentlyContinue) {
     $origin = "path:" + (Get-Command aisg).Source
     $input | & aisg hook @args --origin $origin --expect-version $AISG_VERSION
 } elseif (Get-Command uvx -ErrorAction SilentlyContinue) {
-    $input | & uvx --from "aisguard==$AISG_VERSION" aisg hook @args --origin uvx --expect-version $AISG_VERSION
+    $input | & uvx --from "anyaisafe==$AISG_VERSION" aisg hook @args --origin uvx --expect-version $AISG_VERSION
 } elseif (Get-Command pipx -ErrorAction SilentlyContinue) {
-    $input | & pipx run --spec "aisguard==$AISG_VERSION" aisg hook @args --origin pipx --expect-version $AISG_VERSION
+    $input | & pipx run --spec "anyaisafe==$AISG_VERSION" aisg hook @args --origin pipx --expect-version $AISG_VERSION
 } else {
-    [Console]::Error.WriteLine("aisg-hook: aisg not found (install 'aisguard==$AISG_VERSION'); hook skipped")
+    [Console]::Error.WriteLine("aisg-hook: aisg not found (install 'anyaisafe==$AISG_VERSION'); hook skipped")
     if (($args -join " ") -match "--host cursor") { Write-Output '{"permission":"allow"}' }
     exit 0
 }

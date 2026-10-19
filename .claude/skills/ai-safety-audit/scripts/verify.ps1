@@ -56,9 +56,9 @@ function Invoke-Aisg {
     if (Get-Command aisg -ErrorAction SilentlyContinue) {
         & aisg @args
     } elseif (Get-Command uvx -ErrorAction SilentlyContinue) {
-        & uvx --from "aisguard==$AISG_VERSION" aisg @args
+        & uvx --from "anyaisafe==$AISG_VERSION" aisg @args
     } elseif (Get-Command pipx -ErrorAction SilentlyContinue) {
-        & pipx run --spec "aisguard==$AISG_VERSION" aisg @args
+        & pipx run --spec "anyaisafe==$AISG_VERSION" aisg @args
     } else {
         $global:LASTEXITCODE = 127
     }

@@ -4,7 +4,7 @@
 #
 # Nothing here holds a PyPI credential. Publishing uses OpenID Connect
 # (`id-token: write`) and a pending publisher configured once on pypi.org for the
-# project `aisguard`: owner ai-safe-earth, repository AI-Safety-Guardrails,
+# project `anyaisafe`: owner ai-safe-earth, repository AnyAISafe,
 # workflow release.yml, environment pypi. A `workflow_dispatch` run with dry-run
 # set runs the gate and the build only.
 name: release
@@ -136,16 +136,16 @@ jobs:
           # Run from an empty directory so this repo's [tool.aisg-audit] never leaks in.
           cd "$(mktemp -d)"
           for attempt in $(seq 1 10); do
-            if uvx --from "aisguard==${V}" aisg --version > version.txt 2>/dev/null; then
+            if uvx --from "anyaisafe==${V}" aisg --version > version.txt 2>/dev/null; then
               break
             fi
-            echo "attempt ${attempt}: aisguard==${V} not resolvable yet; waiting 60 s"
+            echo "attempt ${attempt}: anyaisafe==${V} not resolvable yet; waiting 60 s"
             sleep 60
           done
           cat version.txt
           grep -qx "aisg ${V}" version.txt
-          rc=0; uvx --from "aisguard==${V}" aisg audit "${FIXTURES}/clean_py" --no-external || rc=$?
+          rc=0; uvx --from "anyaisafe==${V}" aisg audit "${FIXTURES}/clean_py" --no-external || rc=$?
           [ "$rc" -eq 0 ] || { echo "clean_py: expected exit 0, got $rc"; exit 1; }
-          rc=0; uvx --from "aisguard==${V}" aisg audit "${FIXTURES}/py_agent" --no-external || rc=$?
+          rc=0; uvx --from "anyaisafe==${V}" aisg audit "${FIXTURES}/py_agent" --no-external || rc=$?
           [ "$rc" -eq 1 ] || { echo "py_agent: expected exit 1, got $rc"; exit 1; }
-          echo "smoke: aisguard==${V} audits as expected"
+          echo "smoke: anyaisafe==${V} audits as expected"

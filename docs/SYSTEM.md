@@ -1,6 +1,6 @@
 # The system, on one page
 
-How the pieces of AI Safety Guardrails fit together: what each step reads, what it
+How the pieces of AnyAISafe fit together: what each step reads, what it
 writes, and what it never does. Every path is relative to the root of the repository
 being audited, and every artefact of the flow lives under `.aisg-audit/`. The skill
 (`src/aisg/skills/ai-safety-audit/SKILL.md`) runs the steps in this order with a person

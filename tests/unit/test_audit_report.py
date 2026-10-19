@@ -353,7 +353,7 @@ def test_templates_carry_no_banned_phrase_and_no_clean():
 
 
 def test_tool_version_comes_from_package_metadata():
-    # DISTRIBUTION, not a literal: the wheel publishes as `aisguard` while the
+    # DISTRIBUTION, not a literal: the wheel publishes as `anyaisafe` while the
     # importable name stays `aisg`, and the two must not drift apart again.
     try:
         expected = metadata.version(DISTRIBUTION)

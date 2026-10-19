@@ -6,11 +6,11 @@ rules. The skill copy under `skills/` is a byte-identical mirror of the canonica
 
 Install:
 
-    claude plugin marketplace add ai-safe-earth/AI-Safety-Guardrails
+    claude plugin marketplace add ai-safe-earth/AnyAISafe
     claude plugin install ai-safety-audit@ai-safe-earth
 
 What the hooks do (every command goes through the pinned bootstrap `scripts/hook.sh`, which
-resolves `aisg` on PATH, else `uvx --from "aisguard==<version>"`, else `pipx run`; a missing
+resolves `aisg` on PATH, else `uvx --from "anyaisafe==<version>"`, else `pipx run`; a missing
 `aisg` fails OPEN and says so on stderr):
 
 | event | what runs | answer |

@@ -3,7 +3,7 @@
 # Hook definitions other repositories can point at:
 #
 #   repos:
-#     - repo: https://github.com/ai-safe-earth/AI-Safety-Guardrails
+#     - repo: https://github.com/ai-safe-earth/AnyAISafe
 #       rev: v0.1.0
 #       hooks:
 #         - id: aisg-audit

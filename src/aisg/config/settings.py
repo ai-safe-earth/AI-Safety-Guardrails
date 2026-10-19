@@ -1,7 +1,7 @@
 """
 src/aisg/config/settings.py
 ---------------------------
-Centralised settings for the AI Safety Guardrails library.
+Centralised settings for the AnyAISafe library.
 
 Reads values from environment variables and an optional `.env` file using
 pydantic-settings. All settings have sensible defaults so the library works
@@ -11,7 +11,7 @@ features that call external services.
 Install:
     pip install pydantic-settings
     # or
-    pip install "aisguard[settings]"
+    pip install "anyaisafe[settings]"
 
 Usage:
     from aisg.config.settings import settings
@@ -45,7 +45,7 @@ except ImportError as _e:
     raise ImportError(
         "pydantic-settings is required for config.settings.\n"
         "Install with:  pip install pydantic-settings\n"
-        "or:            pip install 'aisguard[settings]'"
+        "or:            pip install 'anyaisafe[settings]'"
     ) from _e
 
 
@@ -71,7 +71,7 @@ _ENV_FILE = _find_env_file()
 
 class Settings(BaseSettings):
     """
-    AI Safety Guardrails — application settings.
+    AnyAISafe — application settings.
 
     Grouped into:
         1. Runtime environment
@@ -257,7 +257,7 @@ class Settings(BaseSettings):
     )
 
     otel_service_name: str = Field(
-        default="ai-safety-guardrails",
+        default="anyaisafe",
         description="Service name reported in OpenTelemetry traces and metrics.",
     )
 

@@ -1,7 +1,7 @@
 """
 modules/observability/otel.py
 ------------------------------
-OpenTelemetry tracing and metrics for the AI Safety Guardrails pipeline.
+OpenTelemetry tracing and metrics for the AnyAISafe pipeline.
 
 Provides:
     - A span per pipeline stage  (guardrail.stage.<stage>)
@@ -19,7 +19,7 @@ Exporters:
     "none"     → no-op
 
 Install:
-    pip install "aisguard[otel]"
+    pip install "anyaisafe[otel]"
     # OTLP gRPC:  pip install opentelemetry-exporter-otlp-proto-grpc
     # OTLP HTTP:  pip install opentelemetry-exporter-otlp-proto-http
 
@@ -64,7 +64,7 @@ except ImportError:
 
 class TelemetryProvider:
     """
-    OpenTelemetry provider for the AI Safety Guardrails pipeline.
+    OpenTelemetry provider for the AnyAISafe pipeline.
 
     Configures a TracerProvider and MeterProvider once, then exposes
     context-manager helpers that pipeline.py uses to wrap each stage
@@ -76,7 +76,7 @@ class TelemetryProvider:
 
     def __init__(
         self,
-        service_name: str = "ai-safety-guardrails",
+        service_name: str = "anyaisafe",
         exporter: str = "console",  # "otlp" | "console" | "none"
         otlp_endpoint: str = "http://localhost:4317",
         otlp_protocol: str = "grpc",  # "grpc" | "http"

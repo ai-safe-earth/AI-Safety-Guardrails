@@ -147,7 +147,7 @@ Guarantees (tested): the hook never imports a model SDK, never spawns `FORBIDDEN
 
 - Committed project configs get a portable bootstrap, never a machine path: `install --host claude` copies the packaged `scripts/hook.sh` (and `hook.ps1`) from `aisg.skills.iter_skill_files()` into `.claude/hooks/aisg-hook.sh` and writes `command: "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/aisg-hook.sh run --host claude --event PreToolUse"`. Claude Code on Windows requires Git Bash, so `sh` is present wherever Claude Code hooks run; `--shell powershell` writes `powershell -ExecutionPolicy Bypass -File ... hook.ps1` instead.
 - `--global` (`~/.claude/settings.json`) and `--local` (`.claude/settings.local.json`) are machine-local, so they get the exact interpreter: `"<sys.executable as POSIX path, quoted>" -m aisg.cli hook run --host claude --event X --origin interpreter:<path>`; `--python PATH` overrides the interpreter at any level.
-- `hook.sh` is `audit.sh` with `exec aisg hook "$@" --origin "path:$(command -v aisg)" --expect-version "$AISG_VERSION"` (and `uvx --from "aisguard==$AISG_VERSION" aisg hook ... --origin uvx`, `pipx run --spec ... --origin pipx`). No extra `aisg --version` process (that would double hook latency); `aisg hook run` compares `--expect-version` with `aisg.__version__` in-process, records `version_mismatch` and `origin` in hook-state, and with `--debug` prints `aisg-hook: aisg <version> from <aisg.__file__> (<origin>), python <sys.executable>` to stderr. `aisg hook list` prints the same identity line as its header.
+- `hook.sh` is `audit.sh` with `exec aisg hook "$@" --origin "path:$(command -v aisg)" --expect-version "$AISG_VERSION"` (and `uvx --from "anyaisafe==$AISG_VERSION" aisg hook ... --origin uvx`, `pipx run --spec ... --origin pipx`). No extra `aisg --version` process (that would double hook latency); `aisg hook run` compares `--expect-version` with `aisg.__version__` in-process, records `version_mismatch` and `origin` in hook-state, and with `--debug` prints `aisg-hook: aisg <version> from <aisg.__file__> (<origin>), python <sys.executable>` to stderr. `aisg hook list` prints the same identity line as its header.
 
 ### 1.7 Installer behaviour (`aisg hook install`)
 
@@ -193,7 +193,7 @@ plugins/ai-safety-audit/README.md                       (new, 20 lines: install 
  "plugins": [{"name": "ai-safety-audit", "source": "./plugins/ai-safety-audit",
               "description": "Audit an AI/agent codebase for safety gaps ordered by blast radius (aisg audit), with hooks that gate protected paths, secret literals and unsafe shell commands. Never a compliance verdict."}]}
 ```
-Users: `claude plugin marketplace add ai-safe-earth/AI-Safety-Guardrails` then `claude plugin install ai-safety-audit@ai-safe-earth`.
+Users: `claude plugin marketplace add ai-safe-earth/AnyAISafe` then `claude plugin install ai-safety-audit@ai-safe-earth`.
 
 `plugin.json`: `{"name": "ai-safety-audit", "description": "<same>", "version": "0.2.0", "author": {"name": "AI SAFE EARTH", "url": "https://github.com/ai-safe-earth"}}`.
 
@@ -258,7 +258,7 @@ inputs:
   fail-on:       {description: "critical|high|medium|low|info|never", default: high}
   baseline:      {description: path of an audit-baseline.json (empty = none), default: ""}
   extra-args:    {description: extra flags passed to aisg audit, default: ""}
-  version:       {description: aisguard version to install from PyPI, default: "0.2.0"}   # pinned by a test to pyproject
+  version:       {description: anyaisafe version to install from PyPI, default: "0.2.0"}   # pinned by a test to pyproject
   install-from:  {description: "pypi | action-path (this checkout; for dogfooding)", default: pypi}
   python-version: {default: "3.12"}
   upload-sarif:  {description: upload to Code Scanning (caller needs security-events write), default: "true"}
@@ -279,7 +279,7 @@ runs:
     - shell: bash
       env: {AISG_VERSION: "${{ inputs.version }}", INSTALL_FROM: "${{ inputs.install-from }}", ACTION_PATH: "${{ github.action_path }}"}
       run: |
-        if [ "$INSTALL_FROM" = "action-path" ]; then pip install "$ACTION_PATH[devtools]"; else pip install "aisguard[devtools]==$AISG_VERSION"; fi
+        if [ "$INSTALL_FROM" = "action-path" ]; then pip install "$ACTION_PATH[devtools]"; else pip install "anyaisafe[devtools]==$AISG_VERSION"; fi
         aisg --version; python -c "import aisg, sys; print(aisg.__file__)"
     - shell: bash
       env: {TARGET: "${{ inputs.path }}", FAIL_ON: "${{ inputs.fail-on }}", BASELINE: "${{ inputs.baseline }}", EXTRA: "${{ inputs.extra-args }}", OUT: "${{ inputs.output-dir }}"}
@@ -314,7 +314,7 @@ runs:
 ```
 Exit semantics preserved: the three render calls tolerate only exit 1 (`|| [ $? -eq 1 ]`, the same idiom `TestCITemplates` pins for lint), exit 2 fails the step immediately, and the verdict step exits with the JSON's `summary.exit_code`. Dogfood job in `tests.yml`: `uses: ./` with `install-from: action-path`, `baseline: audit-baseline.json`, `upload-sarif: "false"` on PRs from forks.
 
-(b) `.pre-commit-hooks.yaml` at the repo root, so other repos can write `repo: https://github.com/ai-safe-earth/AI-Safety-Guardrails`, `rev: v0.2.0`:
+(b) `.pre-commit-hooks.yaml` at the repo root, so other repos can write `repo: https://github.com/ai-safe-earth/AnyAISafe`, `rev: v0.2.0`:
 ```yaml
 - id: aisg-audit
   name: aisg audit (AI-surface audit against a baseline)
@@ -364,9 +364,9 @@ Which version first: tag `v0.1.0` on current `main` first (after adding only non
 - job `build` (needs gate): `pip install build==1.2.2.post1`, `python -m build` (sdist + wheel), the top-level-name check from `tests.yml`, `actions/upload-artifact@v4` name `dist`.
 - job `publish` (needs build, `environment: pypi`, `permissions: {id-token: write, contents: read}`, `if: github.event_name == 'push'`): download `dist`, `pypa/gh-action-pypi-publish@release/v1` with no `password`/`user` input (OIDC trusted publishing). The `pypi` environment is where the user's approval lives: configure it with a required reviewer so the run pauses until they approve.
 - job `github-release` (needs publish, `permissions: {contents: write}`): `gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file release-notes.md` where `release-notes.md` = `python scripts/bump_version.py --changelog-section "$GITHUB_REF_NAME"` (the matching CHANGELOG section).
-- job `smoke` (needs publish; `astral-sh/setup-uv@v5`): retry loop up to 10 min for index propagation: `uvx --from "aisguard==$VERSION" aisg --version` must print `aisg $VERSION`; `uvx --from "aisguard==$VERSION" aisg audit tests/fixtures/audit/clean_py --no-external` -> exit 0; `... py_agent --no-external` -> exit 1 (captured with `|| rc=$?`, compared exactly, from a `mktemp -d` cwd so `[tool.aisg-audit]` does not leak).
+- job `smoke` (needs publish; `astral-sh/setup-uv@v5`): retry loop up to 10 min for index propagation: `uvx --from "anyaisafe==$VERSION" aisg --version` must print `aisg $VERSION`; `uvx --from "anyaisafe==$VERSION" aisg audit tests/fixtures/audit/clean_py --no-external` -> exit 0; `... py_agent --no-external` -> exit 1 (captured with `|| rc=$?`, compared exactly, from a `mktemp -d` cwd so `[tool.aisg-audit]` does not leak).
 
-PyPI trusted-publishing setup (user, once, before pushing the tag): 1. Log in to pypi.org -> "Your projects" -> "Publishing" -> "Add a new pending publisher". 2. PyPI project name `aisguard`; owner `ai-safe-earth`; repository `AI-Safety-Guardrails`; workflow filename `release.yml`; environment name `pypi`. 3. On GitHub: repo Settings -> Environments -> `pypi` -> add yourself as required reviewer (this is the approval step), optional deployment branch rule `v*` tags. 4. Verify `aisguard` is still unclaimed (`pip index versions aisguard` should 404); STATUS.md recorded it free on 2026-09-05. 5. `git tag v0.1.0 && git push origin v0.1.0`; approve the `pypi` environment run; watch `smoke`.
+PyPI trusted-publishing setup (user, once, before pushing the tag): 1. Log in to pypi.org -> "Your projects" -> "Publishing" -> "Add a new pending publisher". 2. PyPI project name `anyaisafe`; owner `ai-safe-earth`; repository `AnyAISafe`; workflow filename `release.yml`; environment name `pypi`. 3. On GitHub: repo Settings -> Environments -> `pypi` -> add yourself as required reviewer (this is the approval step), optional deployment branch rule `v*` tags. 4. Verify `anyaisafe` is still unclaimed (`pip index versions anyaisafe` should 404); `anyaisafe` was free on 2026-10-19, when the name was chosen (the 2026-09-05 check recorded in STATUS.md was for the earlier name `aisguard`). 5. `git tag v0.1.0 && git push origin v0.1.0`; approve the `pypi` environment run; watch `smoke`.
 
 `CHANGELOG.md` (Keep a Changelog, SemVer): `## [Unreleased]`, `## [0.1.0] - <date>` summarising what exists (pipeline + guards, `aisg lint|misalign|init|probe|measure|audit|skill`, the skill, the two-document flow), link refs at the bottom. A test asserts a `## [<pyproject version>]` heading exists.
 
@@ -406,15 +406,15 @@ Exit codes: 0 every listed repo was audited (findings in other people's repos ar
 ## 8. Repo hygiene for scale
 
 README drift found (fix before the `v0.1.0` tag, since README is the PyPI long description):
-1. Line 1 `<img src="./.github/brand/mark.svg">` is relative and breaks on PyPI; use `https://raw.githubusercontent.com/ai-safe-earth/AI-Safety-Guardrails/main/.github/brand/mark.svg`.
-2. Installation (lines 182-190) says `pip install pyyaml aiohttp`; it should say `pip install aisguard` / `pip install "aisguard[devtools]"` (the base deps are declared in pyproject). `[llamaguard]` is described as local HuggingFace but pyproject makes it empty and local is `[llamaguard-local]`; `[devtools]`, `[precommit]` are missing from the list.
+1. Line 1 `<img src="./.github/brand/mark.svg">` is relative and breaks on PyPI; use `https://raw.githubusercontent.com/ai-safe-earth/AnyAISafe/main/.github/brand/mark.svg`.
+2. Installation (lines 182-190) says `pip install pyyaml aiohttp`; it should say `pip install anyaisafe` / `pip install "anyaisafe[devtools]"` (the base deps are declared in pyproject). `[llamaguard]` is described as local HuggingFace but pyproject makes it empty and local is `[llamaguard-local]`; `[devtools]`, `[precommit]` are missing from the list.
 3. Repository Structure (lines 141-144) lists only `euaiact_lint.py`, `misalignment_check.py`, `_config.py` under `devtools/`; add `audit/`, `skill.py`, `probe.py`, `measure.py`, `system_card.py` (and `hook.py`, `fleet.py`, `hosts.py` later); the tests block (151-161) omits every `test_audit_*` file.
 4. "The skill" (lines 1027-1029) says five phases "discover, diagnose, prescribe, apply, verify"; SKILL.md's phases are survey, document 1, apply, document 2, verify.
 5. Running Tests (line 1194) says "~2700 tests (about two minutes)"; it is ~3600 and 3-7 min.
 6. PyPI instructions become true only after wave 0 publishes; until then say so in one sentence (remove after).
 7. Pre-commit section (747-770) shows only `repo: local`; add the `.pre-commit-hooks.yaml` consumer snippet and the GitHub Action `uses:` snippet when they exist.
 
-New docs: `CONTRIBUTING.md` (setup, the verify gate from CLAUDE.md, the sync tools and their `--check`, how to add a rule/guard/host, the ignore-marker rule, the banned-phrase rule, the version-bump procedure); `SECURITY.md` scope additions: `aisg hook` (never calls a model, opens no socket, writes only under `.aisg-audit/`, fails open on its own errors and records them), the plugin and hook bootstrap scripts, `action.yml` (installs the pinned `aisguard` from PyPI; what it sends: SARIF to the caller's own Code Scanning), `aisg fleet` (clones only the URLs you list; no search, no PRs); `docs/SYSTEM.md` one page: audit -> decide -> apply -> attest -> hooks, with the artefacts each step reads/writes and which component owns each; `.gitignore` guidance (in SYSTEM.md and the skill's phase-2 proposal text): commit the baseline (root `audit-baseline.json` or `.aisg-audit/audit-baseline.json`, pick one per repo), always ignore `.aisg-audit/hook-state.json` and `.aisg-audit/hook-recheck.json` (machine state, regenerated), and remember the walker reads `.aisg-audit/` either way.
+New docs: `CONTRIBUTING.md` (setup, the verify gate from CLAUDE.md, the sync tools and their `--check`, how to add a rule/guard/host, the ignore-marker rule, the banned-phrase rule, the version-bump procedure); `SECURITY.md` scope additions: `aisg hook` (never calls a model, opens no socket, writes only under `.aisg-audit/`, fails open on its own errors and records them), the plugin and hook bootstrap scripts, `action.yml` (installs the pinned `anyaisafe` from PyPI; what it sends: SARIF to the caller's own Code Scanning), `aisg fleet` (clones only the URLs you list; no search, no PRs); `docs/SYSTEM.md` one page: audit -> decide -> apply -> attest -> hooks, with the artefacts each step reads/writes and which component owns each; `.gitignore` guidance (in SYSTEM.md and the skill's phase-2 proposal text): commit the baseline (root `audit-baseline.json` or `.aisg-audit/audit-baseline.json`, pick one per repo), always ignore `.aisg-audit/hook-state.json` and `.aisg-audit/hook-recheck.json` (machine state, regenerated), and remember the walker reads `.aisg-audit/` either way.
 
 ## 9. Tests
 
@@ -437,7 +437,7 @@ New fixtures `tests/fixtures/hooks/<host>/<event>.json` (committed payloads; `te
 
 `tests/unit/test_plugin_package.py`: `plugin.json` parses and `version == pyproject`; `marketplace.json` parses, `source` dir exists and holds `.claude-plugin/plugin.json`; `hooks.json` parses, every command references `${CLAUDE_PLUGIN_ROOT}/skills/ai-safety-audit/scripts/hook.sh`, that file exists in the mirror, every `hookEventName` used is in `KIND_BY_EVENT["claude"]`, no command matches `UNSAFE_HOOK_PATTERNS`, every entry has a `timeout`; plugin mirror byte-identical (via the extended `MIRRORS`); `sync_skill.py --check` passes.
 
-`tests/unit/test_ci_surface.py`: `action.yml` parses, `using: composite`, input `version` default == pyproject, every `aisg audit` line carries `|| [ $? -eq 1 ]`, no unpinned `pip install` (quoted `==` spec), `upload-sarif` uses `codeql-action/upload-sarif@v4`; `.pre-commit-hooks.yaml` ids exactly `{aisg-audit, aisg-lint, aisg-misalign}`, `aisg-audit` has `pass_filenames: false` and `always_run: true`; `release.yml` parses, publish job has `id-token: write`, uses `pypa/gh-action-pypi-publish`, has no `password`/`user` input and no `secrets.PYPI`, `environment: pypi`, smoke job runs `uvx --from "aisguard==` and `clean_py`/`py_agent` with exact exit comparisons; gitlab template gains `aisg-audit` (extend `TestCITemplates` job set to include it).
+`tests/unit/test_ci_surface.py`: `action.yml` parses, `using: composite`, input `version` default == pyproject, every `aisg audit` line carries `|| [ $? -eq 1 ]`, no unpinned `pip install` (quoted `==` spec), `upload-sarif` uses `codeql-action/upload-sarif@v4`; `.pre-commit-hooks.yaml` ids exactly `{aisg-audit, aisg-lint, aisg-misalign}`, `aisg-audit` has `pass_filenames: false` and `always_run: true`; `release.yml` parses, publish job has `id-token: write`, uses `pypa/gh-action-pypi-publish`, has no `password`/`user` input and no `secrets.PYPI`, `environment: pypi`, smoke job runs `uvx --from "anyaisafe==` and `clean_py`/`py_agent` with exact exit comparisons; gitlab template gains `aisg-audit` (extend `TestCITemplates` job set to include it).
 
 `tests/unit/test_fleet.py`: list parsing (yaml + csv, bad entry -> exit 2), two local fixture dirs (`clean_py`, `py_agent`) produce `fleet-report.json` with key order `schema, kind, tool, generated_at, options, totals, repos`, CSV header exact, markdown has the disclaimer, `py_agent` row has `exit_code 1` and the fleet exits 0, a nonexistent path -> `status clone_failed` and fleet exit 1, `--resume` skips the parsed report, `--proposal` writes `proposal.md` with the plan and decide tables and no `evidence` snippets, no socket opened for local paths, subprocess argv[0] is `sys.executable` (never a forbidden launcher), `--jobs 2` yields identical documents.
 
@@ -470,7 +470,7 @@ Functions reused (paths): `patterns.is_protected_path`, `PROTECTED_PATH_RE`, `SE
 - Hook latency: 1.2 s warm / ~5 s cold per invocation on this machine, dominated by `aisg/__init__` (opentelemetry 0.5 s). Timeouts above are sized for it. An optional follow-up outside this scope: lazy-load `otel`/`audit_logger` in `aisg/__init__.py` via PEP 562 (keeps `from aisg import X` working).
 - Full re-audit ~30 s on a 300-file repo: PostToolUse never runs it unless the recorded duration is under `max-audit-seconds`; the Stop gate is the one place it runs, with a 120 s host timeout, and `stop-max-audit-seconds` turns it into context-only on slow repos. `tests.yml` should print the self-audit's duration so the number is tracked.
 - Grouped-rule fingerprints differ between a one-file run and a full run; handled by restricting `--only` to `FILE_LOCAL_RULES`, pinned by `test_only_fingerprints_equal_full_run_fingerprints_for_file_local_rules`.
-- `aisguard` must still be unclaimed on PyPI at publish time (free on 2026-09-05); if taken, the distribution name decision in CLAUDE.md reopens.
+- `anyaisafe` must still be unclaimed on PyPI at publish time (free on 2026-10-19, when the name was chosen; the 2026-09-05 check was for the earlier name `aisguard`); if taken, the distribution name decision in CLAUDE.md reopens.
 - Committed `.claude/settings.json` hooks reference `sh` and `$CLAUDE_PROJECT_DIR`: confirm Claude Code on Windows resolves both (it requires Git Bash); `--shell powershell` is the escape hatch.
 - Two hook processes may write `hook-state.json` concurrently (parallel tool calls): atomic replace, last writer wins, the loss is a debounce stamp; acceptable.
 - Composite actions cannot request permissions: callers must grant `security-events: write` (and `pull-requests: write` for the comment); the action README snippet says so.

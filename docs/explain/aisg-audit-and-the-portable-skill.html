@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>aisg audit and the portable skill — AI Safety Guardrails</title>
+<title>aisg audit and the portable skill — AnyAISafe</title>
 <style>
   /* --p0/--p1 are per-unit accent pairs; add --p2 (and .b2/.d2) the same way
      for a third unit. A one-unit doc uses --p0 only and drops the legend. */
@@ -106,7 +106,7 @@
 <body>
 <header class="doc">
   <h1>Auditing someone else's agent — evidence with a bucket on it, and a skill that travels</h1>
-  <p class="sub">AI Safety Guardrails · branch <code>main</code> · commits <code>2ecef7f</code>…<code>cc01830</code>, renamed in <code>b6332e6</code> · written 2026-09-06</p>
+  <p class="sub">AnyAISafe · branch <code>main</code> · commits <code>2ecef7f</code>…<code>cc01830</code>, renamed in <code>b6332e6</code> · written 2026-09-06</p>
   <p class="sub">Legend: <span class="badge b0">E</span> the evidence pipeline &nbsp;·&nbsp; <span class="badge b1">R</span> rules, buckets and the gate &nbsp;·&nbsp; <span class="badge b2">S</span> the portable skill &nbsp;·&nbsp; grey = pre-existing infrastructure</p>
   <nav class="toc">
     <b>Contents</b>
@@ -940,10 +940,10 @@ is exactly "unpinned MCP server / bootstrap":</p>
 <div class="file"><span><b>src/aisg/skills/ai-safety-audit/scripts/audit.sh</b>:4–13 — pinned, and told to stay pinned</span><span class="badge b2">S</span></div>
 <pre><code>AISG_VERSION="0.1.0"   <span class="cm"># pinned; test_skill_package.py asserts this equals pyproject.toml [project].version</span>
 ...
-elif command -v uvx  &gt;/dev/null 2&gt;&amp;1; then exec uvx  --from "aisguard==$AISG_VERSION" aisg audit "$@"
-elif command -v pipx &gt;/dev/null 2&gt;&amp;1; then exec pipx run --spec "aisguard==$AISG_VERSION" aisg audit "$@"
+elif command -v uvx  &gt;/dev/null 2&gt;&amp;1; then exec uvx  --from "anyaisafe==$AISG_VERSION" aisg audit "$@"
+elif command -v pipx &gt;/dev/null 2&gt;&amp;1; then exec pipx run --spec "anyaisafe==$AISG_VERSION" aisg audit "$@"
 ...
-  echo "  uv tool install 'aisguard==$AISG_VERSION'   (uv works without a pre-installed Python)" &gt;&amp;2</code></pre>
+  echo "  uv tool install 'anyaisafe==$AISG_VERSION'   (uv works without a pre-installed Python)" &gt;&amp;2</code></pre>
 
 <p>Host locations were checked against vendor documentation at build time, and the ones that could
 not be are marked — with the reason, not just a boolean:</p>
@@ -1158,7 +1158,7 @@ print.</p>
   <tr><td>Three-bucket evidence model, no verdict possible</td><td class="goodtag">done — pinned by <code>check_templates</code> and a banned-word test</td></tr>
   <tr><td>Self-audit in CI against a reasoned baseline</td><td class="goodtag">done — exit 0 on <code>b6332e6</code></td></tr>
   <tr><td>Portable skill, one canonical copy + two mirrors, six hosts</td><td class="goodtag">done — <code>aisg skill diff --host all</code> in CI</td></tr>
-  <tr><td>Distribution name settled (<code>aisguard</code>)</td><td class="goodtag">done — <code>b6332e6</code>, 2026-09-05</td></tr>
+  <tr><td>Distribution name settled (<code>aisguard</code>; renamed to <code>anyaisafe</code> on 2026-10-19)</td><td class="goodtag">done — <code>b6332e6</code>, 2026-09-05</td></tr>
   <tr><td><code>v0.1.0</code> tag and a published <code>aisguard</code></td><td class="warntag">open — the bootstrap's pinned spec 404s until then</td></tr>
   <tr><td>Rule precision from a labelled corpus</td><td class="warntag">open — all 46 rules <code>None</code>; <code>bench/</code> exists, unlabelled</td></tr>
   <tr><td>Guard <code>Profile</code>s pasted onto the classes</td><td class="warntag">open — carried over; the audit now reports it as AUD-801, ten times</td></tr>

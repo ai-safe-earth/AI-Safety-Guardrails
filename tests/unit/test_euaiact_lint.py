@@ -765,7 +765,7 @@ class TestCITemplates:
     def test_gitlab_template_pins_the_package_to_pyproject(self):
         """The template installs from this project's own repository at a tag
         that tracks pyproject.toml, never from PyPI by name: the distribution
-        (`aisguard`) is not published, and the importable name `aisg` belongs
+        (`anyaisafe`) is not published, and the importable name `aisg` belongs
         on PyPI to an unrelated project, so a PyPI spec by either name would
         fail to resolve or install someone else's code.
 
@@ -779,14 +779,14 @@ class TestCITemplates:
         m = re.search(r'^version\s*=\s*"([^"]+)"', (REPO_ROOT / "pyproject.toml").read_text(), re.M)
         assert m and pin == m.group(1), (pin, m and m.group(1))
         name = re.search(r'^name\s*=\s*"([^"]+)"', (REPO_ROOT / "pyproject.toml").read_text(), re.M)
-        assert name and name.group(1) == "aisguard", name and name.group(1)
+        assert name and name.group(1) == "anyaisafe", name and name.group(1)
         assert doc["variables"]["AISG_SOURCE"].startswith("git+https://github.com/ai-safe-earth/")
         install = " ".join(doc[".eu-ai-act-base"]["before_script"])
         assert f"{name.group(1)}[devtools] @ " + "${AISG_SOURCE}@v${AISG_VERSION}" in install, (
             install
         )
         text = self.GITLAB.read_text(encoding="utf-8")
-        assert not re.search(r"\b(aisguard|aisg)(\[[^\]]*\])?==", text), "PyPI spec by name"
+        assert not re.search(r"\b(anyaisafe|aisg)(\[[^\]]*\])?==", text), "PyPI spec by name"
         assert "pip install pyyaml" not in text
 
     @pytest.mark.parametrize("path", [GITHUB, GITLAB], ids=["github", "gitlab"])

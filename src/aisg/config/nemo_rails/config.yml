@@ -1,6 +1,6 @@
 # config/nemo_rails/config.yml
 # ---------------------------------------------------
-# NeMo Guardrails — pipeline config for AI Safety Guardrails
+# NeMo Guardrails — pipeline config for AnyAISafe
 #
 # This file configures the NeMo Guardrails rails engine.
 # Colang dialog flows are defined in rails.co
