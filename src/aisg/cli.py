@@ -45,6 +45,7 @@ Commands:
   skill       Install the packaged ai-safety-audit agent skill into host skill directories
   decide      What each proposed control costs (latency, tokens, usd, human load) against the declared budgets
   hook        Agent-host hooks: gate protected paths, secret literals and unsafe shell; re-audit edits; Stop gate
+  attest      Evaluate the level criteria against the written documents; a named owner signs the result
 
 Run `aisg <command> --help` for a command's own options.
 
@@ -64,6 +65,8 @@ Examples:
   aisg decide --requests-per-day 20000 --p99-budget-ms 250 --monthly-budget-usd 300
   aisg hook install --host claude --yes
   aisg hook list
+  aisg attest . --owner "J. Doe <risk owner>" --html
+  aisg attest . --check --require-level 2    # CI
 """
 
 
@@ -121,6 +124,12 @@ def _hook(argv: Sequence[str]) -> int:
     return hook_main(list(argv))
 
 
+def _attest(argv: Sequence[str]) -> int:
+    from aisg.devtools.attest import main as attest_main
+
+    return attest_main(list(argv))
+
+
 COMMANDS: dict[str, Callable[[Sequence[str]], int]] = {
     "lint": _lint,
     "misalign": _misalign,
@@ -131,6 +140,7 @@ COMMANDS: dict[str, Callable[[Sequence[str]], int]] = {
     "skill": _skill,
     "decide": _decide,
     "hook": _hook,
+    "attest": _attest,
 }
 
 

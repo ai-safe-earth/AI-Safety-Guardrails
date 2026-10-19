@@ -52,6 +52,7 @@ aisg lint src/                                            # EU AI Act compliance
 aisg misalign src/                                        # ALIGN-001..008 rule set
 aisg audit .                                              # AI-surface audit, AUD-101..1003 (see below)
 aisg skill list                                           # where each agent host keeps skills
+aisg attest . --check                                     # which level the written documents reach, and why not more
 python scripts/bump_version.py --check                    # every version site equals pyproject; CHANGELOG has the heading
 ```
 
@@ -567,7 +568,7 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   `--baseline` and `--write-baseline`: no rule runs, so neither can do what
   it says.
 - **`walk` skips the audit's own output** -- a `.json` whose head carries
-  `"schema": "aisg/1"` and `"kind": "audit"` or `"kind": "inventory"`, and an
+  `"schema": "aisg/1"` and `"kind": "audit"`, `"inventory"` or `"attestation"`, and an
   html whose first line is `OWN_HTML_MARKER_LINE` -- and lists it in
   `inventory.own_output_skipped`, rendered as one inventory line in every
   format; SARIF carries it at `runs[0].properties.own_output_skipped`.
@@ -814,6 +815,65 @@ Rules that hold:
   what AUD-1107 reads through `discover._build_system_card`, which also passes
   `affected_persons` through; `aisg init` writes it with a `TODO` reviewer and asks two
   more questions interactively.
+
+## `aisg attest`: levels, criteria and a named owner
+
+`aisg attest` (`devtools/attest.py`) is the deterministic half of "declaring" a system.
+It reads the documents the other commands wrote (`.aisg-audit/audit-report-after.json`,
+falling back to `audit-report.json` with a stderr note; `audit-baseline.json`;
+`measure-report.json`; `probe-report.json`; `decision.json`; `ai-system-card.yaml`),
+evaluates the criteria in `attest-levels.yaml` (shipped in the wheel, mirrored at
+`config/`, pinned identical; `--level-criteria PATH` for another file) and writes
+`attestation.json`, `attestation.md`, `badge.json` and, with `--html`, `attestation.html`
+under `--out-dir` (`.aisg-audit/`). Rules that hold:
+
+- **A level is a list of criteria met on a date, signed by a person.** Levels 0 audited,
+  1 triaged, 2 measured, 3 governed; the level reached is the highest N with every
+  criterion of 0..N met, so a hole at level 1 caps the result at 0 whatever level 3 says.
+  Each criterion row carries `met`, `evidence` and `missing` so a reader sees why. The
+  statement reads "<owner> states that <path> at commit <sha> meets the AISG level N
+  (<name>) criteria on <date>."; when level 0 is not met it says so and the badge reads
+  "no level". The disclaimer extends the audit's: the tool checked the listed criteria
+  and nothing else. Nothing in the module's fixed strings may contain a
+  `report.BANNED_PHRASES` entry or the banned word; `check_templates()` is the self-check
+  and `--debug` turns a hit into exit 2.
+- **`--owner` is required to write and is never a pyproject default.** `NOT_CONFIGURABLE`
+  is `owner` and `check`: a signature and "write nothing" cannot come from a file. The
+  owner is printable ASCII, at most 200 characters. `--check` runs unsigned, prints every
+  criterion, writes nothing, and `--require-level N` makes it exit 1 when N is not
+  reached (the CI form). Criterion kinds are `CRITERION_KINDS` (14), one evaluator each,
+  and `validate_levels` refuses a criteria file naming a rule id the registry does not
+  know or a card path `DEFAULT_CARD` does not have (exit 2).
+- **A bare fingerprint is a suppression, not an acceptance.** Only baseline entries with
+  a reason count as accepted: `L1.no_open_high` keeps a reason-free finding open and
+  `L1.reasons` names how many fingerprints have no reason. `accepted_risks` copies the
+  baseline's reasons (with `rule` and `file` from its `index`) next to the owner; attest
+  never edits a baseline, `aisg audit --amend-baseline --accept` is the only way in.
+- **Absent is recorded, never fatal; wrong is fatal.** A missing measure, probe, decision
+  or card makes the criteria that need it unmet and appears in `inputs` with null `file`,
+  `generated_at` and `age_days`. A missing audit report is fatal (exit 2) with the command
+  to run; a document of the wrong schema or kind, unparseable JSON or an invalid baseline
+  is fatal too, because ignoring it silently would read as "met".
+- **Freshness is relative to the run.** `max_age_days` on `report_present`,
+  `document_present` and `card_section_fresh` (its `date_field`) is read against the
+  run's clock; `next_review_by` is `review_interval_days` (90) after `generated_at`.
+  `report_names_head` compares `target.git_sha` with HEAD and `tree_clean` fails on
+  uncommitted changes; both read git through `walk.git_meta`, the command's only
+  subprocess. No model, no install, no socket.
+- **The attestation is the toolchain's own output.** `"kind": "attestation"` is in
+  `discover._OWN_OUTPUT_KINDS` and `walk._OWN_KIND_RE`, and `attestation.html` starts with
+  `OWN_HTML_MARKER_LINE`, so a re-audit skips both and lists them in `own_output_skipped`;
+  `attestation.md` and `badge.json` stay scanned. `badge.json` is a shields.io endpoint:
+  `informational` above level 0, `lightgrey` at 0 or none, never green or red.
+- **Document keys, in order:** `schema`, `kind`, `tool`, `target`, `generated_at`,
+  `owner`, `level` (`reached`, `name`, `statement`, `criteria`), `inputs`,
+  `accepted_risks`, `unknown`, `residual`, `next_review_by`, `notes`, `disclaimer`.
+  `[tool.aisg-attest]` defaults every other flag. Exit 0 written or met, 1 `--check`
+  not met, 2 fatal, 130 interrupted.
+
+On this repository `aisg attest . --check` reads level 0: the self-audit runs
+`--no-external` (L1.scanners fails), and there is no committed measure or decision
+document and no system card. That is the honest reading, not a defect.
 
 ## Adding a guard
 

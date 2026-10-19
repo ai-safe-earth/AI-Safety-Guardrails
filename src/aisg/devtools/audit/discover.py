@@ -218,8 +218,10 @@ _AISG_GUARD_RE = re.compile(
     re.M,
 )
 
-# ``kind`` values the audit itself emits; its own output is never evidence.
-_OWN_OUTPUT_KINDS = frozenset({"audit", "audit-baseline", "inventory"})
+# ``kind`` values the toolchain itself emits (the audit's report, baseline and
+# inventory, and `aisg attest`'s attestation, which is downstream of the audit); its
+# own output is never evidence. A decision document IS evidence (AUD-806 reads it).
+_OWN_OUTPUT_KINDS = frozenset({"audit", "audit-baseline", "inventory", "attestation"})
 
 _IDENT_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]{3,}\b")
 _IDENT_STOP = frozenset(

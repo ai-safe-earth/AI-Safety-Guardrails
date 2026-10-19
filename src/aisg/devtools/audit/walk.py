@@ -105,11 +105,11 @@ _SKIP_NAMES = frozenset(s for s in SKIP_DIRS if "/" not in s)
 _SKIP_PATHS = frozenset(s for s in SKIP_DIRS if "/" in s)
 _SHA_RE = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 
-# The audit's own JSON output (report or inventory): the exact quoted forms `json.dumps`
-# writes, with optional whitespace after the colon. `"kind": "audit-baseline"` does not
-# match the second one.
+# The toolchain's own JSON output (the audit's report or inventory, `aisg attest`'s
+# attestation): the exact quoted forms `json.dumps` writes, with optional whitespace
+# after the colon. `"kind": "audit-baseline"` does not match the second one.
 _OWN_SCHEMA_RE = re.compile(r'"schema":\s*"' + re.escape(SCHEMA_VERSION) + '"')
-_OWN_KIND_RE = re.compile(r'"kind":\s*"(?:audit|inventory)"')
+_OWN_KIND_RE = re.compile(r'"kind":\s*"(?:audit|inventory|attestation)"')
 # The audit's own SARIF: `report.to_sarif` writes the run's property bag first, and its
 # first two keys in this order. The lint SARIF carries `aisg_schema` too, so the marker
 # alone would skip a document that is not ours.

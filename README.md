@@ -875,6 +875,41 @@ AUD-806 reports a wired guard over a declared budget, and `--decision` adds the 
 table to the html document. `[tool.aisg-decide]` in `pyproject.toml` defaults every
 flag except `--select`.
 
+### `aisg attest` — a level, its criteria, and the person who signs it
+
+```bash
+aisg audit . --format json -o .aisg-audit/audit-report-after.json --baseline .aisg-audit/audit-baseline.json
+aisg attest . --owner "J. Doe <risk owner>" --html     # .aisg-audit/attestation.{json,md,html} and badge.json
+aisg attest . --check --require-level 2                # CI: exit 1 below level 2, nothing written
+```
+
+`aisg attest` is what this toolchain offers instead of a compliance verdict. It reads the
+documents the other commands wrote (the audit report and baseline, the measure, probe and
+decision reports, the system card), evaluates the criteria in `attest-levels.yaml` and
+writes an attestation that a named owner signs. Four levels, each a short list of
+criteria:
+
+| level | name | criteria |
+|---|---|---|
+| 0 | audited | a fresh audit report that names HEAD and lists what it could not establish |
+| 1 | triaged | no open finding at or above high, external scanners attempted, every baseline fingerprint carries a reason |
+| 2 | measured | fresh measure and decision documents, no guard over a declared threshold or unavailable, a probe report (if any) with nothing through, AUD-901/903 closed |
+| 3 | governed | the card's purpose, affected persons, incident contact, risk tier and deployment set, a prompt review dated within 180 days, AUD-107/701/702/703/1107 closed, every accepted risk owned, no uncommitted changes |
+
+The level reached is the highest one with every criterion of it and of every level below
+met; each row of the document says what was read and what is missing. The statement is
+literal: "J. Doe <risk owner> states that repo at commit 3f2a1c9 meets the AISG level 2
+(measured) criteria on 2026-10-19." The disclaimer says the tool checked the listed
+criteria and nothing else. Only baseline entries with a reason count as accepted (a bare
+fingerprint is a suppression), an absent input is recorded as absent and fails its
+criteria rather than the run, `--owner` is required to write and can never come from
+`pyproject.toml`, and `--check` runs unsigned and writes nothing. `badge.json` is a
+shields.io endpoint (`informational` above level 0, `lightgrey` otherwise, never green or
+red). The attestation is the toolchain's own output: a re-audit skips it.
+`[tool.aisg-attest]` defaults every flag except `--owner` and `--check`;
+`--level-criteria PATH` points at your own criteria file, validated against the rule
+registry and the card schema.
+
 ### `aisg probe` — send an attack corpus at a live endpoint
 
 ```bash

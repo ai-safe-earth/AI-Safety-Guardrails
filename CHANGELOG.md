@@ -112,6 +112,18 @@ console script are `aisg`.
   output_catch_rate`); `aisg probe` never sends it.
 - `ai-system-card.yaml` gains `prompt_audit` (reviewer, reviewed_at, scope, notes);
   `aisg init` asks for it. `discover` passes `affected_persons` and `prompt_audit` through.
+- `aisg attest` (`devtools/attest.py`): the deterministic half of declaring a system.
+  It reads the audit report and baseline, the measure, probe and decision reports and
+  the system card, evaluates the criteria of `attest-levels.yaml` (levels 0 audited,
+  1 triaged, 2 measured, 3 governed; 14 criterion kinds; shipped in the wheel and
+  mirrored at `config/`) and writes `attestation.json` / `.md` / `.html` and a
+  shields.io `badge.json` signed by `--owner`. The level is the highest with every
+  criterion of it and below met; each row says what was read and what is missing. Only
+  reasoned baseline entries count as accepted, absent inputs are recorded as absent,
+  `--owner` and `--check` can never come from `pyproject.toml` (`[tool.aisg-attest]`
+  defaults the rest), `--check --require-level N` is the CI form (exit 1 below N), and
+  the disclaimer says the tool checked the listed criteria and nothing else. No model
+  call, no install, no socket; git is read through `walk.git_meta`.
 
 ### Changed
 
@@ -121,6 +133,8 @@ console script are `aisg`.
 - `EUAIActCompliance` and `NISTAIRMFCompliance` return REDACT when they append their
   transparency disclosure on the output stage, so the text reaches `final_content`.
 - `EUAIActCodeAnalyzer.scan_source(source, filename, report)` scans text in hand.
+- `walk` and `discover` treat `"kind": "attestation"` as the toolchain's own output,
+  like the audit report and the inventory; `attestation.html` carries the html marker.
 - AUD-801 counts an eval file's mention of a guard as evidence that the guard is
   exercised only when the file is an eval tool's config, a data file or a test module.
   A README or a tool's own source that names the guard no longer silences the rule.

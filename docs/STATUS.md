@@ -19,14 +19,35 @@ reason written there.
 | 0 | performance pass, CHANGELOG, `bump_version.py`, `release.yml`, README truth-up, `v0.1.0` | code done; **the tag is the user's act** (below) |
 | 1 | tokens and prices, `aisg measure` offline + cost columns, `aisg decide`, `Budget`, AUD-806 | committed `e748021` |
 | 2 | `aisg audit --only`, `aisg hook`, Claude Code plugin, Cursor/Gemini installers, Action, pre-commit, GitLab job | committed `40af8c1` |
-| 3 | P11 persons-and-manipulation rules, `ManipulationGuard`, `AIDisclosureGuard`, corpora, `prompt_audit` | committed 2026-10-19 (the commit after `40af8c1`) |
-| 4 | `aisg attest` with levels and a named owner | next |
-| 5 | seven-phase skill, SYSTEM.md, CONTRIBUTING, README | |
+| 3 | P11 persons-and-manipulation rules, `ManipulationGuard`, `AIDisclosureGuard`, corpora, `prompt_audit` | committed `ed7b41b` |
+| 4 | `aisg attest` with levels and a named owner | committed 2026-10-19 (the commit after `ed7b41b`) |
+| 5 | seven-phase skill, SYSTEM.md, CONTRIBUTING, README | next |
 | 6 | `aisg fleet`, bench `--tool audit`, `v0.2.0` | |
 
 ## Landed 2026-10-19
 
-- **wave 3, `feat(persons)`**: design `docs/plan/03`, parts A and B.
+- **wave 4, `feat(attest)`**: design `docs/plan/03` part C.
+  - `devtools/attest.py`, `aisg attest`: reads `.aisg-audit/audit-report-after.json`
+    (falls back to the survey report with a note), the baseline, the measure, probe
+    and decision reports and the system card; evaluates `attest-levels.yaml` (levels
+    0 audited, 1 triaged, 2 measured, 3 governed; 14 criterion kinds, one evaluator
+    each; shipped in the wheel, mirrored at `config/`, pinned identical and validated
+    against the rule registry and `DEFAULT_CARD`); writes `attestation.json` / `.md`
+    / `.html` (marker on line 1) and a shields.io `badge.json`. The level is
+    cumulative; every criterion row says what was read and what is missing.
+  - Honesty rules pinned by 78 tests: a bare fingerprint is a suppression, not an
+    acceptance; an absent input is recorded with nulls and fails its criteria, never
+    the run; a wrong-kind or unparseable document is fatal; `--owner` (printable
+    ASCII) is required to write and, with `--check`, can never come from
+    `pyproject.toml`; `--check --require-level N` is the CI form; the statement and
+    every template pass the audit's banned-phrase check; the badge is never green or
+    red; `walk.git_meta` is the only subprocess, no socket.
+  - `"kind": "attestation"` joined `discover._OWN_OUTPUT_KINDS` and `walk._OWN_KIND_RE`;
+    `cli.COMMANDS["attest"]`; docs in CLAUDE.md, README and the CHANGELOG.
+  - On this repository `aisg attest . --check` reads level 0: the self-audit runs
+    `--no-external`, no measure or decision document is committed, no card. The
+    skill's attest phase (wave 5) writes those under `.aisg-audit/`.
+- **wave 3, `feat(persons)` (`ed7b41b`)**: design `docs/plan/03`, parts A and B.
   - `rules/persons.py`, AUD-1101..1107 (54 rules), the eleventh subsystem
     `persons` drawn on a third row of Fig. 1, vocabulary in
     `persons_patterns.py` (all three ignore markers). Three evidence tiers: grep
@@ -92,23 +113,20 @@ and `.gitlab-ci-euaiact.yml` keeps its git-tag install (flipped to PyPI in wave 
 
 ## Head
 
-`main` at the wave-3 commit (after `40af8c1`). Pushed to `origin`
+`main` at the wave-4 commit (after `ed7b41b`). Pushed to `origin`
 (`github.com/ai-safe-earth/AI-Safety-Guardrails`). No tags yet.
 
 ## Green
 
-Locally on the wave-3 tree (2026-10-19): **4235 passed, 2 skipped** (2m45s),
+Locally on the wave-4 tree (2026-10-19): **4314 passed, 2 skipped**,
 `ruff format --check .` and `ruff check .`, `aisg lint src examples
---errors-only` no issues (the compliance gate scans the new modules; one
-rule-description line was reworded so a rule about workplace emotion
-recognition does not trip the linter's own 005c), `aisg misalign` on the
-changed modules reports only the two pre-existing ALIGN-006 hits in
-`llm_judges/claude_judge.py` (lines 1 and 55, identical at `40af8c1`),
+--errors-only` no issues, `aisg misalign` on the new modules no issues (the two
+pre-existing ALIGN-006 hits in `llm_judges/claude_judge.py` are unchanged),
 self-audit `baseline: 0 new, 33 unchanged, 0 no longer reported` (32
-fingerprints, 32 reasons), `aisg measure --max-p99-ms 25` exit 0 with the two
-new guards and the output corpus, `sync_skill.py --check` (15 files, 3
-mirrors), `controls_md.py --check` (54 rules) and `bump_version.py --check`
-(9 sites) in sync.
+fingerprints, 32 reasons; `attest.py` produced no finding), `aisg measure
+--max-p99-ms 25` exit 0, `aisg attest . --check` level 0 with the reasons
+above, `sync_skill.py --check` (15 files, 3 mirrors), `controls_md.py --check`
+(54 rules) and `bump_version.py --check` (9 sites) in sync.
 
 ## Left open on purpose
 
@@ -127,7 +145,13 @@ mirrors), `controls_md.py --check` (54 rules) and `bump_version.py --check`
   has no `ask`; Codex writes nothing (`hosts.md`).
 - AUD-801 is accepted in the baseline for the seven guards `default.yaml`
   wires (CI measures them, keeps the report as a build artifact); committing a
-  measure report under `.aisg-audit/` is the alternative. Decide in wave 5.
+  measure report under `.aisg-audit/` is the alternative, and it is also what
+  `aisg attest` level 2 reads. Decide in wave 5.
+- The attest criteria file is a first cut: the rule lists (`L2.evals_ci`,
+  `L3.controls`), the 30/180-day freshness limits and the 90-day review interval
+  are defaults for operators to override with `--level-criteria`, not measured
+  figures. `measure_thresholds` reads the measure report's own threshold
+  failures; it does not judge the thresholds.
 - AUD-202 fires on the installer's own confirmation flag; four acceptances say
   why.
 - The VaiVia walkthrough in `docs/handoff.md` is still at phase 3 row 2 of 11;
@@ -154,6 +178,7 @@ aisg lint src examples --errors-only
 aisg misalign src
 aisg audit . --no-external --fail-on high --baseline audit-baseline.json
 aisg measure --max-p99-ms 25
+aisg attest . --check                     # level 0 here; each unmet criterion says why
 python scripts/sync_skill.py --check
 python scripts/controls_md.py --check
 python scripts/bump_version.py --check
