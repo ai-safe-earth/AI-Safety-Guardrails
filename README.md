@@ -84,7 +84,7 @@ ai-safety-guardrails/
 │
 ├── src/aisg/
 │   ├── __init__.py              # Public API surface
-│   ├── cli.py                   # `aisg` entry point: lint, misalign, init, probe, measure, audit, skill, decide, hook, attest
+│   ├── cli.py                   # `aisg` entry point: lint, misalign, init, probe, measure, audit, skill, decide, hook, attest, fleet
 │   │
 │   ├── core/
 │   │   ├── base.py              # GuardrailBase, CheckResult, PipelineResult, Severity, Action
@@ -150,6 +150,10 @@ ai-safety-guardrails/
 │   │   ├── measure.py           # What each guard catches, breaks and costs (aisg measure)
 │   │   ├── skill.py             # Install the agent skill into host dirs (aisg skill)
 │   │   ├── audit/               # The AI-surface audit, 54 rules (aisg audit)
+│   │   ├── decide.py            # Price each control against declared budgets (aisg decide)
+│   │   ├── hook.py, hosts.py    # Agent-host hooks and the shared host table (aisg hook)
+│   │   ├── attest.py            # Levels, criteria, a named owner (aisg attest)
+│   │   ├── fleet.py, _git.py    # The audit over many repositories (aisg fleet); pinned fetch
 │   │   └── _config.py           # Reads [tool.*] defaults from pyproject.toml
 │   ├── probes/                  # Attack and benign corpora (YAML, ship in the wheel)
 │   └── skills/ai-safety-audit/  # The agent skill (canonical copy; mirrored below)
@@ -159,7 +163,7 @@ ai-safety-guardrails/
 │   ├── eu_high_risk.yaml
 │   └── nemo_rails/
 │
-├── .claude/skills/, .agents/skills/   # Byte-identical mirrors of the skill (scripts/sync_skill.py)
+├── .claude/skills/, .agents/skills/, plugins/ai-safety-audit/skills/   # Byte-identical mirrors of the skill (scripts/sync_skill.py)
 ├── bench/                       # Precision bench: SHA-pinned corpus, labelled findings
 ├── docs/                        # STATUS.md (handoff), PLAN.md, plan/, explain/
 ├── tests/
@@ -909,6 +913,30 @@ red). The attestation is the toolchain's own output: a re-audit skips it.
 `[tool.aisg-attest]` defaults every flag except `--owner` and `--check`;
 `--level-criteria PATH` points at your own criteria file, validated against the rule
 registry and the card schema.
+
+### `aisg fleet` — the same audit over many repositories
+
+```bash
+aisg fleet fleet.yaml --jobs 4                # .aisg-fleet/fleet-report.{json,csv,md}
+aisg fleet bench/corpus.yaml --proposal       # plus a PR body per repository
+aisg fleet repos.csv --fail-on-findings       # a team gating its own repositories
+```
+
+`fleet.yaml` is `repos:` with `name`, `url` or `path`, optional `sha` and `branch`
+(`bench/corpus.yaml` is a valid list); a CSV with `name,url,sha` works too. Each
+repository is cloned at its pin (or used in place) and audited in its own subprocess with
+`--no-external`, under a wall-clock cap, with its own `[tool.aisg-audit]`. The three
+documents carry counts, rule frequencies, inventory highlights and a path to each
+repository's report, never a snippet. Exit 0 when every repository was audited, 1 when
+one could not be (an incomplete survey must not look complete), 2 fatal;
+`--fail-on-findings` adds exit 1 when a repository's own audit exited 1. The fleet never
+searches for targets, never pushes and never opens a pull request; `--proposal` writes
+a PR body (`proposal.md`) a person can use after reading it.
+
+Precision for the audit rules is measured the same way as for the linter:
+`python bench/run.py --tool audit`, label `bench/findings-audit.csv` by hand,
+`python bench/score.py --tool audit` (`bench/README.md`). No row is labelled yet, so
+every audit rule stays `[UNMEASURED]` and keeps firing.
 
 ### `aisg probe` — send an attack corpus at a live endpoint
 

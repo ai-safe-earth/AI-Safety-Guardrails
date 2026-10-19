@@ -21,12 +21,40 @@ reason written there.
 | 2 | `aisg audit --only`, `aisg hook`, Claude Code plugin, Cursor/Gemini installers, Action, pre-commit, GitLab job | committed `40af8c1` |
 | 3 | P11 persons-and-manipulation rules, `ManipulationGuard`, `AIDisclosureGuard`, corpora, `prompt_audit` | committed `ed7b41b` |
 | 4 | `aisg attest` with levels and a named owner | committed `e5ef805` |
-| 5 | seven-phase skill, SYSTEM.md, CONTRIBUTING, README | committed 2026-10-19 (the commit after `e5ef805`) |
-| 6 | `aisg fleet`, bench `--tool audit`, `v0.2.0` | next |
+| 5 | seven-phase skill, SYSTEM.md, CONTRIBUTING, README | committed `ab19e68` |
+| 6 | `aisg fleet`, bench `--tool audit`, `v0.2.0` | fleet and bench committed 2026-10-19 (the commit after `ab19e68`); the PyPI pin flip and `0.2.0` wait for the `v0.1.0` tag |
 
 ## Landed 2026-10-19
 
-- **wave 5, `feat(skill)`**: design `docs/plan/03` part D.
+- **wave 6, `feat(fleet)`**: design `docs/plan/02` sections 6 and 7.
+  - `devtools/_git.py` (`fetch_pinned`, `clone_shallow`, one-line `GitError`; the
+    bench's fetch moved into the package, two callers) and `devtools/fleet.py`,
+    `aisg fleet LIST`: YAML or CSV list the operator wrote (`bench/corpus.yaml` is
+    valid), one `aisg audit --no-external` subprocess per repository under a
+    wall-clock cap, `--jobs`, `--resume`, `--proposal` (a PR body with the plan
+    and a blank decide table, `file:line` only), `--fail-on-findings`;
+    `fleet-report.{json,csv,md}` (`kind: fleet`) with counts, rule frequencies,
+    inventory highlights and report paths, never a snippet. Exit 0 when every
+    repository was audited, 1 when one could not be, 2 fatal. Never searches,
+    pushes or opens a PR; never writes into a local path. 26 fleet tests, 5 git
+    tests (a local origin, no network).
+  - `bench/run.py --tool audit` / `bench/score.py --tool audit`: the same corpus,
+    sampling and label loop for the `AUD-*` rules (`findings-audit.csv` with `sub`
+    and the redacted `snippet`; `precision-audit.md`; a paste block keyed by class
+    name). No audit row is labelled; `measured_precision` stays `None`.
+  - Docs: CLAUDE.md section, README section and structure block, `docs/SYSTEM.md`
+    fleet row, `SECURITY.md` scope, `bench/README.md`, CHANGELOG.
+  - One mistake found and undone: the wave-5 gate's bare `aisg measure` wrote
+    `measure-report.json` into the repository root and `git add -A` committed it in
+    `ab19e68`; the next self-audit read it as evidence and reported seven AUD-801
+    acceptances as `no longer reported`. The file is removed, `/measure-report.json`
+    and `/probe-report.json` are gitignored, and CLAUDE.md says to run measure with
+    `-o` outside the tree.
+  - **Not done, on purpose**: the GitLab template's flip to the PyPI pin and
+    `bump_version.py 0.2.0`. Both presuppose a published `v0.1.0`, which is the
+    user's act (below); until then the 0.1.0 CHANGELOG section carries waves 1-6
+    and the template installs from the git tag.
+- **wave 5, `feat(skill)` (`ab19e68`)**: design `docs/plan/03` part D.
   - `SKILL.md` runs seven phases (survey, document 1, decide, apply, document 2,
     verify, attest) and a closing step that offers `aisg hook install` and the
     Action by name. Hard rule 8 (which aisg ran: `audit.sh` / `attest.sh` print
@@ -145,21 +173,22 @@ and `.gitlab-ci-euaiact.yml` keeps its git-tag install (flipped to PyPI in wave 
 
 ## Head
 
-`main` at the wave-5 commit (after `e5ef805`). Pushed to `origin`
+`main` at the wave-6 commit (after `ab19e68`). Pushed to `origin`
 (`github.com/ai-safe-earth/AI-Safety-Guardrails`). No tags yet.
 
 ## Green
 
-Locally on the wave-5 tree (2026-10-19): **4314 passed, 2 skipped**,
+Locally on the wave-6 tree (2026-10-19): **4392 passed, 2 skipped** (the wave-5
+entry used to say 4314 here by mistake; that run was 4355 passed, 2 skipped),
 `ruff format --check .` and `ruff check .`, `aisg lint src examples
 --errors-only` no issues, `aisg misalign` on the changed modules no issues (the
 two pre-existing ALIGN-006 hits in `llm_judges/claude_judge.py` are unchanged),
 self-audit `baseline: 0 new, 33 unchanged, 0 no longer reported` (32
-fingerprints, 32 reasons), `aisg measure --max-p99-ms 25` exit 0, `aisg attest
-. --check` level 0 (self-audit is `--no-external`, no committed measure or
-decision document, no card), `sync_skill.py --check` (18 files, 3 mirrors),
-`controls_md.py --check` (54 rules), `levels_md.py --check` (16 criteria) and
-`bump_version.py --check` (9 sites) in sync.
+fingerprints, 32 reasons), `aisg measure --max-p99-ms 25 -o <scratch>` exit 0,
+`aisg attest . --check` level 0 (self-audit is `--no-external`, no committed
+measure or decision document, no card), `sync_skill.py --check` (18 files, 3
+mirrors), `controls_md.py --check` (54 rules), `levels_md.py --check` (16
+criteria) and `bump_version.py --check` (9 sites) in sync.
 
 ## Left open on purpose
 
@@ -198,6 +227,13 @@ decision document, no card), `sync_skill.py --check` (18 files, 3 mirrors),
 - `aisg decide` has no bootstrap script of its own; the skill runs it as `aisg
   decide` (or through `uvx --from 'aisguard==<pin>'`). A `decide.sh` twin is a
   small follow-up if a host turns out to need it.
+- `aisg fleet` has not been run over the 20-repo bench corpus from this machine
+  (it clones 20 repositories); the tests cover two local fixtures, `--jobs 2`,
+  `--resume`, `--proposal` and the exit-code rule. Running it is the natural
+  first use of `bench/run.py --tool audit`, which produces the labelling CSV.
+- After the user tags `v0.1.0`: flip `.gitlab-ci-euaiact.yml` to the PyPI pin
+  (`TestCITemplates` changes with it), then `python scripts/bump_version.py
+  0.2.0` and a new CHANGELOG heading; `v0.2.0` is again the user's act.
 
 ## Known-broken, deliberately left
 
@@ -213,8 +249,9 @@ ruff check . && ruff format --check .
 aisg lint src examples --errors-only
 aisg misalign src
 aisg audit . --no-external --fail-on high --baseline audit-baseline.json
-aisg measure --max-p99-ms 25
+aisg measure --max-p99-ms 25 -o /tmp/measure-report.json   # never bare: the root copy is read as evidence
 aisg attest . --check                     # level 0 here; each unmet criterion says why
+aisg fleet bench/corpus.yaml --help       # the fleet over a list; clones only what is listed
 python scripts/sync_skill.py --check
 python scripts/controls_md.py --check
 python scripts/levels_md.py --check

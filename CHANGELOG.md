@@ -137,6 +137,19 @@ console script are `aisg`.
 - `docs/SYSTEM.md` (the flow on one page: what each step reads, writes and never
   does) and `CONTRIBUTING.md`; `SECURITY.md` scope now covers `decide`, `hook`,
   `attest`, the plugin and the CI surface.
+- `aisg fleet LIST` (`devtools/fleet.py`): the audit over many repositories, one
+  `aisg audit --no-external` subprocess each under a wall-clock cap, from a YAML or CSV
+  list the operator wrote (`bench/corpus.yaml` is a valid list);
+  `fleet-report.{json,csv,md}` (`kind: fleet`) with counts, rule frequencies, inventory
+  highlights and report paths, never a snippet; `--jobs`, `--resume`, `--proposal` (a PR
+  body per repository), `--fail-on-findings`. Exit 0 when every repository was audited,
+  1 when one could not be. The fleet never searches for targets, pushes or opens a PR.
+  `devtools/_git.py` is the shared pinned-fetch implementation (moved from
+  `bench/run.py`).
+- `bench/run.py --tool audit` and `bench/score.py --tool audit`: the same corpus, label
+  loop and scorer for the `AUD-*` rules (`findings-audit.csv` with `sub` and the
+  redacted `snippet`; `precision-audit.md`; a paste block keyed by class name). No row
+  is labelled yet; every audit rule stays UNMEASURED.
 
 ### Changed
 
@@ -148,6 +161,9 @@ console script are `aisg`.
 - `EUAIActCodeAnalyzer.scan_source(source, filename, report)` scans text in hand.
 - `walk` and `discover` treat `"kind": "attestation"` as the toolchain's own output,
   like the audit report and the inventory; `attestation.html` carries the html marker.
+- `measure-report.json`, written into the repository root by a bare `aisg measure` during
+  a gate run and committed by mistake in the skill commit, is removed; the default
+  `measure-report.json` / `probe-report.json` output paths are gitignored.
 - `scripts/audit.sh|ps1` print `aisg: <path> version <v> (pinned <v>)` on stderr
   before running. The skill's phases are renumbered: apply is 4, document 2 is 5,
   verify is 6; the offline `aisg measure` may run in phase 3 with approval.

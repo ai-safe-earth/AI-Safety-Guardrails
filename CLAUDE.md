@@ -54,6 +54,7 @@ aisg audit .                                              # AI-surface audit, AU
 aisg skill list                                           # where each agent host keeps skills
 aisg attest . --check                                     # which level the written documents reach, and why not more
 python scripts/levels_md.py --check                       # the skill's references/levels.md equals the criteria file
+aisg fleet bench/corpus.yaml --jobs 4 --proposal          # the audit over a list of repositories; clones only what is listed
 python scripts/bump_version.py --check                    # every version site equals pyproject; CHANGELOG has the heading
 ```
 
@@ -86,7 +87,10 @@ aisg audit . --no-external --fail-on high --baseline audit-baseline.json
 ```
 
 It must exit 0. A non-zero exit means a new finding at `high` or above that is not in the
-baseline; either fix it or add it to `audit-baseline.json` with a reason (see below). CI
+baseline; either fix it or add it to `audit-baseline.json` with a reason (see below). Run
+`aisg measure` with `-o` pointing outside the tree (or delete `measure-report.json`
+afterwards, now gitignored): a report left in the root is read by the next self-audit as
+evidence and reports the seven AUD-801 acceptances as `no longer reported`. CI
 (`tests.yml`) runs pytest on 3.10 and 3.13, ruff, `aisg measure --max-p99-ms 25` and the
 same audit gate; `eu-ai-act-compliance.yml` runs `aisg lint src examples` and fails on
 errors only (see "EU AI Act linter suppression" for what is and is not in that gate);
@@ -894,6 +898,47 @@ under `--out-dir` (`.aisg-audit/`). Rules that hold:
 On this repository `aisg attest . --check` reads level 0: the self-audit runs
 `--no-external` (L1.scanners fails), and there is no committed measure or decision
 document and no system card. That is the honest reading, not a defect.
+
+## `aisg fleet` and the audit bench
+
+`aisg fleet LIST` (`devtools/fleet.py`) audits many repositories, one `aisg audit`
+subprocess each, and aggregates counts, names and report paths into
+`.aisg-fleet/fleet-report.{json,csv,md}` (`"kind": "fleet"`). Rules that hold:
+
+- **The operator writes the list; the fleet never searches.** `LIST` is YAML (`repos:`
+  with `name`, `url` or `path`, optional `sha` and `branch`; `bench/corpus.yaml` is a
+  valid list) or CSV (`name,url|path,sha`). Its only network action is `git clone` of the
+  URLs listed, through `devtools/_git.fetch_pinned` (shared with `bench/run.py`: init +
+  fetch-by-sha, branch fallback at depth 50, `.aisg-bench-sha` stamp, one-line
+  `GitError`). A local `path` is audited in place and never written into.
+- **One subprocess per repository**: `sys.executable -m aisg.cli audit . --format json
+  --no-external --fail-on <level> -o <out>/<name>/audit-report.json` with the clone as cwd
+  (the target's own `[tool.aisg-audit]` applies) and `--per-repo-timeout` as the
+  wall-clock cap, because an in-process audit cannot be interrupted and one pathological
+  repository must not take the fleet down; never a launcher from
+  `adapters.FORBIDDEN_LAUNCHERS`; `--jobs` is a thread pool over subprocesses; the child
+  gets this process's `aisg` on `PYTHONPATH` so a source checkout works without an install.
+- **Findings are the survey's content, not its failure.** Exit 0 when every repository
+  was audited, 1 when one was not (`clone_failed`, `timeout`, `fatal`: an incomplete
+  survey must not look complete), 2 fatal (unreadable list, `git` missing, `--out`
+  unwritable). `--fail-on-findings` adds exit 1 when a repository's own audit exited 1,
+  for a team gating its own repositories.
+- **No snippet leaves the per-repo report.** The fleet documents carry `summary` counts,
+  `rule_frequency` by display id, inventory highlights (languages, providers, frameworks,
+  tool and MCP-server counts, hosts, guardrails, evals), `git_sha`, duration, status and
+  the report path; `fleet-report.json` keys are `schema, kind, tool, generated_at,
+  options, totals, disclaimer, repos`. `--proposal` writes `<out>/<name>/proposal.md` (a
+  severity table, the plan table with the html plan's `who` rule, a blank decide table,
+  the exact command, how to apply) with `file:line` and never evidence text. The fleet
+  never pushes or opens a PR; `--resume` skips a repository whose report already parses;
+  `check_templates()` guards the fixed strings; `[tool.aisg-fleet]` defaults the flags.
+- **`bench/run.py --tool audit`** runs `aisg audit . --no-external --fail-on never` over
+  the same SHA-pinned corpus into `bench/results-audit/` and `findings-audit.csv`
+  (`rule_id` = the parent rule, plus `sub` and the redacted first-evidence `snippet`);
+  `bench/score.py --tool audit` writes `precision-audit.md` and a paste block keyed by
+  class name (`# AUD-501 SecretLiteral: ...`). `sample_per_rule` is unchanged (keys on
+  rule, repo, file, line) so the deterministic, nested draw holds for both CSVs. No audit
+  row is labelled yet: `measured_precision` stays `None` everywhere, by design.
 
 ## Adding a guard
 

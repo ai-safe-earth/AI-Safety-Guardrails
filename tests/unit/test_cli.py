@@ -31,6 +31,7 @@ EXPECTED_COMMANDS = (
     "decide",
     "hook",
     "attest",
+    "fleet",
 )
 
 # The subcommand parsers keep their own prog names; `--help` output starts with it.
@@ -45,6 +46,7 @@ PROG_BY_COMMAND = {
     "decide": "aisg decide",
     "hook": "aisg hook",
     "attest": "aisg attest",
+    "fleet": "aisg fleet",
 }
 
 SRC_DIR = Path(__file__).resolve().parents[2] / "src"

@@ -1,23 +1,30 @@
 """
 bench/run.py
 ------------
-Clone every repo in corpus.yaml at its pinned SHA, run `aisg lint` over it, and
-collect the findings.
+Clone every repo in corpus.yaml at its pinned SHA, run `aisg lint` (or, with
+`--tool audit`, `aisg audit`) over it, and collect the findings.
 
-Outputs:
-    bench/results/<name>.sarif   raw SARIF per repo
-    bench/results/<name>.json    raw JSON per repo (carries the summary block)
-    bench/findings.csv           one row per finding, `verdict` left EMPTY
+Outputs, `--tool lint` (the default):
+    bench/results/<name>.sarif        raw SARIF per repo
+    bench/results/<name>.json         raw JSON per repo (carries the summary block)
+    bench/findings.csv                one row per finding, `verdict` left EMPTY
+    bench/findings-all.csv            every finding, unsampled
+
+Outputs, `--tool audit`:
+    bench/results-audit/<name>.json   the audit report per repo (`--no-external`)
+    bench/findings-audit.csv          one row per finding, `verdict` left EMPTY
+    bench/findings-audit-all.csv      every finding, unsampled
 
 The verdict column is deliberately blank. It is filled in by hand -- tp / fp /
 unclear -- and bench/score.py refuses to run until it is complete. Nothing in
 this harness infers, guesses or defaults a verdict.
 
 Usage:
-    python bench/run.py                    # full corpus
+    python bench/run.py                    # full corpus, lint
+    python bench/run.py --tool audit       # full corpus, audit
     python bench/run.py --only langchain crewAI
     python bench/run.py --keep-clones      # leave checkouts in bench/.cache
-    python bench/run.py --experimental     # include sub-threshold rules
+    python bench/run.py --experimental     # include sub-threshold rules (lint only)
 """
 
 from __future__ import annotations
@@ -34,11 +41,22 @@ from pathlib import Path
 
 BENCH = Path(__file__).resolve().parent
 ROOT = BENCH.parent
+sys.path.insert(0, str(ROOT / "src"))
+
+from aisg.devtools._git import GitError, fetch_pinned  # noqa: E402
+
 CORPUS = BENCH / "corpus.yaml"
-RESULTS = BENCH / "results"
 CACHE = BENCH / ".cache"
+
+RESULTS = BENCH / "results"
 CSV_PATH = BENCH / "findings.csv"
 CSV_ALL_PATH = BENCH / "findings-all.csv"
+
+RESULTS_AUDIT = BENCH / "results-audit"
+CSV_AUDIT_PATH = BENCH / "findings-audit.csv"
+CSV_AUDIT_ALL_PATH = BENCH / "findings-audit-all.csv"
+
+TOOLS = ("lint", "audit")
 
 # Findings kept per rule for hand-labelling. The full corpus produces
 # ~25k findings, which nobody labels; precision needs roughly 30-50 judged
@@ -46,6 +64,16 @@ CSV_ALL_PATH = BENCH / "findings-all.csv"
 DEFAULT_SAMPLE_PER_RULE = 40
 
 CSV_COLUMNS = ["repo", "file", "line", "rule_id", "message", "verdict"]
+# The audit rows carry the sub-finding and the (already redacted) first evidence snippet,
+# so a labeller needs no clone. `rule_id` is the PARENT rule: precision is a class attribute.
+AUDIT_CSV_COLUMNS = ["repo", "file", "line", "rule_id", "sub", "message", "snippet", "verdict"]
+
+
+def paths_for(tool: str) -> tuple[Path, Path, Path, list[str]]:
+    """(results dir, sampled CSV, full CSV, columns) for a tool."""
+    if tool == "audit":
+        return RESULTS_AUDIT, CSV_AUDIT_PATH, CSV_AUDIT_ALL_PATH, AUDIT_CSV_COLUMNS
+    return RESULTS, CSV_PATH, CSV_ALL_PATH, CSV_COLUMNS
 
 
 def load_corpus() -> list[dict]:
@@ -68,43 +96,25 @@ def load_corpus() -> list[dict]:
 
 def fetch(repo: dict) -> Path:
     """
-    Shallow-fetch exactly the pinned commit. `clone --depth 1` only reaches
-    branch tips, so this inits an empty repo and fetches the SHA directly --
-    that pins the scan to the corpus commit even after upstream moves on.
+    Shallow-fetch exactly the pinned commit through `aisg.devtools._git.fetch_pinned`
+    (one implementation, shared with `aisg fleet`). A cached checkout whose stamp
+    names the SHA is reused.
     """
     dest = CACHE / repo["name"]
     stamp = dest / ".aisg-bench-sha"
     if stamp.is_file() and stamp.read_text(encoding="utf-8").strip() == repo["sha"]:
         print(f"    cached at {repo['sha'][:12]}")
         return dest
-    if dest.exists():
-        shutil.rmtree(dest, ignore_errors=True)
-    dest.mkdir(parents=True, exist_ok=True)
-
-    def git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
-        # core.longpaths: several corpus repos have paths over the Windows
-        # 260-char limit (deeply nested Next.js route directories, for one),
-        # and checkout fails outright without it. No-op elsewhere.
-        return subprocess.run(
-            ["git", "-c", "core.longpaths=true", "-C", str(dest), *args],
-            capture_output=True,
-            text=True,
-            check=check,
-            timeout=1800,
-        )
-
-    git("init", "-q")
-    git("remote", "add", "origin", repo["url"])
-    try:
-        git("fetch", "--depth", "1", "--quiet", "origin", repo["sha"])
-    except subprocess.CalledProcessError as exc:
-        # Some servers refuse fetch-by-sha; fall back to the recorded branch.
-        detail = (exc.stderr or "").strip()[:120]
-        print(f"    fetch-by-sha refused, falling back to branch: {detail}")
-        git("fetch", "--depth", "50", "--quiet", "origin", repo.get("branch", "HEAD"))
-    git("checkout", "-q", repo["sha"])
-    stamp.write_text(repo["sha"], encoding="utf-8")
+    fetch_pinned(repo["url"], repo["sha"], dest, branch=repo.get("branch"), timeout=1800)
     return dest
+
+
+def _child_env() -> dict[str, str]:
+    # PYTHONPATH keeps aisg importable in the child without requiring an install.
+    env = dict(os.environ)
+    src = str(ROOT / "src")
+    env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
+    return env
 
 
 def lint(path: Path, out_stem: Path, experimental: bool) -> tuple[int, dict | None]:
@@ -116,12 +126,7 @@ def lint(path: Path, out_stem: Path, experimental: bool) -> tuple[int, dict | No
     # Run with the CLONE as cwd, not this repo. apply_tool_config() walks up
     # from cwd for a pyproject.toml, and scanning third-party code under this
     # project's [tool.euaiact-lint] defaults would make results depend on where
-    # the harness happens to live. PYTHONPATH keeps aisg importable without
-    # requiring an install.
-    env = dict(os.environ)
-    src = str(ROOT / "src")
-    env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
-
+    # the harness happens to live.
     codes = []
     for fmt, suffix in (("sarif", ".sarif"), ("json", ".json")):
         proc = subprocess.run(
@@ -129,7 +134,7 @@ def lint(path: Path, out_stem: Path, experimental: bool) -> tuple[int, dict | No
             capture_output=True,
             text=True,
             cwd=str(path),
-            env=env,
+            env=_child_env(),
             timeout=3600,
         )
         codes.append(proc.returncode)
@@ -146,9 +151,43 @@ def lint(path: Path, out_stem: Path, experimental: bool) -> tuple[int, dict | No
     return max(codes), summary
 
 
+def audit(path: Path, out_file: Path) -> tuple[int, dict | None]:
+    """
+    Run `aisg audit . --format json --no-external` with the clone as cwd (so the
+    target's own `[tool.aisg-audit]` applies, as under the skill). Exit 0 and 1
+    are both a completed audit; 2 is fatal and says so.
+    """
+    argv = [
+        sys.executable,
+        "-m",
+        "aisg.cli",
+        "audit",
+        ".",
+        "--format",
+        "json",
+        "--no-external",
+        "--fail-on",
+        "never",
+        "-o",
+        str(out_file.resolve()),
+    ]
+    proc = subprocess.run(
+        argv, capture_output=True, text=True, cwd=str(path), env=_child_env(), timeout=3600
+    )
+    if proc.returncode == 2:
+        print(f"    !! audit fatal: {proc.stderr.strip()[:300]}")
+    summary = None
+    if out_file.is_file():
+        try:
+            summary = json.loads(out_file.read_text(encoding="utf-8")).get("summary")
+        except json.JSONDecodeError as exc:
+            print(f"    !! unreadable JSON report: {exc}")
+    return proc.returncode, summary
+
+
 def rows_from_json(name: str, jf: Path) -> list[dict]:
     """
-    One row per finding. `verdict` stays empty by design.
+    One row per lint finding. `verdict` stays empty by design.
 
     Paths are made repo-relative by stripping the cache prefix as a string, not
     via Path.relative_to -- the checkout is deleted after each scan, and rows
@@ -180,6 +219,39 @@ def rows_from_json(name: str, jf: Path) -> list[dict]:
     return rows
 
 
+def rows_from_audit_json(name: str, jf: Path) -> list[dict]:
+    """
+    One row per audit finding, flattened from the report: the parent `rule_id`
+    (the class the precision belongs to), the `sub`, the title, and the first
+    evidence leg's file, line and snippet. The snippet is already redacted by the
+    audit, so an AUD-501 row never carries the secret it reports. A finding with
+    no evidence (an absence rule) keeps an empty file and line.
+    """
+    if not jf.is_file():
+        return []
+    try:
+        data = json.loads(jf.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    rows = []
+    for f in data.get("findings", []):
+        evidence = f.get("evidence") or []
+        first = evidence[0] if evidence and isinstance(evidence[0], dict) else {}
+        rows.append(
+            {
+                "repo": name,
+                "file": str(first.get("file") or "").replace("\\", "/"),
+                "line": first.get("line", "") if first.get("line") is not None else "",
+                "rule_id": f.get("rule_id") or str(f.get("id", "")).split("/")[0],
+                "sub": f.get("sub") or "",
+                "message": f.get("title", ""),
+                "snippet": " ".join(str(first.get("snippet") or "").split()),
+                "verdict": "",
+            }
+        )
+    return rows
+
+
 def sample_per_rule(rows: list[dict], per_rule: int) -> list[dict]:
     """
     Keep at most `per_rule` findings for each rule, spread across repos.
@@ -189,7 +261,8 @@ def sample_per_rule(rows: list[dict], per_rule: int) -> list[dict]:
     codebase's idiosyncrasies would masquerade as the rule's precision.
 
     Deterministic: the same findings.csv yields the same sample every run, so
-    labelling work is never invalidated by a re-run.
+    labelling work is never invalidated by a re-run. Keyed on `rule_id`, `repo`,
+    `file` and `line` only, so the audit rows (extra columns) sample the same way.
     """
     if per_rule <= 0:
         return rows
@@ -214,15 +287,15 @@ def sample_per_rule(rows: list[dict], per_rule: int) -> list[dict]:
     return kept
 
 
-def merge_preserving_verdicts(new_rows: list[dict]) -> list[dict]:
+def merge_preserving_verdicts(new_rows: list[dict], path: Path = CSV_PATH) -> list[dict]:
     """
     Re-running the harness must never destroy labelling work already done.
     Verdicts are carried over by (repo, file, line, rule_id).
     """
-    if not CSV_PATH.is_file():
+    if not path.is_file():
         return new_rows
     existing: dict[tuple, str] = {}
-    with CSV_PATH.open(newline="", encoding="utf-8") as fh:
+    with path.open(newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             key = (row.get("repo"), row.get("file"), str(row.get("line")), row.get("rule_id"))
             if (row.get("verdict") or "").strip():
@@ -234,7 +307,7 @@ def merge_preserving_verdicts(new_rows: list[dict]) -> list[dict]:
             row["verdict"] = existing[key]
             carried += 1
     if carried:
-        print(f"\nCarried over {carried} existing verdict(s) from the previous findings.csv")
+        print(f"\nCarried over {carried} existing verdict(s) from the previous {path.name}")
     return new_rows
 
 
@@ -244,21 +317,27 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    p.add_argument("--tool", choices=TOOLS, default="lint", help="which CLI to run (default: lint)")
     p.add_argument("--only", nargs="*", default=None, help="Limit to these corpus names")
     p.add_argument("--keep-clones", action="store_true", help="Leave checkouts in bench/.cache")
-    p.add_argument("--experimental", action="store_true", help="Include sub-threshold rules")
+    p.add_argument(
+        "--experimental", action="store_true", help="Include sub-threshold rules (lint only)"
+    )
     p.add_argument(
         "--sample-per-rule",
         type=int,
         default=DEFAULT_SAMPLE_PER_RULE,
         metavar="N",
         help=(
-            f"Findings kept per rule in findings.csv, spread across repos "
+            f"Findings kept per rule in the labelling CSV, spread across repos "
             f"(default: {DEFAULT_SAMPLE_PER_RULE}; 0 = keep everything). "
-            "The complete set is always written to findings-all.csv."
+            "The complete set is always written to the -all CSV."
         ),
     )
     args = p.parse_args(argv)
+
+    results_dir, csv_path, csv_all_path, columns = paths_for(args.tool)
+    rows_of = rows_from_audit_json if args.tool == "audit" else rows_from_json
 
     repos = load_corpus()
     if args.only:
@@ -268,10 +347,9 @@ def main(argv: list[str] | None = None) -> int:
             available = ", ".join(r["name"] for r in load_corpus())
             sys.exit(f"--only matched nothing. Available: {available}")
 
-    RESULTS.mkdir(parents=True, exist_ok=True)
+    results_dir.mkdir(parents=True, exist_ok=True)
     CACHE.mkdir(parents=True, exist_ok=True)
 
-    all_rows: list[dict] = []
     failures: list[str] = []
     started = time.time()
 
@@ -281,28 +359,38 @@ def main(argv: list[str] | None = None) -> int:
         t0 = time.time()
         try:
             clone = fetch(repo)
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            detail = getattr(exc, "stderr", "") or str(exc)
-            print(f"    !! clone failed: {str(detail).strip()[:300]}")
+        except GitError as exc:
+            print(f"    !! clone failed: {str(exc)[:300]}")
             failures.append(f"{name}: clone failed")
             continue
 
-        stem = RESULTS / name
         try:
-            code, summary = lint(clone, stem, args.experimental)
+            if args.tool == "audit":
+                code, summary = audit(clone, results_dir / f"{name}.json")
+            else:
+                code, summary = lint(clone, results_dir / name, args.experimental)
         except subprocess.TimeoutExpired:
-            print("    !! lint timed out after 3600s")
-            failures.append(f"{name}: lint timeout")
+            print(f"    !! {args.tool} timed out after 3600s")
+            failures.append(f"{name}: {args.tool} timeout")
             continue
 
-        rows = rows_from_json(name, stem.with_suffix(".json"))
+        rows = rows_of(name, results_dir / f"{name}.json")
         if summary:
-            print(
-                f"    {summary.get('scanned_files', '?')} files, "
-                f"{len(rows)} findings "
-                f"({summary.get('error_count', 0)}E/{summary.get('warning_count', 0)}W) "
-                f"exit={code} in {time.time() - t0:.1f}s"
-            )
+            if args.tool == "audit":
+                severity = summary.get("by_severity") or {}
+                print(
+                    f"    {len(rows)} findings "
+                    f"({severity.get('critical', 0)}C/{severity.get('high', 0)}H), "
+                    f"{summary.get('unknown_items', 0)} UNKNOWN, exit={code} "
+                    f"in {time.time() - t0:.1f}s"
+                )
+            else:
+                print(
+                    f"    {summary.get('scanned_files', '?')} files, "
+                    f"{len(rows)} findings "
+                    f"({summary.get('error_count', 0)}E/{summary.get('warning_count', 0)}W) "
+                    f"exit={code} in {time.time() - t0:.1f}s"
+                )
         else:
             print(f"    no summary produced (exit={code})")
             failures.append(f"{name}: no summary")
@@ -310,28 +398,28 @@ def main(argv: list[str] | None = None) -> int:
         if not args.keep_clones:
             shutil.rmtree(clone, ignore_errors=True)
 
-    # Rebuild from every report in results/, not just the repos scanned now.
+    # Rebuild from every report in the results dir, not just the repos scanned now.
     # Otherwise `--only <repo>` would silently drop every other repo's rows.
-    all_rows = []
-    for jf in sorted(RESULTS.glob("*.json")):
-        all_rows.extend(rows_from_json(jf.stem, jf))
+    all_rows: list[dict] = []
+    for jf in sorted(results_dir.glob("*.json")):
+        all_rows.extend(rows_of(jf.stem, jf))
 
-    all_rows = merge_preserving_verdicts(all_rows)
+    all_rows = merge_preserving_verdicts(all_rows, csv_path)
     order = lambda r: (r["rule_id"], r["repo"], r["file"], int(r["line"] or 0))  # noqa: E731
     all_rows.sort(key=order)
 
     def write(path: Path, rows: list[dict]) -> None:
         with path.open("w", newline="", encoding="utf-8") as fh:
-            w = csv.DictWriter(fh, fieldnames=CSV_COLUMNS)
+            w = csv.DictWriter(fh, fieldnames=columns)
             w.writeheader()
             w.writerows(rows)
 
     # The complete set is always kept, so sampling never loses evidence.
-    write(CSV_ALL_PATH, all_rows)
+    write(csv_all_path, all_rows)
 
     sampled = sample_per_rule(all_rows, args.sample_per_rule)
     sampled.sort(key=order)
-    write(CSV_PATH, sampled)
+    write(csv_path, sampled)
 
     unlabelled = sum(1 for r in sampled if not r["verdict"])
     distinct = len({r["rule_id"] for r in sampled})
@@ -341,21 +429,22 @@ def main(argv: list[str] | None = None) -> int:
         f"in {time.time() - started:.0f}s"
     )
     print(f"{distinct} distinct rules fired")
-    print(f"\nfull set  -> {CSV_ALL_PATH}  ({len(all_rows)} rows)")
+    print(f"\nfull set  -> {csv_all_path}  ({len(all_rows)} rows)")
     if args.sample_per_rule > 0:
         print(
-            f"to label  -> {CSV_PATH}  ({len(sampled)} rows, "
+            f"to label  -> {csv_path}  ({len(sampled)} rows, "
             f"<={args.sample_per_rule} per rule spread across repos)"
         )
         print("            --sample-per-rule 0 keeps everything")
     else:
-        print(f"to label  -> {CSV_PATH}  ({len(sampled)} rows, sampling disabled)")
+        print(f"to label  -> {csv_path}  ({len(sampled)} rows, sampling disabled)")
     if failures:
         print(f"\n{len(failures)} repo(s) did not complete:")
         for f in failures:
             print(f"  - {f}")
     print(f"\nNEXT: label the `verdict` column ({unlabelled} blank) with tp / fp / unclear,")
-    print("      then run:  python bench/score.py")
+    tool_flag = " --tool audit" if args.tool == "audit" else ""
+    print(f"      then run:  python bench/score.py{tool_flag}")
     return 1 if failures else 0
 
 

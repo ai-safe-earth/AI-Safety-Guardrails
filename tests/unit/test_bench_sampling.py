@@ -36,22 +36,23 @@ def _load_run_module():
 run = _load_run_module()
 
 
-def make_rows(spec: dict[str, dict[str, int]]) -> list[dict]:
-    """spec: {rule_id: {repo: how_many}}"""
+def make_rows(spec: dict[str, dict[str, int]], audit: bool = False) -> list[dict]:
+    """spec: {rule_id: {repo: how_many}}; `audit` adds the audit CSV's extra columns."""
     rows = []
     for rule, repos in spec.items():
         for repo, n in repos.items():
             for i in range(n):
-                rows.append(
-                    {
-                        "repo": repo,
-                        "file": f"src/mod{i // 10}.py",
-                        "line": str(i),
-                        "rule_id": rule,
-                        "message": "x",
-                        "verdict": "",
-                    }
-                )
+                row = {
+                    "repo": repo,
+                    "file": f"src/mod{i // 10}.py",
+                    "line": str(i),
+                    "rule_id": rule,
+                    "message": "x",
+                    "verdict": "",
+                }
+                if audit:
+                    row.update({"sub": "", "snippet": f"x = {i}"})
+                rows.append(row)
     return rows
 
 
@@ -122,6 +123,109 @@ class TestSamplePerRule:
         rows[0]["verdict"] = "tp"
         out = run.sample_per_rule(rows, 10)
         assert any(r["verdict"] == "tp" for r in out)
+
+
+REPO = BENCH.parent
+DECIDE_AUDIT = REPO / "tests" / "fixtures" / "decide" / "audit-report.json"
+
+
+class TestAuditTool:
+    """`--tool audit` reuses the sampling and the label loop over audit findings."""
+
+    def test_audit_columns_extend_the_lint_columns(self):
+        assert set(run.AUDIT_CSV_COLUMNS) == set(run.CSV_COLUMNS) | {"sub", "snippet"}
+        assert run.AUDIT_CSV_COLUMNS[-1] == "verdict"
+        assert run.paths_for("audit")[3] is run.AUDIT_CSV_COLUMNS
+        assert run.paths_for("lint")[3] is run.CSV_COLUMNS
+
+    def test_rows_from_audit_json_flatten_the_first_evidence_leg(self, tmp_path: Path):
+        import json
+        import shutil
+
+        jf = tmp_path / "py_agent.json"
+        shutil.copy(DECIDE_AUDIT, jf)
+        rows = run.rows_from_audit_json("py_agent", jf)
+        report = json.loads(jf.read_text(encoding="utf-8"))
+        assert len(rows) == len(report["findings"])
+        for row, finding in zip(rows, report["findings"]):
+            assert set(row) == set(run.AUDIT_CSV_COLUMNS)
+            assert row["rule_id"] == finding["rule_id"]  # the parent, never `AUD-101/docs`
+            assert "/" not in row["rule_id"]
+            assert row["sub"] == (finding["sub"] or "")
+            assert row["message"] == finding["title"] and row["verdict"] == ""
+            evidence = finding.get("evidence") or []
+            if evidence:
+                assert row["file"] == evidence[0]["file"]
+                assert str(row["line"]) == str(evidence[0]["line"])
+                assert row["snippet"] == " ".join(str(evidence[0]["snippet"]).split())
+            else:
+                assert row["file"] == "" and row["line"] == ""
+
+    def test_sampling_over_audit_rows_is_deterministic_and_nested(self):
+        rows = make_rows({"AUD-501": {"a": 60, "b": 40}, "AUD-602": {"a": 30}}, audit=True)
+        first = [key(r) for r in run.sample_per_rule(list(rows), 30)]
+        assert [key(r) for r in run.sample_per_rule(list(rows), 30)] == first
+        small = {key(r) for r in run.sample_per_rule(list(rows), 10)}
+        large = {key(r) for r in run.sample_per_rule(list(rows), 25)}
+        assert small <= large
+        for r in run.sample_per_rule(rows, 5):
+            assert set(r) == set(run.AUDIT_CSV_COLUMNS)
+
+    def test_merge_preserving_verdicts_takes_a_path(self, tmp_path: Path):
+        import csv
+
+        rows = make_rows({"AUD-501": {"a": 2}}, audit=True)
+        rows[0]["verdict"] = "fp"
+        path = tmp_path / "findings-audit.csv"
+        with path.open("w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=run.AUDIT_CSV_COLUMNS)
+            w.writeheader()
+            w.writerows(rows)
+        fresh = make_rows({"AUD-501": {"a": 2}}, audit=True)
+        merged = run.merge_preserving_verdicts(fresh, path)
+        assert [r["verdict"] for r in merged] == ["fp", ""]
+
+    def test_score_tool_audit_refuses_a_partly_labelled_csv(self, tmp_path: Path):
+        import csv
+        import subprocess
+
+        rows = make_rows({"AUD-501": {"a": 3}}, audit=True)
+        rows[0]["verdict"] = "tp"
+        path = tmp_path / "findings-audit.csv"
+        with path.open("w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=run.AUDIT_CSV_COLUMNS)
+            w.writeheader()
+            w.writerows(rows)
+        argv = [
+            sys.executable,
+            str(BENCH / "score.py"),
+            "--tool",
+            "audit",
+            "--csv",
+            str(path),
+            "--results",
+            str(tmp_path / "none"),
+            "--out",
+            str(tmp_path / "precision-audit.md"),
+        ]
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=120, check=False)
+        assert proc.returncode == 1
+        assert "2 of 3 findings are unlabelled" in proc.stderr
+        assert not (tmp_path / "precision-audit.md").exists()
+        # fully labelled: the report is written and the paste block names the class
+        for r in rows:
+            r["verdict"] = r["verdict"] or "fp"
+        with path.open("w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=run.AUDIT_CSV_COLUMNS)
+            w.writeheader()
+            w.writerows(rows)
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=120, check=False)
+        assert proc.returncode == 0, proc.stderr
+        text = (tmp_path / "precision-audit.md").read_text(encoding="utf-8")
+        assert text.startswith("# aisg audit rule precision")
+        assert "measured_precision = 0.333" in text
+        assert "# AUD-501 SecretLiteral: 1/3 judged" in text or "# AUD-501 " in text
+        assert "`aisg audit --experimental`" in text
 
 
 class TestShippedCorpusIsLabellable:

@@ -1,8 +1,8 @@
 """
 bench/score.py
 --------------
-Read the hand-labelled verdicts in bench/findings.csv and write
-bench/precision.md.
+Read the hand-labelled verdicts in bench/findings.csv (or, with `--tool audit`,
+bench/findings-audit.csv) and write bench/precision.md (precision-audit.md).
 
 This script measures. It never invents. If a single finding is unlabelled or
 carries a verdict outside {tp, fp, unclear}, it refuses to produce a report and
@@ -15,6 +15,7 @@ a thin sample rather than hidden inside a confident-looking ratio.
 
 Usage:
     python bench/score.py
+    python bench/score.py --tool audit
     python bench/score.py --min-precision 0.80
     python bench/score.py --allow-partial     # score only the labelled subset
 """
@@ -29,13 +30,33 @@ from collections import defaultdict
 from pathlib import Path
 
 BENCH = Path(__file__).resolve().parent
-CSV_PATH = BENCH / "findings.csv"
-RESULTS = BENCH / "results"
-OUT = BENCH / "precision.md"
+sys.path.insert(0, str(BENCH.parent / "src"))
 
+TOOLS = ("lint", "audit")
 VALID = {"tp", "fp", "unclear"}
 DEFAULT_MIN_PRECISION = 0.80
 WORST_N = 3
+
+LABELS = {
+    "lint": {
+        "csv": BENCH / "findings.csv",
+        "results": BENCH / "results",
+        "out": BENCH / "precision.md",
+        "title": "euaiact-lint rule precision",
+        "run": "python bench/run.py",
+        "score": "python bench/score.py",
+        "gate": "`aisg lint --experimental`",
+    },
+    "audit": {
+        "csv": BENCH / "findings-audit.csv",
+        "results": BENCH / "results-audit",
+        "out": BENCH / "precision-audit.md",
+        "title": "aisg audit rule precision",
+        "run": "python bench/run.py --tool audit",
+        "score": "python bench/score.py --tool audit",
+        "gate": "`aisg audit --experimental`",
+    },
+}
 
 
 def die(msg: str) -> None:
@@ -43,17 +64,17 @@ def die(msg: str) -> None:
     sys.exit(1)
 
 
-def load_rows() -> list[dict]:
-    if not CSV_PATH.is_file():
-        die(f"{CSV_PATH} not found. Run `python bench/run.py` first.")
-    with CSV_PATH.open(newline="", encoding="utf-8") as fh:
+def load_rows(csv_path: Path, run_hint: str) -> list[dict]:
+    if not csv_path.is_file():
+        die(f"{csv_path} not found. Run `{run_hint}` first.")
+    with csv_path.open(newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     if not rows:
-        die(f"{CSV_PATH} has no findings. Nothing to score.")
+        die(f"{csv_path} has no findings. Nothing to score.")
     return rows
 
 
-def validate(rows: list[dict], allow_partial: bool) -> list[dict]:
+def validate(rows: list[dict], allow_partial: bool, csv_path: Path) -> list[dict]:
     """Refuse to score an incompletely or invalidly labelled sample."""
     blank, bad = [], []
     for i, row in enumerate(rows, start=2):  # +2: header is line 1
@@ -100,7 +121,7 @@ def validate(rows: list[dict], allow_partial: bool) -> list[dict]:
         print("\nUnlabelled by rule:", file=sys.stderr)
         for rid, n in sorted(by_rule.items(), key=lambda kv: -kv[1]):
             print(f"  {rid:<16} {n}", file=sys.stderr)
-        print(f"\nFirst unlabelled row: line {blank[0][0]} in {CSV_PATH}", file=sys.stderr)
+        print(f"\nFirst unlabelled row: line {blank[0][0]} in {csv_path}", file=sys.stderr)
         sys.exit(1)
 
     for row in rows:
@@ -108,30 +129,46 @@ def validate(rows: list[dict], allow_partial: bool) -> list[dict]:
     return [r for r in rows if r["verdict"] in VALID]
 
 
-def load_snippets() -> dict[tuple, dict]:
+def load_snippets(results_dir: Path, tool: str) -> dict[tuple, dict]:
     """
     Pull the source line and description out of the raw JSON reports so the
-    report can quote a false positive verbatim rather than paraphrasing it.
+    report can quote a false positive verbatim rather than paraphrasing it. For
+    the audit the snippet is the first evidence leg's, already redacted.
     """
     out: dict[tuple, dict] = {}
-    if not RESULTS.is_dir():
+    if not results_dir.is_dir():
         return out
-    for jf in sorted(RESULTS.glob("*.json")):
+    for jf in sorted(results_dir.glob("*.json")):
         repo = jf.stem
         try:
             data = json.loads(jf.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             continue
         for f in data.get("findings", []):
-            fname = str(f.get("file", "")).replace("\\", "/")
-            key = (repo, fname.rsplit("/", 1)[-1], str(f.get("line", "")), f.get("rule_id", ""))
-            out[key] = {
-                "snippet": f.get("snippet", ""),
-                "description": f.get("description", ""),
-                "severity": f.get("severity", ""),
-                "article": f.get("article", ""),
-                "title": f.get("title", ""),
-            }
+            if tool == "audit":
+                evidence = f.get("evidence") or []
+                first = evidence[0] if evidence and isinstance(evidence[0], dict) else {}
+                fname = str(first.get("file") or "").replace("\\", "/")
+                rule_id = f.get("rule_id") or str(f.get("id", "")).split("/")[0]
+                key = (repo, fname.rsplit("/", 1)[-1], str(first.get("line", "")), rule_id)
+                recommendation = f.get("recommendation") or {}
+                out[key] = {
+                    "snippet": first.get("snippet", ""),
+                    "description": recommendation.get("summary", ""),
+                    "severity": f.get("severity", ""),
+                    "article": ", ".join(f.get("controls") or []),
+                    "title": f.get("title", ""),
+                }
+            else:
+                fname = str(f.get("file", "")).replace("\\", "/")
+                key = (repo, fname.rsplit("/", 1)[-1], str(f.get("line", "")), f.get("rule_id", ""))
+                out[key] = {
+                    "snippet": f.get("snippet", ""),
+                    "description": f.get("description", ""),
+                    "severity": f.get("severity", ""),
+                    "article": f.get("article", ""),
+                    "title": f.get("title", ""),
+                }
     return out
 
 
@@ -140,11 +177,22 @@ def enrich(row: dict, snippets: dict[tuple, dict]) -> dict:
     return snippets.get(key, {})
 
 
-def rule_metadata() -> dict[str, dict]:
-    """Severity/article straight from the rule registry, when importable."""
+def rule_metadata(tool: str) -> dict[str, dict]:
+    """Severity/article/class name straight from the rule registry, when importable."""
     meta: dict[str, dict] = {}
-    sys.path.insert(0, str(BENCH.parent / "src"))
     try:
+        if tool == "audit":
+            from aisg.devtools.audit.rules import ALL_RULES as AUDIT_RULES
+
+            for r in AUDIT_RULES:
+                meta[r.id] = {
+                    "severity": getattr(r.severity, "value", str(r.severity)),
+                    "article": ", ".join(getattr(r, "controls", ()) or ()),
+                    "title": r.title,
+                    "declared_precision": getattr(r, "measured_precision", None),
+                    "class_name": type(r).__name__,
+                }
+            return meta
         from aisg.modules.policy.code_analyzer.rules import ALL_RULES
     except Exception:
         return meta
@@ -154,6 +202,7 @@ def rule_metadata() -> dict[str, dict]:
             "article": r.article,
             "title": r.title,
             "declared_precision": getattr(r, "measured_precision", None),
+            "class_name": type(r).__name__,
         }
     return meta
 
@@ -164,6 +213,7 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    p.add_argument("--tool", choices=TOOLS, default="lint", help="which CLI's rows to score")
     p.add_argument(
         "--min-precision",
         type=float,
@@ -175,13 +225,23 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Score only the labelled subset instead of failing",
     )
+    p.add_argument("--csv", type=Path, default=None, help="labelled CSV (default: per --tool)")
+    p.add_argument(
+        "--results", type=Path, default=None, help="raw report directory (default: per --tool)"
+    )
+    p.add_argument("--out", type=Path, default=None, help="markdown to write (default: per --tool)")
     args = p.parse_args(argv)
 
-    raw = load_rows()
-    rows = validate(raw, args.allow_partial)
+    labels = LABELS[args.tool]
+    csv_path: Path = args.csv or labels["csv"]
+    results_dir: Path = args.results or labels["results"]
+    out_path: Path = args.out or labels["out"]
+
+    raw = load_rows(csv_path, labels["run"])
+    rows = validate(raw, args.allow_partial, csv_path)
     partial = len(rows) != len(raw)
-    snippets = load_snippets()
-    meta = rule_metadata()
+    snippets = load_snippets(results_dir, args.tool)
+    meta = rule_metadata(args.tool)
 
     by_rule: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
@@ -215,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return (
             prec,
-            0 if sev == "error" else 1,
+            0 if sev in ("error", "critical", "high") else 1,
             -s["fp"],
             row["repo"],
             row["file"],
@@ -230,10 +290,10 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     L: list[str] = []
-    L.append("# euaiact-lint rule precision")
+    L.append(f"# {labels['title']}")
     L.append("")
     L.append(
-        f"Measured over `bench/findings.csv` -- {len(rows)} hand-labelled findings "
+        f"Measured over `{csv_path.name}` -- {len(rows)} hand-labelled findings "
         f"from {len({r['repo'] for r in rows})} repositories, "
         f"{len(by_rule)} rules fired."
     )
@@ -252,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
     L.append("")
     L.append(
         f"Default-on threshold: **{args.min_precision:.2f}**. "
-        "Rules below it should be gated behind `aisg lint --experimental`."
+        f"Rules below it should be gated behind {labels['gate']}."
     )
     L.append("")
     L.append("## Per-rule precision")
@@ -294,7 +354,9 @@ def main(argv: list[str] | None = None) -> int:
         L.append("")
         L.append("```python")
         for rid, s in below:
-            L.append(f"# {rid}: {s['tp']}/{s['judged']} judged findings were true positives")
+            cls = meta.get(rid, {}).get("class_name")
+            label = f"{rid} {cls}" if cls else rid
+            L.append(f"# {label}: {s['tp']}/{s['judged']} judged findings were true positives")
             L.append(f"measured_precision = {s['precision']:.3f}")
         L.append("```")
     else:
@@ -329,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
         L.append(
             "Ordered by the firing rule's precision (lowest first), then severity, then "
             "how many false positives that rule contributed. Quoted verbatim from the "
-            "scanned source."
+            "scanned source (redacted where the audit redacts)."
         )
         L.append("")
         for i, row in enumerate(worst, 1):
@@ -344,13 +406,13 @@ def main(argv: list[str] | None = None) -> int:
             L.append(f"- **Severity:** {m.get('severity') or info.get('severity') or '?'}")
             L.append(f"- **Rule precision:** {prec} ({s['fp']} fp / {s['judged']} judged)")
             L.append("")
-            snippet = (info.get("snippet") or "").rstrip()
+            snippet = (info.get("snippet") or row.get("snippet") or "").rstrip()
             if snippet:
                 L.append("```python")
                 L.append(snippet)
                 L.append("```")
             else:
-                L.append("> No snippet recorded in `bench/results/` for this finding.")
+                L.append(f"> No snippet recorded in `{results_dir.name}/` for this finding.")
             L.append("")
             if info.get("description"):
                 L.append(f"> **Rule says:** {info['description']}")
@@ -359,15 +421,16 @@ def main(argv: list[str] | None = None) -> int:
     L.append("---")
     L.append("")
     L.append(
-        "Regenerate with `python bench/score.py` after editing "
-        "`bench/findings.csv`. Every number above is derived from that file; "
+        f"Regenerate with `{labels['score']}` after editing "
+        f"`{csv_path.name}`. Every number above is derived from that file; "
         "none is hand-written."
     )
     L.append("")
 
-    OUT.write_text("\n".join(L), encoding="utf-8")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(L), encoding="utf-8")
 
-    print(f"Scored {len(rows)} labelled findings across {len(by_rule)} rules -> {OUT}")
+    print(f"Scored {len(rows)} labelled findings across {len(by_rule)} rules -> {out_path}")
     if below:
         print(
             f"\n{len(below)} rule(s) below {args.min_precision:.2f} "

@@ -19,7 +19,7 @@ approving each change; the commands also run on their own, in CI, or over a flee
 | 7 attest | `aisg attest . --owner "<Name <role>>" --html` | every document above and the card; `attest-levels.yaml` | `attestation.json` (`kind: attestation`), `attestation.md`, `attestation.html`, `badge.json` | a verdict; a green or red badge; an owner from `pyproject.toml` |
 | hooks | `aisg hook run` from the agent host's hook configuration (Claude Code, Cursor, Gemini CLI; the Claude Code plugin ships the same) | the host's event payload; the baseline | `hook-state.json`, `hook-recheck.json`, `hook-stop.json` | failing closed on its own error; a model call; a socket |
 | CI | `action.yml`, `.pre-commit-hooks.yaml`, the GitLab job; `aisg attest . --check --require-level N` | the tree | the documents as build artefacts; SARIF to Code Scanning | |
-| fleet (planned, wave 6) | `aisg fleet LIST` | a list of repositories | `fleet-report.{json,csv,md}` (`kind: fleet`) | network use beyond `git clone` of the listed URLs |
+| fleet | `aisg fleet LIST [--jobs N] [--proposal]` | the YAML or CSV list the operator wrote; each repository cloned at its pin (or used in place) and audited with `--no-external` in its own subprocess | `fleet-report.{json,csv,md}` (`kind: fleet`), one audit report per repository, `proposal.md` with `--proposal` | network use beyond `git clone` of the listed URLs; a push or a PR; a snippet in the fleet documents |
 
 ## Who reads what back
 
