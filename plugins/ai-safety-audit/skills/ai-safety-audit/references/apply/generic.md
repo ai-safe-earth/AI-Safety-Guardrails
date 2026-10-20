@@ -8,8 +8,8 @@ The `recommendation.package.symbols` in the JSON (`ToolPolicyGuard`, `PIIDetecto
 `RateLimiter`, ...) are Python-only. Outside Python a unit always takes the
 outside-package branch in phase 4, whatever `same_control` says; the control the rule asks
 for applies unchanged, and the shapes below are that control without a library. The
-`aisg audit`, `aisg probe` and `aisg init` verbs still run against any repository; only
-`aisg measure` needs a Python pipeline built from this package.
+`aisafe audit`, `aisafe probe` and `aisafe init` verbs still run against any repository; only
+`aisafe measure` needs a Python pipeline built from this package.
 
 ## Allowlist (AUD-103, AUD-104, AUD-401, AUD-405)
 
@@ -100,13 +100,13 @@ Traces that record the model id, prompt and response hashes, tool calls and thei
 
 ## Incident path and governance (AUD-703, AUD-1001, AUD-1002)
 
-A `SECURITY.md` with a contact and a response window; a system card (`aisg init --defaults`
+A `SECURITY.md` with a contact and a response window; a system card (`aisafe init --defaults`
 writes one) naming purpose, data, models and incident contact. The risk tier on it is the
 operator's legal determination; leave `unknown` in place rather than guessing, and say so.
 
 ## Evals (AUD-901, AUD-904)
 
 A committed corpus with attack AND benign cases, run in CI with a threshold that fails the
-build. `aisg measure` does this for pipelines built with this package; promptfoo, deepeval,
+build. `aisafe measure` does this for pipelines built with this package; promptfoo, deepeval,
 inspect_ai, garak and pyrit cover other shapes. Attacks alone reward a guard that blocks
 everything.

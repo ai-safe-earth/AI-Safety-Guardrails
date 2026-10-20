@@ -1,6 +1,6 @@
 """tests/unit/test_audit_walk.py
 ----------------------------
-Walker for `aisg audit`: skip dirs, gitignore-lite semantics, binary/size/marker skips,
+Walker for `aisafe audit`: skip dirs, gitignore-lite semantics, binary/size/marker skips,
 symlink -> UnknownItem, unit assignment, the `.env*` hard exception, `--include-ignored`,
 and the `git_meta` / `file_age` read-only git helpers.
 
@@ -17,9 +17,16 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.audit.model import SCHEMA_VERSION, UnknownCategory
-from aisg.devtools.audit.patterns import AUDIT_DIR, IGNORE_MARKER, OWN_HTML_MARKER_LINE
-from aisg.devtools.audit.walk import (
+from aisafe.devtools.audit.model import SCHEMA_VERSION, UnknownCategory
+from aisafe.devtools.audit.patterns import (
+    AUDIT_DIR,
+    IGNORE_MARKER,
+    LEGACY_AUDIT_DIRS,
+    LEGACY_IGNORE_MARKERS,
+    LEGACY_OWN_HTML_MARKER_LINES,
+    OWN_HTML_MARKER_LINE,
+)
+from aisafe.devtools.audit.walk import (
     FileRecord,
     GitIgnore,
     WalkOptions,
@@ -175,8 +182,8 @@ class TestGitIgnore:
         matcher = GitIgnore()
         matcher.add("", "/audit/\n")
         assert matcher.match("audit", is_dir=True) is True
-        assert matcher.match("src/aisg/devtools/audit", is_dir=True) is False
-        assert matcher.match("src/aisg/devtools/audit/walk.py") is False
+        assert matcher.match("src/aisafe/devtools/audit", is_dir=True) is False
+        assert matcher.match("src/aisafe/devtools/audit/walk.py") is False
 
     def test_trailing_slash_is_directory_only(self) -> None:
         matcher = GitIgnore()
@@ -220,7 +227,7 @@ class TestGitIgnore:
         assert matcher.would_ignore("notes.txt") is True
 
     def test_audit_dir_never_ignored_by_match_but_would_ignore_is_raw(self) -> None:
-        # The skill proposes `.aisg-audit/` for .gitignore; the reports it writes there
+        # The skill proposes `.aisafe-audit/` for .gitignore; the reports it writes there
         # must stay evidence after the line lands. Both the directory and its files.
         matcher = GitIgnore()
         matcher.add("", f"{AUDIT_DIR}/\n*.json\n")
@@ -232,6 +239,17 @@ class TestGitIgnore:
         # Only the exact directory: a sibling with the same prefix is not exempt.
         assert matcher.match(f"{AUDIT_DIR}-old/x.json") is True
         assert matcher.match("other.json") is True
+
+    def test_pre_rename_audit_dir_is_exempt_too(self) -> None:
+        # `.aisg-audit/` is where a version named `aisg` put its reports; they stay
+        # evidence after the rename. Read, never written.
+        legacy = LEGACY_AUDIT_DIRS[0]
+        matcher = GitIgnore()
+        matcher.add("", f"{legacy}/\n")
+        assert matcher.would_ignore(legacy, is_dir=True) is True
+        assert matcher.match(legacy, is_dir=True) is False
+        assert matcher.match(f"{legacy}/measure.json") is False
+        assert "aisg" not in AUDIT_DIR
 
     def test_windows_separators_normalised(self) -> None:
         matcher = GitIgnore()
@@ -329,7 +347,7 @@ class TestWalkGitIgnore:
         assert not [u for u in unknown if u.what == "gitignored directories skipped"]
 
     def test_gitignored_audit_dir_is_still_walked_and_flagged(self, tmp_path: Path) -> None:
-        # A measure report the skill wrote under `.aisg-audit/` is evidence; the
+        # A measure report the skill wrote under `.aisafe-audit/` is evidence; the
         # `.gitignore` line the skill itself proposes must not make it vanish.
         _touch(tmp_path, ".gitignore", f"{AUDIT_DIR}/\n")
         _touch(tmp_path, "app.py", "print(1)\n")
@@ -442,6 +460,15 @@ class TestFileGuards:
         assert has_ignore_marker("1\n2\n3\n4\n5\n" + IGNORE_MARKER) is False
         assert has_ignore_marker("") is False
 
+    def test_pre_rename_ignore_marker_still_skips(self, tmp_path: Path) -> None:
+        _touch(tmp_path, "old.py", LEGACY_IGNORE_MARKERS[0] + "\nx = 1\n")
+        _touch(tmp_path, "new.py", "x = 1\n")
+
+        records, _, _ = walk(tmp_path)
+
+        assert _rels(records) == ["new.py"]
+        assert "aisg" not in IGNORE_MARKER, "the old spelling is read, never written"
+
     def test_unreadable_file_counted_once_never_raises(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -525,6 +552,16 @@ class TestFileGuards:
         assert _rels(records) == ["page.html"]
         assert skipped == ["report.html"]
         assert unknown == []
+
+    def test_pre_rename_html_report_is_still_own_output(self, tmp_path: Path) -> None:
+        _touch(tmp_path, "old-report.html", LEGACY_OWN_HTML_MARKER_LINES[0] + "\n<p>x</p>\n")
+        skipped: list[str] = []
+
+        records, _, _ = walk(tmp_path, own_output_skipped=skipped)
+
+        assert _rels(records) == []
+        assert skipped == ["old-report.html"]
+        assert "aisg" not in OWN_HTML_MARKER_LINE
 
     def test_marker_elsewhere_in_the_head_is_a_plain_skip(self, tmp_path: Path) -> None:
         # Only the exact renderer line names the file as own output; a hand-placed marker
@@ -615,14 +652,14 @@ def _sarif_head(
 
 class TestOwnOutput:
     def test_own_report_skipped_named_in_sink_and_not_unknown(self, tmp_path: Path) -> None:
-        _touch(tmp_path, ".aisg-audit/report.json", _report_head())
+        _touch(tmp_path, ".aisafe-audit/report.json", _report_head())
         _touch(tmp_path, "app.py")
         skipped: list[str] = []
 
         records, _, unknown = walk(tmp_path, own_output_skipped=skipped)
 
         assert _rels(records) == ["app.py"]
-        assert skipped == [".aisg-audit/report.json"]
+        assert skipped == [".aisafe-audit/report.json"]
         assert unknown == []
 
     def test_sink_is_optional(self, tmp_path: Path) -> None:
@@ -635,7 +672,7 @@ class TestOwnOutput:
         assert unknown == []
 
     def test_inventory_document_is_own_output(self, tmp_path: Path) -> None:
-        # `aisg audit --inventory-only` writes `"kind": "inventory"`; it lists every
+        # `aisafe audit --inventory-only` writes `"kind": "inventory"`; it lists every
         # secret shape and over-grant the audit found, so scanning it would double each.
         _touch(tmp_path, "inventory.json", _report_head(kind="inventory"))
         _touch(tmp_path, "app.py")
@@ -707,7 +744,7 @@ class TestOwnOutput:
         `own_output_skipped`. Before that the bag came after `results`, past the head
         the walker reads, so the audit's SARIF was scanned like any other file and
         reproduced its own findings on the next run."""
-        _touch(tmp_path, ".aisg-audit/audit.sarif", _sarif_head())
+        _touch(tmp_path, ".aisafe-audit/audit.sarif", _sarif_head())
         _touch(tmp_path, "audit-as-json.json", _sarif_head())
         _touch(tmp_path, "app.py")
         skipped: list[str] = []
@@ -715,11 +752,11 @@ class TestOwnOutput:
         records, _, unknown = walk(tmp_path, own_output_skipped=skipped)
 
         assert _rels(records) == ["app.py"]
-        assert sorted(skipped) == [".aisg-audit/audit.sarif", "audit-as-json.json"]
+        assert sorted(skipped) == [".aisafe-audit/audit.sarif", "audit-as-json.json"]
         assert unknown == []
 
-    def test_sarif_of_another_aisg_tool_stays_walked(self, tmp_path: Path) -> None:
-        # `aisg lint --format sarif` carries the same `aisg_schema` marker in its run
+    def test_sarif_of_another_aisafe_tool_stays_walked(self, tmp_path: Path) -> None:
+        # `aisafe lint --format sarif` carries the same `aisg_schema` marker in its run
         # bag, but not the audit's second key. It is not our output; it is scanned.
         _touch(tmp_path, "lint.sarif", _sarif_head(second_key="scanned_files"))
         _touch(tmp_path, "later.sarif", _sarif_head(bag_first=False))
@@ -943,7 +980,7 @@ class TestFixture:
         # Exactly the vocabulary modules carry the marker: the ones that spell out every
         # literal the audit looks for and would otherwise report themselves. Nothing
         # else may -- a real finding in the rest goes in the baseline with a reason.
-        here = Path(__file__).resolve().parents[2] / "src" / "aisg" / "devtools" / "audit"
+        here = Path(__file__).resolve().parents[2] / "src" / "aisafe" / "devtools" / "audit"
         marked = {
             p.relative_to(here).as_posix()
             for p in here.rglob("*.py")
@@ -1082,7 +1119,7 @@ class TestFileAge:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stamp: str, expected: datetime
     ) -> None:
         # Independent of the git on PATH: the git call is replaced by its output.
-        from aisg.devtools.audit import walk as walk_mod
+        from aisafe.devtools.audit import walk as walk_mod
 
         path = _touch(tmp_path, "dated.txt", "v1\n")
         real_stat = Path.stat

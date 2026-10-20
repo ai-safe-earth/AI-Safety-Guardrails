@@ -1,6 +1,6 @@
 """tests/unit/test_fleet.py
 ------------------------
-`aisg fleet` audits many repositories, one subprocess each, and aggregates counts, names and
+`aisafe fleet` audits many repositories, one subprocess each, and aggregates counts, names and
 paths; never a snippet. These tests pin the list formats and their validation, the three
 documents (key order, CSV header, markdown with the disclaimer), the exit-code rule (a
 repository that could not be audited is the fleet's failure, a finding in one is not),
@@ -19,10 +19,10 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools import fleet
-from aisg.devtools.audit.adapters import FORBIDDEN_LAUNCHERS
-from aisg.devtools.audit.report import BANNED_PHRASES
-from aisg.devtools.fleet import (
+from aisafe.devtools import fleet
+from aisafe.devtools.audit.adapters import FORBIDDEN_LAUNCHERS
+from aisafe.devtools.audit.report import BANNED_PHRASES
+from aisafe.devtools.fleet import (
     CSV_COLUMNS,
     EXIT_FATAL,
     EXIT_INCOMPLETE,
@@ -57,7 +57,7 @@ def _tree(root: Path) -> dict[str, bytes]:
 @pytest.fixture(autouse=True)
 def no_socket(monkeypatch: pytest.MonkeyPatch) -> None:
     def refuse(*args, **kwargs):
-        raise AssertionError("aisg fleet opened a socket")
+        raise AssertionError("aisafe fleet opened a socket")
 
     monkeypatch.setattr(socket, "socket", refuse)
     monkeypatch.setattr(socket, "create_connection", refuse)
@@ -185,7 +185,7 @@ class TestRun:
         assert (
             doc["schema"] == "aisg/1"
             and doc["kind"] == "fleet"
-            and doc["tool"]["name"] == "aisg-fleet"
+            and doc["tool"]["name"] == "aisafe-fleet"
         )
         assert (
             doc["totals"]["repos"] == 2
@@ -213,7 +213,7 @@ class TestRun:
         csv_text = (out / "fleet-report.csv").read_text(encoding="utf-8")
         assert csv_text.splitlines()[0] == ",".join(CSV_COLUMNS)
         md = (out / "fleet-report.md").read_text(encoding="utf-8")
-        assert md.startswith("# aisg fleet\n\n> This report lists observations")
+        assert md.startswith("# aisafe fleet\n\n> This report lists observations")
         assert "| py_agent | ok |" in md
         # the fleet never writes into the audited trees
         assert (_tree(a), _tree(b)) == before
@@ -309,7 +309,7 @@ class TestRun:
         assert "| 1 | AUD-" in text
         assert "| # | decision (apply / defer / accept) | reason |" in text
         assert "| 1 | | |" in text
-        assert "-m aisg.cli audit . --format json --no-external" in text
+        assert "-m aisafe.cli audit . --format json --no-external" in text
         assert "never pushes" in text
         report = json.loads(
             (neutral_cwd / "out" / "py_agent" / "audit-report.json").read_text(encoding="utf-8")
@@ -365,7 +365,7 @@ class TestRun:
 
     def test_extra_args_reach_every_audit(self):
         argv = audit_argv("high", Path("r.json"), ("--rules", "AUD-501"))
-        assert argv[:4] == [sys.executable, "-m", "aisg.cli", "audit"]
+        assert argv[:4] == [sys.executable, "-m", "aisafe.cli", "audit"]
         assert argv[-2:] == ["--rules", "AUD-501"]
         assert "--no-external" in argv
 
@@ -435,7 +435,7 @@ class TestDocuments:
     def test_proposal_who_column_follows_the_plan_rule(self):
         report = json.loads(DECIDE_AUDIT.read_text(encoding="utf-8"))
         text = render_proposal(
-            Target("py_agent", path="x"), report, ["python", "-m", "aisg.cli", "audit", "."]
+            Target("py_agent", path="x"), report, ["python", "-m", "aisafe.cli", "audit", "."]
         )
         rows = [line for line in text.splitlines() if line.startswith("| ") and "| AUD-" in line]
         assert rows
@@ -457,7 +457,7 @@ class TestCli:
         with pytest.raises(SystemExit) as exc:
             build_parser().parse_args(["--help"])
         assert exc.value.code == 0
-        assert capsys.readouterr().out.startswith("usage: aisg fleet")
+        assert capsys.readouterr().out.startswith("usage: aisafe fleet")
 
     def test_bad_list_exits_two(self, tmp_path: Path, neutral_cwd: Path, capsys):
         path = _yaml_list(tmp_path / "fleet.yaml", [{"name": "x"}])
@@ -471,7 +471,7 @@ class TestCli:
         list_path = _yaml_list(tmp_path / "fleet.yaml", [{"name": "clean_py", "path": str(a)}])
         assert main([str(list_path), "--out", "out", "--fail-on", "never", "--quiet"]) == EXIT_OK
         out = capsys.readouterr().out
-        assert "aisg fleet: 1/1 audited, 0 not audited" in out
+        assert "aisafe fleet: 1/1 audited, 0 not audited" in out
         assert (neutral_cwd / "out" / "fleet-report.json").is_file()
 
     def test_jobs_zero_is_fatal(self, tmp_path: Path, neutral_cwd: Path):
@@ -479,7 +479,7 @@ class TestCli:
         assert main([str(path), "--jobs", "0"]) == EXIT_FATAL
 
     def test_console_script_routes_fleet(self):
-        from aisg import cli
+        from aisafe import cli
 
         assert "fleet" in cli.COMMANDS
-        assert "aisg fleet" in cli._EPILOG
+        assert "aisafe fleet" in cli._EPILOG

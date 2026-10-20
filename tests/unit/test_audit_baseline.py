@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.audit.baseline import (
+from aisafe.devtools.audit.baseline import (
     BaselineDiff,
     BaselineError,
     amend_baseline,
@@ -37,7 +37,7 @@ from aisg.devtools.audit.baseline import (
     read_baseline,
     write_baseline,
 )
-from aisg.devtools.audit.model import (
+from aisafe.devtools.audit.model import (
     AuditContext,
     Basis,
     Bucket,
@@ -52,7 +52,7 @@ from aisg.devtools.audit.model import (
     Severity,
     Tier,
 )
-from aisg.devtools.audit.report import build_report, compute_exit_code, render, tool_version
+from aisafe.devtools.audit.report import build_report, compute_exit_code, render, tool_version
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMMITTED_BASELINE = REPO_ROOT / "audit-baseline.json"
@@ -122,7 +122,7 @@ def test_write_then_load_round_trip(tmp_path: Path):
     doc = json.loads(path.read_text(encoding="utf-8"))
     assert list(doc) == ["schema", "kind", "generated_at", "tool", "fingerprints", "index"]
     assert doc["schema"] == "aisg/1" and doc["kind"] == "audit-baseline"
-    assert doc["tool"] == {"name": "aisg-audit", "version": tool_version()}
+    assert doc["tool"] == {"name": "aisafe-audit", "version": tool_version()}
     assert doc["fingerprints"] == sorted(doc["fingerprints"])
     assert len(doc["fingerprints"]) == len(set(doc["fingerprints"])) == 3
     assert load_baseline(path) == {f.fingerprint for f in findings}
@@ -273,7 +273,7 @@ def test_write_baseline_uses_lf_on_every_platform(tmp_path: Path):
 
 def test_write_baseline_creates_the_parent_directory(tmp_path: Path):
     """
-    `.aisg-audit/` usually does not exist on the first `--write-baseline`, and the write
+    `.aisafe-audit/` usually does not exist on the first `--write-baseline`, and the write
     comes after the scan and the render: the parent is created, like `-o` does.
     """
     path = tmp_path / "sub" / "dir" / "b.json"
@@ -460,7 +460,7 @@ def test_load_baseline_tolerates_an_absent_or_empty_accepted_list(tmp_path: Path
 
 def _unrecordable_reasons() -> list[tuple[str, str]]:
     """Reasons `amend_baseline` refuses; a hand-edited file is held to the same bar."""
-    from aisg.devtools.audit.report import BANNED_PHRASES
+    from aisafe.devtools.audit.report import BANNED_PHRASES
 
     banned_word = "cl" + "ean"
     secret = "sk-ant-" + "a1b2c3d4e5f6g7h8i9j0k1l2m3n4"
@@ -780,7 +780,7 @@ def test_amend_baseline_on_an_old_file_without_an_index_leaves_rule_and_file_nul
                 "schema": "aisg/1",
                 "kind": "audit-baseline",
                 "generated_at": "2026-01-01T00:00:00+00:00",
-                "tool": {"name": "aisg-audit", "version": "0.0.0"},
+                "tool": {"name": "aisafe-audit", "version": "0.0.0"},
                 "fingerprints": [fp],
             }
         )
@@ -809,7 +809,7 @@ def _secret_shaped() -> str:
 
 
 def _refusals() -> list[tuple[str, str]]:
-    from aisg.devtools.audit.report import BANNED_PHRASES
+    from aisafe.devtools.audit.report import BANNED_PHRASES
 
     cases = [
         ("", "empty"),
@@ -940,12 +940,12 @@ def test_committed_baseline_does_not_reproduce_the_findings_it_accepts(
     tmp_path: Path, audit_context
 ):
     """
-    `[tool.aisg-audit] exclude` does not list the baseline, so the self-audit scans it.
+    `[tool.aisafe-audit] exclude` does not list the baseline, so the self-audit scans it.
     A reason that quotes the literal it accepts (an over-grant flag, a kill-switch name,
     a floating model id) re-creates the finding from the baseline itself, and the gate
     reports it as new. Reasons describe; they do not quote.
     """
-    from aisg.devtools.audit.rules import ALL_RULES, run_rules
+    from aisafe.devtools.audit.rules import ALL_RULES, run_rules
 
     shutil.copy(COMMITTED_BASELINE, tmp_path / COMMITTED_BASELINE.name)
     ctx = audit_context(tmp_path)

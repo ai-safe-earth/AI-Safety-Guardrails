@@ -21,7 +21,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from aisg.devtools.audit.model import (  # noqa: E402
+from aisafe.devtools.audit.model import (  # noqa: E402
     AuditContext,
     Basis,
     Bucket,
@@ -33,8 +33,8 @@ from aisg.devtools.audit.model import (  # noqa: E402
     Unit,
     UnknownCategory,
 )
-from aisg.devtools.audit.report import BANNED_PHRASES  # noqa: E402
-from aisg.devtools.audit.rules import evals, run_rules  # noqa: E402
+from aisafe.devtools.audit.report import BANNED_PHRASES  # noqa: E402
+from aisafe.devtools.audit.rules import evals, run_rules  # noqa: E402
 
 REPORTS = Path(__file__).resolve().parents[1] / "fixtures" / "audit" / "reports"
 
@@ -125,7 +125,7 @@ def test_metadata_contract(rule_cls):
     assert set(rule_cls.related_lint_rules) <= ALLOWED_LINT_RULES
     assert rule_cls.measured_precision is None
     assert len(rule_cls.recommendation.alternatives) >= 3
-    assert any("aisg" not in alt.lower() for alt in rule_cls.recommendation.alternatives)
+    assert any("aisafe" not in alt.lower() for alt in rule_cls.recommendation.alternatives)
     assert rule_cls.known_failure_modes
     assert isinstance(rule_cls.title, str) and rule_cls.title
 

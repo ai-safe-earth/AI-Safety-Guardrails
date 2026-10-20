@@ -1,7 +1,7 @@
 """
 tests/unit/test_probe.py
 ------------------------
-Tests for `aisg probe`.
+Tests for `aisafe probe`.
 
 Covers the corpus, the deterministic pieces (detectors, request building, path
 extraction, the authorization gate) and end-to-end runs against a local
@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from aisg.devtools.probe import (
+from aisafe.devtools.probe import (
     PLACEHOLDER,
     REJECTION_CODES,
     VALID_BEHAVIOURS,
@@ -576,7 +576,7 @@ class TestTable:
     def test_build_report_is_pure(self):
         """build_report must not need a live server."""
         c = make_case()
-        from aisg.devtools.probe import CaseResult
+        from aisafe.devtools.probe import CaseResult
 
         r = CaseResult(case=c, status="passed", http_status=200, response_text="ok")
         data = build_report([r], "http://127.0.0.1/x", "$.response", "{}")
@@ -600,7 +600,7 @@ class TestReportProvenance:
 
     @staticmethod
     def _pure(template: str = _TEMPLATE) -> dict:
-        from aisg.devtools.probe import CaseResult
+        from aisafe.devtools.probe import CaseResult
 
         r = CaseResult(case=make_case(), status="passed", http_status=200, response_text="ok")
         return build_report([r], "http://127.0.0.1/x", "$.response", template)
@@ -837,7 +837,7 @@ class TestBenignCorpus:
     """
 
     def test_not_loaded_by_default(self):
-        """`aisg probe` sends attacks; benign cases belong to `aisg measure`."""
+        """`aisafe probe` sends attacks; benign cases belong to `aisafe measure`."""
         assert all(c.kind == "attack" for c in load_corpus())
 
     def test_loaded_on_request(self):

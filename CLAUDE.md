@@ -4,40 +4,54 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Layout
 
-`src/` layout. The only importable top-level name is `aisg` — everything is
-`aisg.core.*`, `aisg.modules.*`, `aisg.integrations.*`, `aisg.devtools.*`,
-`aisg.config.*`. Nothing is importable as a bare `core`/`modules`/`config`,
+`src/` layout. The only importable top-level name is `aisafe` — everything is
+`aisafe.core.*`, `aisafe.modules.*`, `aisafe.integrations.*`, `aisafe.devtools.*`,
+`aisafe.config.*`. Nothing is importable as a bare `core`/`modules`/`config`,
 and it must stay that way: those names would collide with users' own modules
 once published to PyPI.
 
-**The project is AnyAISafe. The distribution name is `anyaisafe`; the import name
-and the console script are `aisg`.** `pip install "anyaisafe[devtools]"`, then
-`import aisg` and `aisg audit .`. They differ on purpose: `aisg` is taken on PyPI by
-an unrelated AI-gateway SDK that also imports as `aisg` (an environment with both
-installed is broken), and the short name is what people type while the product
-name is what they search for. Any install spec, `importlib.metadata` lookup or
-`pip show` must say `anyaisafe` (`audit/report.py:DISTRIBUTION` is the constant);
-anything a user types or imports says `aisg`. The prose name of the project is
-"AnyAISafe" and the repo is `github.com/ai-safe-earth/AnyAISafe`. History: the
-project was "AI Safety Guardrails" and the distribution `aisguard` until
-2026-10-19 (never published under that name); the local folder may still carry
-the old name. The `aisg` vocabulary -- `"schema": "aisg/1"`, `.aisg-audit/`,
-`[tool.aisg-*]`, `# aisg-audit: ignore-file`, `AISG_VERSION`, the skill name
-`ai-safety-audit` -- did not change with the rename and must not.
+**The project is AnyAISafe. The distribution, the import name and the console
+script are all `aisafe`.** `pip install "aisafe[devtools]"`, then `import aisafe` and
+`aisafe audit .`; `audit/report.py:DISTRIBUTION` is the constant for any
+`importlib.metadata` lookup. The prose name of the project is "AnyAISafe" and the
+repo is `github.com/ai-safe-earth/AnyAISafe`. One clash remains on PyPI: the
+unrelated `aisafeguard` also installs a console script called `aisafe`, so two
+installs in one environment overwrite each other's command. `uvx aisafe` and `pipx
+run aisafe` always run this package; `uv tool install` and `pipx install` keep the
+environments apart but link both commands into the same bin directory, where the
+second install refuses (or, with `--force`, replaces the first). That is why the
+bootstrap scripts print which `aisafe` ran, the skill stops on a version mismatch,
+and `hook.sh`/`hook.ps1` fail open when the `aisafe` they found rejects `hook run`. History: the project was
+"AI Safety Guardrails" with the distribution `aisguard` until 2026-10-19, then the
+distribution `anyaisafe` with the import and command `aisg` until 2026-10-20; none
+of them was ever published. `aisg` went because PyPI's `aisg` (an AI-gateway SDK)
+imports under the same name. The local folder may still carry the oldest name.
+
+Format labels did not change with the rename and must not: `"schema": "aisg/1"`,
+its SARIF carriers `aisg_schema` and `aisgFingerprint/v1`, and the html meta names
+`aisg-schema` and `aisg-tool` name a document format, not the product, and every
+reader matches them. The probe canaries (`AISG_CANARY_*`, `AISG-SP-*`) are opaque
+tokens and stay too. Everything else moved to `aisafe` (`.aisafe-audit/`,
+`[tool.aisafe-*]`, `# aisafe-audit: ignore-file`, `AISAFE_*`, `aisafe-hook.sh`), and
+the old spellings are READ, never written: `[tool.aisg-*]` when the new table is
+absent (with a stderr note; `_config.LEGACY_SECTION_PREFIX`), the old ignore marker
+and html marker line and `.aisg-audit/` as an evidence directory
+(`patterns.LEGACY_*`), hook entries an `aisg hook install` wrote (`hook.
+COMMAND_MARKER_RE`), the semgrep keys `aisg_rule(_id)` and `AISG_PRICES`.
 
 `tests/conftest.py` puts `src/` on `sys.path`, so the suite runs without an
 install; `examples/*.py` still self-bootstrap with `sys.path.insert(..., "src")`.
 Run commands from the repo root.
 
-`import aisg` loads `AuditLogger` and `TelemetryProvider` lazily (PEP 562
-`__getattr__` in `src/aisg/__init__.py`): `otel.py` pulls in the OpenTelemetry
+`import aisafe` loads `AuditLogger` and `TelemetryProvider` lazily (PEP 562
+`__getattr__` in `src/aisafe/__init__.py`): `otel.py` pulls in the OpenTelemetry
 SDK, a quarter of a second every CLI run and every agent hook would otherwise
 pay. Guards stay eager because `@register_guard` fills the registry
 `GuardrailPipeline.from_config` reads; `tests/unit/test_package_lazy.py` pins
 both halves. Keep new heavy, non-guard imports lazy the same way.
 
-YAML presets exist twice on purpose: `src/aisg/config/*.yaml` ships in the
-wheel as package data (read it with `aisg.config.preset_path()` /
+YAML presets exist twice on purpose: `src/aisafe/config/*.yaml` ships in the
+wheel as package data (read it with `aisafe.config.preset_path()` /
 `load_preset()`, never a hard-coded path), and repo-root `config/` is the
 local-dev copy. Keep the two in sync when editing either.
 
@@ -53,29 +67,29 @@ python -m pytest tests/unit/test_pii_tokenization.py -k "roundtrip" -q
 ruff format <file>                                        # authoritative formatter
 ruff check --fix <file>
 
-aisg lint src/                                            # EU AI Act compliance linter
-aisg misalign src/                                        # ALIGN-001..008 rule set
-aisg audit .                                              # AI-surface audit, AUD-101..1003 (see below)
-aisg skill list                                           # where each agent host keeps skills
-aisg attest . --check                                     # which level the written documents reach, and why not more
+aisafe lint src/                                            # EU AI Act compliance linter
+aisafe misalign src/                                        # ALIGN-001..008 rule set
+aisafe audit .                                              # AI-surface audit, AUD-101..1003 (see below)
+aisafe skill list                                           # where each agent host keeps skills
+aisafe attest . --check                                     # which level the written documents reach, and why not more
 python scripts/levels_md.py --check                       # the skill's references/levels.md equals the criteria file
-aisg fleet bench/corpus.yaml --jobs 4 --proposal          # the audit over a list of repositories; clones only what is listed
+aisafe fleet bench/corpus.yaml --jobs 4 --proposal          # the audit over a list of repositories; clones only what is listed
 python scripts/bump_version.py --check                    # every version site equals pyproject; CHANGELOG has the heading
 ```
 
-`aisg` is not on PATH in a bare checkout; `PYTHONPATH=src python -m aisg.cli <verb> ...` is
+`aisafe` is not on PATH in a bare checkout; `PYTHONPATH=src python -m aisafe.cli <verb> ...` is
 the equivalent. Set `PYTHONIOENCODING=utf-8` on Windows.
 
-`aisg` is the single console script (`aisg.cli:main`); `euaiact-lint` and
+`aisafe` is the single console script (`aisafe.cli:main`); `euaiact-lint` and
 `misalignment-check` remain as aliases. Both subcommands share flags: `--staged`, `--diff`,
 `--errors-only`, `--fail-on-warnings`, `--format terminal|json|sarif|markdown`,
 `--output <path>`, `--list-rules`. The CLI passes everything after the subcommand through
-verbatim (`argparse.REMAINDER`), so `aisg lint --help` shows the linter's own help.
+verbatim (`argparse.REMAINDER`), so `aisafe lint --help` shows the linter's own help.
 Exit codes: `0` clean, `1` findings, `2` fatal. A path that does not exist is fatal
 (exit 2), not a warning, and so is a failing `git diff` under `--staged`/`--diff`:
 scanning nothing and exiting 0 reads as a clean result in CI.
 Their defaults come from `[tool.euaiact-lint]` / `[tool.misalignment-check]` in
-`pyproject.toml` via `src/aisg/devtools/_config.py`, resolved from the CWD (so `paths`
+`pyproject.toml` via `src/aisafe/devtools/_config.py`, resolved from the CWD (so `paths`
 from pyproject do not resolve from a subdirectory; the exit-2 message says where they
 came from); an explicit CLI flag always wins, but a `true` boolean there cannot be
 switched back off from the command line. `exclude` entries are POSIX path fragments
@@ -88,18 +102,18 @@ fixture the full scan excludes.
 CLIs on the changed modules, then the self-audit:
 
 ```bash
-aisg audit . --no-external --fail-on high --baseline audit-baseline.json
+aisafe audit . --no-external --fail-on high --baseline audit-baseline.json
 ```
 
 It must exit 0. A non-zero exit means a new finding at `high` or above that is not in the
 baseline; either fix it or add it to `audit-baseline.json` with a reason (see below). Run
-`aisg measure` with `-o` pointing outside the tree (or delete `measure-report.json`
+`aisafe measure` with `-o` pointing outside the tree (or delete `measure-report.json`
 afterwards, now gitignored): a report left in the root is read by the next self-audit as
 evidence and reports the seven AUD-801 acceptances as `no longer reported`. CI
-(`tests.yml`) runs pytest on 3.10 and 3.13, ruff, `aisg measure --max-p99-ms 25` and the
-same audit gate; `eu-ai-act-compliance.yml` runs `aisg lint src examples` and fails on
+(`tests.yml`) runs pytest on 3.10 and 3.13, ruff, `aisafe measure --max-p99-ms 25` and the
+same audit gate; `eu-ai-act-compliance.yml` runs `aisafe lint src examples` and fails on
 errors only (see "EU AI Act linter suppression" for what is and is not in that gate);
-mypy and `aisg misalign` are local-only.
+mypy and `aisafe misalign` are local-only.
 
 Two CI-only failure modes worth knowing: git's `%cI` writes a UTC committer date with a
 `Z` suffix, which `datetime.fromisoformat` only accepts from 3.11 (`audit/walk.py`
@@ -108,7 +122,7 @@ second-slowest sample, so one scheduler hiccup on a shared runner used to fail i
 
 ## EU AI Act linter suppression
 
-`aisg lint` and `aisg misalign` share `EUAIActCodeAnalyzer`, and each honours only its
+`aisafe lint` and `aisafe misalign` share `EUAIActCodeAnalyzer`, and each honours only its
 own markers (`analyzer.tool`, default `euaiact-lint`; misalign passes
 `misalignment-check`). Two forms, both explicit:
 
@@ -117,7 +131,7 @@ own markers (`analyzer.tool`, default `euaiact-lint`; misalign passes
   `modules/policy/eu_ai_act.py` spell out every prohibited-practice phrase and would
   otherwise report themselves; `# misalignment-check: ignore-file` sits on
   `devtools/misalignment/rules/__init__.py` for the same reason, and
-  `devtools/audit/persons_patterns.py` carries all three markers (aisg, lint, misalign):
+  `devtools/audit/persons_patterns.py` carries all three markers (aisafe, lint, misalign):
   it spells out the P11 phrases. A test pins that exactly those files under `src/` carry
   each marker; a real finding anywhere else gets a line directive, not the marker.
 - `# euaiact-lint: ignore EU-AIA-005a[, ...]` on the finding's own line suppresses that
@@ -138,7 +152,7 @@ and one on the line above silenced the *next* finding. A new text rule must use 
 The compliance gate scans `src` and `examples`, errors only. `tests/` is outside it on
 purpose -- the suite asserts on the very phrases the rules match, and `tests/fixtures/`
 is deliberately non-compliant linter input (the pyproject `exclude` keeps it out of a
-bare `aisg lint .` too). `tests/unit/test_euaiact_lint.py::TestComplianceGate` runs the
+bare `aisafe lint .` too). `tests/unit/test_euaiact_lint.py::TestComplianceGate` runs the
 same scan, so a new error in `src`/`examples` fails `pytest` before it fails CI.
 `.gitlab-ci-euaiact.yml` is the downstream template of the same gate (pinned PyPI
 install, `SCAN_PATH`, errors-only, `|| [ $? -eq 1 ]` after every report call);
@@ -219,7 +233,7 @@ module-level `settings = Settings()` singleton at import time. `.env` resolves t
    every other machine-readable document still starts with `"schema"`. Tests pin the shape;
    the real 2.1.0 schema validates all three CLIs' output. Kept for numbering.)
 
-## `aisg init` and `aisg probe`
+## `aisafe init` and `aisafe probe`
 
 `init` (`devtools/system_card.py`) writes `ai-system-card.yaml` -- what the
 operator *asserts* about their system. The rendered file carries an inline
@@ -258,7 +272,7 @@ reports what got through. Rules that hold:
   hostname that is not a literal IP counts as remote even if it would resolve
   to loopback.
 
-The corpus is `src/aisg/probes/*.yaml`, one file per family, 48 cases seeded
+The corpus is `src/aisafe/probes/*.yaml`, one file per family, 48 cases seeded
 from the guards this package already ships -- INJECTION_PATTERNS, PII_PATTERNS,
 TOXICITY_PATTERNS, AdvancedInjectionDetectors, high_risk_fail_closed. Every case
 records its `seed_pattern`; keep that link when adding cases, and add a case when
@@ -266,12 +280,12 @@ adding a detection pattern.
 
 ## Measurement: a guard is a trade
 
-`aisg measure` (`devtools/measure.py`) runs the attack **and benign** corpora
+`aisafe measure` (`devtools/measure.py`) runs the attack **and benign** corpora
 through a real pipeline in-process and reports, per guard, what it catches, what
 it breaks, and what it costs. Rules that hold:
 
 - **The benign corpus is not optional.** Attacks alone make "block everything"
-  optimal. `src/aisg/probes/benign_traffic.yaml` is *adversarially* benign --
+  optimal. `src/aisafe/probes/benign_traffic.yaml` is *adversarially* benign --
   text a naive guard would flag. A benign case fails when the guard BLOCKS it,
   or when `must_survive` text is redacted away; both exact, neither heuristic.
 - **Guards are measured in isolation**, not through the assembled pipeline: a
@@ -298,8 +312,8 @@ it breaks, and what it costs. Rules that hold:
   reason a failed timing pass is not swallowed either: every raising call
   lands in `errors` as `<case>/t<pass>`, and only verdict-pass (`t0`) failures
   count towards `unavailable`.
-- Populate a Profile from `aisg measure` output. Never by hand.
-- **Cost is the third column, measured honestly or not at all.** `aisg measure` runs
+- Populate a Profile from `aisafe measure` output. Never by hand.
+- **Cost is the third column, measured honestly or not at all.** `aisafe measure` runs
   OFFLINE by default: a judge-backed guard's provider is not called, its regex path is
   timed, its tokens are ESTIMATED from the exact prompt it would send
   (`modules/llm_judges/estimate.py` renders the hoisted prompt constants of
@@ -320,7 +334,7 @@ it breaks, and what it costs. Rules that hold:
   `GuardrailBase.__call__` stamps `metadata["guard_name"]`; `PipelineResult.llm_usage`
   sums a stage; the audit logger and the otel instruments read the same key. No module
   under `src/` prices anything except `devtools/decide.py`, which joins tokens with the
-  dated table `config/prices.yaml` (mirrored in `src/aisg/config/`, `as_of`, `sources`,
+  dated table `config/prices.yaml` (mirrored in `src/aisafe/config/`, `as_of`, `sources`,
   `stale_after_days`); a model not in the table renders `unavailable` and names
   itself, never a guess, and nothing ever fetches a price.
 
@@ -329,21 +343,21 @@ Two findings this produced, both still true of the shipped code: the
 engineers asking how to defend against injection), and with `llm_judge: true`
 and no credentials it costs seconds per request; since wave 1 the failure is
 recorded (`metadata["judge_error"]`, usage `unavailable`) instead of swallowed,
-and `aisg measure` reports it as `fail_mode: open` with the judge not exercised.
+and `aisafe measure` reports it as `fail_mode: open` with the judge not exercised.
 
 Every shipped preset must load: `eu_high_risk.yaml` enabled seven guards that
 do not exist and had never been loadable. Tests pin that both presets build a
-pipeline and that `config/` and `src/aisg/config/` stay identical.
+pipeline and that `config/` and `src/aisafe/config/` stay identical.
 
-## `aisg decide`: the trade, priced against declared budgets
+## `aisafe decide`: the trade, priced against declared budgets
 
-`aisg decide` (`devtools/decide.py`) reads the audit report, the measure report, the
+`aisafe decide` (`devtools/decide.py`) reads the audit report, the measure report, the
 price table and a traffic profile (flags, or the system card's `traffic:` and
-`budgets:` blocks that `aisg init` writes; `deployment` stays the scalar it was) and
+`budgets:` blocks that `aisafe init` writes; `deployment` stays the scalar it was) and
 gives every candidate control (one row per `recommendation.package` symbol, guard rows
 joined to measure rows through the registry) one of four verdicts, a deterministic
 function of the declared budgets: `apply`, `apply with <config change>`, `defer (over
-budget: <which>)`, `unmeasured (run aisg measure first)`. Rules that hold:
+budget: <which>)`, `unmeasured (run aisafe measure first)`. Rules that hold:
 
 - An unknown budget never counts as exceeded; an unknown figure never counts as zero;
   the UNMEASURED list prints in every format.
@@ -357,11 +371,11 @@ budget: <which>)`, `unmeasured (run aisg measure first)`. Rules that hold:
   walker reads it as a report (`REPORTED <age>`), not as own output; AUD-806 "Reported
   guard over the declared budget" (`guardrails`, subs `latency|cost|human|benign`)
   reads its over-budget rows, and AUD-801/cost marks a judge the measure report never
-  exercised. `aisg audit --format html --decision FILE` adds the Trade table after the
+  exercised. `aisafe audit --format html --decision FILE` adds the Trade table after the
   plan (numbering shifts by one, every other format ignores the flag; a non-decision
   file is refused with exit 2); the page is byte-identical without it.
-- `[tool.aisg-decide]` in pyproject defaults every flag except `select`
-  (`NOT_CONFIGURABLE`); `prices` there, `AISG_PRICES` or `--prices` point at another
+- `[tool.aisafe-decide]` in pyproject defaults every flag except `select`
+  (`NOT_CONFIGURABLE`); `prices` there, `AISAFE_PRICES` or `--prices` point at another
   table. Exit 0 rendered, 1 a selected control or the total exceeds a budget, 2 fatal.
 - `GuardrailPipeline(thresholds=...)` / `pipeline.thresholds:` is the opt-in runtime
   demotion: a guard whose MEASURED Profile fails the bar does not run and is announced
@@ -385,7 +399,7 @@ precisely how untrusted input reaches a model. The corpus caught this: tool-006
 was downgraded to a flag until the veto landed. When in doubt, treat the payload
 as live.
 
-`aisg measure` is the arbiter. The fix costs zero attack coverage (21/48 either
+`aisafe measure` is the arbiter. The fix costs zero attack coverage (21/48 either
 way) and takes benign breakage from 10% to 0%. A test asserts the lenient and
 strict guards return identical verdicts on every attack case.
 
@@ -398,7 +412,7 @@ hits. Real space smuggling separates single characters.
 
 Every `euaiact-lint` rule carries `measured_precision: float | None` (on
 `BaseRule`). Below `MIN_PRECISION` (0.80, in `code_analyzer/analyzer.py`) a rule
-only runs with `aisg lint --experimental`.
+only runs with `aisafe lint --experimental`.
 
 **`None` means UNMEASURED, not perfect, and never guess a value for it.**
 Unmeasured rules keep firing by default — silencing a rule needs evidence, and
@@ -421,9 +435,9 @@ across repos. The unsampled 25,568 live in `findings-all.csv`. Sampling is
 deterministic and nested, so re-running or lowering `--sample-per-rule` never
 orphans a labelled row; tests pin both properties. See `bench/README.md`.
 
-## aisg audit and the skill
+## aisafe audit and the skill
 
-`aisg audit <path>` (`src/aisg/devtools/audit/`) is walk -> discover -> pydeep ->
+`aisafe audit <path>` (`src/aisafe/devtools/audit/`) is walk -> discover -> pydeep ->
 rules -> adapters -> baseline -> report. 54 rules, `AUD-<priority><NN>` from
 AUD-101 to AUD-1107 (AUD-806 reads the decision document; AUD-1101..1107 are the
 P11 persons-and-manipulation rules), ordered by blast radius;
@@ -458,7 +472,7 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   text for the UNKNOWN row, nothing runs it.
 - **`--no-redact` is refused** (exit 2, `_REDACT_REFUSED`). Secret-shaped
   snippets are redacted in every format; there is no flag that prints them.
-- **`patterns.IGNORE_MARKER`** (`# aisg-audit: ignore-file`) in the first five
+- **`patterns.IGNORE_MARKER`** (`# aisafe-audit: ignore-file`) in the first five
   lines makes `walk` skip the file, and no flag re-includes it
   (`--include-ignored` only overrides `.gitignore`). It sits on `rules/*.py`,
   `adapters.py`, `discover.py`, `patterns.py`, `vocab.py`, the skill scripts
@@ -467,12 +481,12 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   registry name the audit looks for, and would otherwise report themselves.
   Nothing else should carry it; a real finding goes in the baseline with a
   reason, not behind the marker.
-- **`[tool.aisg-audit]` in `pyproject.toml` is resolved from the CWD**, like
+- **`[tool.aisafe-audit]` in `pyproject.toml` is resolved from the CWD**, like
   `lint` and `misalign`, not from the audited path. Ours sets `exclude` and
   `fail-on = "high"`, so a fixture run from the repo root inherits them; run
   fixtures from a temporary cwd or pass `--fail-on` explicitly.
 - **The word the audit tests ban** must not appear anywhere under
-  `src/aisg/devtools/audit/` (`EXIT_OK`, not the obvious name), and neither
+  `src/aisafe/devtools/audit/` (`EXIT_OK`, not the obvious name), and neither
   may any of `report.BANNED_PHRASES`; `report.check_templates()` self-checks
   the renderers and `--debug` turns a hit into exit 2. Do not spell the
   phrases out in prose -- point at `BANNED_PHRASES`.
@@ -480,7 +494,7 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   is `sha1(rule_id | posix relpath | normalised snippet)[:16]`, where the
   normalisation collapses whitespace and strips digits from identifiers of
   three or more characters. Line numbers are not part of it, on purpose.
-- **The skill has one canonical copy**, `src/aisg/skills/ai-safety-audit/`
+- **The skill has one canonical copy**, `src/aisafe/skills/ai-safety-audit/`
   (ships in the wheel). `.claude/skills/ai-safety-audit/`,
   `.agents/skills/ai-safety-audit/` and
   `plugins/ai-safety-audit/skills/ai-safety-audit/` (the Claude Code plugin's
@@ -488,15 +502,15 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   `tests/unit/test_skill_package.py::test_mirror_is_byte_identical`; edit the
   canonical copy and run `python scripts/sync_skill.py` (`--check` lists
   drift and exits 1). The six bootstrap scripts (`audit`, `verify`, `hook`,
-  `.sh` and `.ps1`) pin `AISG_VERSION` to the pyproject version and
+  `.sh` and `.ps1`) pin `AISAFE_VERSION` to the pyproject version and
   `sync_skill.py` also pins `plugin.json`'s `version`, so **every version bump
   must be followed by `python scripts/sync_skill.py`** or
-  `test_version_pinned_to_pyproject` fails. `aisg skill install --host <name>|all` copies from the installed
-  package and `aisg skill diff --host <name>|all` compares; `path` and `list`
+  `test_version_pinned_to_pyproject` fails. `aisafe skill install --host <name>|all` copies from the installed
+  package and `aisafe skill diff --host <name>|all` compares; `path` and `list`
   take no host. `codex` and `antigravity` locations are marked unverified and
   say so on stderr.
 - **`audit-baseline.json` is the accepted-findings list** for the self-audit
-  gate (`aisg audit . --no-external --fail-on high --baseline
+  gate (`aisafe audit . --no-external --fail-on high --baseline
   audit-baseline.json`). Every entry carries a reason; a fingerprint without
   one is a suppression, not an acceptance. `--write-baseline` records, it
   does not judge (it exits 0 on purpose); a full JSON report is also accepted
@@ -570,7 +584,7 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   the priority), `[UNMEASURED]` on every Fig. 1 box, the disclaimer above
   the figure, and the two document-2 sections ("Since the baseline",
   "Remaining actions") only when `--baseline` was given. Line 1 is exactly
-  `patterns.OWN_HTML_MARKER_LINE` (`<!-- # aisg-audit: ignore-file -->`), so a
+  `patterns.OWN_HTML_MARKER_LINE` (`<!-- # aisafe-audit: ignore-file -->`), so a
   re-audit skips it by the marker. The JSON is authoritative; the html carries
   nothing the JSON does not. `--inventory-only --format html` renders the
   page with the no-rules banner and the inventory; every other format writes
@@ -582,7 +596,7 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   html whose first line is `OWN_HTML_MARKER_LINE` -- and lists it in
   `inventory.own_output_skipped`, rendered as one inventory line in every
   format; SARIF carries it at `runs[0].properties.own_output_skipped`.
-  `.aisg-audit/` (`patterns.AUDIT_DIR`) is deliberately NOT in `SKIP_DIRS`
+  `.aisafe-audit/` (`patterns.AUDIT_DIR`) is deliberately NOT in `SKIP_DIRS`
   and is never pruned by `.gitignore` (the walker exempts it like `.env*`;
   the `gitignored` flag still says so): measure and probe reports written
   there must be discovered as evidence (`REPORTED <age>`) whether or not they
@@ -606,13 +620,13 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   "guard present but unmeasured" for the guards it names only when its file is an
   eval tool's config or data file, or a test module (`test_*.py`, `*_test.py`,
   `conftest.py`, or any `.py` under a `tests`/`evals` directory;
-  `rules/guards._eval_evidence_file`). A README that says `aisg measure` and lists
+  `rules/guards._eval_evidence_file`). A README that says `aisafe measure` and lists
   the guards measures nothing, and neither does a tool's own source: this repo's
   `decide.py` and `measure.py` name every guard and had silenced the rule for all
   of them. The self-audit baseline therefore accepts AUD-801 for the five guards the
   default preset wires: CI measures them on every push but keeps the report as a
   build artifact, which an audit of the tree cannot read (the rule's first known
-  failure mode). Committing `.aisg-audit/measure-report.json` is the alternative.
+  failure mode). Committing `.aisafe-audit/measure-report.json` is the alternative.
 - **A price table is not a deployment.** `discover._is_price_table` (`schema: aisg/1`
   and `kind: prices` in the first 4 KiB) skips the model-id scan for `prices.yaml`,
   so AUD-601 does not report the ids it lists in order to price them; every other
@@ -626,7 +640,7 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   mutates the caller's context dict and clears the `tool_call` it set when the
   call returns; `ToolPolicyGuard.setup` coerces dict policies to `ToolPolicy`.
 - **The system card has an `incident_contact` field** (a `TODO` placeholder
-  from `aisg init`). A blank or `TODO`-prefixed value still counts as absent
+  from `aisafe init`). A blank or `TODO`-prefixed value still counts as absent
   for AUD-703 (`discover._incident_contact`, `rules/observability.py`), but
   the inventory records the raw placeholder string, not `None`, when no other
   contact key (`contact`, `security_contact`, `incident.contact`) names
@@ -634,7 +648,7 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   and a card with no contact key at all reads `has no incident_contact`. The
   card's fields are the system id, name and purpose, role, `risk_tier` (with
   its caveat), `annex_iii_category`, `affected_persons`, deployment,
-  `incident_contact`, and the `traffic:` / `budgets:` blocks `aisg decide` reads
+  `incident_contact`, and the `traffic:` / `budgets:` blocks `aisafe decide` reads
   (null = unknown, never assumed); there is no model or data field, and the skill
   docs must not invent one.
 - **`--only PATH` is the file-scoped run the hook uses after an edit.** The
@@ -654,7 +668,7 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
 - **Per-invocation actions are never pyproject defaults.**
   `main.NOT_CONFIGURABLE` (`write_baseline`, `inventory_only`, `list_rules`,
   `only`, with `amend_baseline` and `accept`) is excluded from
-  `[tool.aisg-audit]` resolution: a `true` there would make every audit
+  `[tool.aisafe-audit]` resolution: a `true` there would make every audit
   rewrite a baseline, run no rule, or print the catalogue and exit 0, with no
   flag to undo it, and an `only` there would make every audit partial. Two
   more things the walk never hides: a file over `max_size` is not read, and
@@ -667,11 +681,11 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   SARIF carries `aisg_schema` too, so the marker alone would skip a document
   that is not ours.
 - **The skill runs seven phases** (survey, document 1, decide, apply, document
-  2, verify, attest; design 03 part D), then a closing step that offers `aisg
-  hook install` and the Action by name. Every artefact is under `.aisg-audit/`
-  and every command runs from the repo root, because `[tool.aisg-audit]`
-  resolves from the CWD. Phase 3 runs `aisg decide` (and, with a yes, the
-  offline `aisg measure` through `verify.sh` with `AISG_VERIFY_SKIP_TESTS=1`)
+  2, verify, attest; design 03 part D), then a closing step that offers `aisafe
+  hook install` and the Action by name. Every artefact is under `.aisafe-audit/`
+  and every command runs from the repo root, because `[tool.aisafe-audit]`
+  resolves from the CWD. Phase 3 runs `aisafe decide` (and, with a yes, the
+  offline `aisafe measure` through `verify.sh` with `AISAFE_VERIFY_SKIP_TESTS=1`)
   so rows are chosen with their cost; phase 4 walks the plan table top-down,
   one row per approval, and reads `recommendation.package` from the JSON --
   never the html prose -- to pick between the package idiom
@@ -680,15 +694,16 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   re-audit, not the diff, is the evidence. Phase 7 runs `attest.sh --owner`
   and reads every unmet criterion's `missing` text aloud
   (`references/levels.md`). Hard rule 8: `audit.sh` and `attest.sh` print
-  `aisg: <path> version <v> (pinned <v>)` on stderr and the skill stops on a
-  mismatch (on PyPI `aisg` is an unrelated project); rule 9: it never pushes,
+  `aisafe: <path> version <v> (pinned <v>)` on stderr and the skill stops on a
+  mismatch (on PyPI the unrelated `aisafeguard` also installs an `aisafe`
+  command); rule 9: it never pushes,
   the `gh pr create` line is printed for the user. The skill proposes the
-  `.gitignore` line for `.aisg-audit/` as a diff and never edits `.gitignore`
+  `.gitignore` line for `.aisafe-audit/` as a diff and never edits `.gitignore`
   itself. `test_skill_package.py` pins the seven titles in order, the
-  vocabulary (`.aisg-audit/`, `--amend-baseline`, `--accept`, `--format html`,
-  `recommendation.package`, `leaves_open`, `same_control`, `aisg decide`,
-  `aisg attest`, `--owner`, `--require-level`, `attestation.json`,
-  `pr-body.md`, `gh pr create`, `aisg hook install`) and that `controls.md`'s
+  vocabulary (`.aisafe-audit/`, `--amend-baseline`, `--accept`, `--format html`,
+  `recommendation.package`, `leaves_open`, `same_control`, `aisafe decide`,
+  `aisafe attest`, `--owner`, `--require-level`, `attestation.json`,
+  `pr-body.md`, `gh pr create`, `aisafe hook install`) and that `controls.md`'s
   Package column covers every registry rule.
 - **`controls.md` copies the registry, and the copy is generated.** The
   severity word in each rule heading, every `- Mapping:` line (the rule's
@@ -706,17 +721,17 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   release gate and `test_levels_md.py` pins the committed file equals the
   output. Edit the YAML or the table, never the markdown.
 
-## `aisg hook`, the plugin and the CI surface
+## `aisafe hook`, the plugin and the CI surface
 
-`aisg hook` (`devtools/hook.py`) is the one adapter between an agent host's command
-hooks and the audit; `devtools/hosts.py` is the host table it shares with `aisg skill`
+`aisafe hook` (`devtools/hook.py`) is the one adapter between an agent host's command
+hooks and the audit; `devtools/hosts.py` is the host table it shares with `aisafe skill`
 (`Host.hooks: HookSupport | None`; keys stay `claude, agents, codex, cursor, gemini,
 antigravity`, pinned, and `references/hosts.md` names every host and source URL).
 Rules that hold:
 
 - **It fails OPEN on its own errors** (payload not JSON, audit exception, state
   unwritable): exit 0, nothing on stdout, the error recorded in
-  `.aisg-audit/hook-state.json` (`kind: hook-state`, last 20 errors and sessions,
+  `.aisafe-audit/hook-state.json` (`kind: hook-state`, last 20 errors and sessions,
   everything redacted and ASCII, written tmp+`os.replace`) and surfaced as one line at
   the next SessionStart. A hook is a gate on someone else's editor; one that fails
   closed on its own bug teaches people to reach for the bypass flags `HOST_OVERGRANT`
@@ -728,7 +743,7 @@ Rules that hold:
   with `send(None)` instead of `asyncio.run`, because the loop's internal socket pair
   on Windows would trip the "no socket" test; nothing imports a provider SDK.
   `test_hook.py` pins all of it, including that `run` writes only under
-  `.aisg-audit/`.
+  `.aisafe-audit/`.
 - **Policies re-use the audit's tables, nothing is re-spelled**: `patterns.
   is_protected_path`, `UNSAFE_HOOK_PATTERNS` (deny on `curl_pipe_sh`, `wget_pipe_sh`,
   `wget_stdout`, `pip_http`, `pip_trusted_host`; ask on `npx_y`), `HOST_OVERGRANT["*"]`
@@ -744,10 +759,10 @@ Rules that hold:
   when a baseline resolves; Cursor's stop is a `followup_message`; Cursor's
   `afterFileEdit` has no documented answer channel, so the recheck is recorded and
   surfaces at stop.
-- **The recheck is `aisg audit --only <file>`** in-process with stdout and stderr
+- **The recheck is `aisafe audit --only <file>`** in-process with stdout and stderr
   captured (the audit prints its terminal summary when `-o` is given), debounced per
   file, or the full tree when a baseline resolves and the last full run took at most
-  `max-audit-seconds`; `.aisg-audit/hook-recheck.json` and `hook-stop.json` are the
+  `max-audit-seconds`; `.aisafe-audit/hook-recheck.json` and `hook-stop.json` are the
   audit's own output and a later walk skips them by content.
 - **`install` never silently edits a protected file.** It loads the host config as
   strict JSON, merges only under `hooks` (and Cursor's `version: 1`), identifies its
@@ -755,13 +770,13 @@ Rules that hold:
   module/console form), replaces them, prints a unified diff and writes only with
   `--yes` or an interactive yes (exit 1 otherwise, exit 2 on an unparsable file or an
   unknown host). Project configs get the portable bootstrap (`sh "${CLAUDE_PROJECT_DIR}
-  /.claude/hooks/aisg-hook.sh" run ...`, copied from the packaged skill); `--global`
-  and `--local` get `sys.executable -m aisg.cli hook run ... --origin interpreter:...`.
+  /.claude/hooks/aisafe-hook.sh" run ...`, copied from the packaged skill); `--global`
+  and `--local` get `sys.executable -m aisafe.cli hook run ... --origin interpreter:...`.
   `hook.sh` passes `--origin` and `--expect-version`; `run` records `version_mismatch`
   in the state instead of spawning a second process. Codex: `install` prints why
   nothing is written and exits 1.
-- **`[tool.aisg-hook]`** (`HookConfig.load`, from the pyproject at or above the
-  resolved root; `fail-on` falls back to `[tool.aisg-audit]`): a bad value is a
+- **`[tool.aisafe-hook]`** (`HookConfig.load`, from the pyproject at or above the
+  resolved root; `fail-on` falls back to `[tool.aisafe-audit]`): a bad value is a
   recorded problem printed at session start, never a crash. `DEFAULT_POLICIES` are
   on; `prompt_injection` is opt-in because the agent's own user is the trusted party on
   a prompt and the guard's benign breakage would be noise.
@@ -772,10 +787,10 @@ Rules that hold:
   it as a site). Hook commands use `sh "${CLAUDE_PLUGIN_ROOT}/skills/ai-safety-audit/
   scripts/hook.sh"`. No `.mcp.json`: the audit has nothing to serve.
 - **The CI surface**: `action.yml` (composite; `version` default pinned to pyproject by
-  a test; `install-from: action-path` for dogfooding; three `aisg audit` calls each
+  a test; `install-from: action-path` for dogfooding; three `aisafe audit` calls each
   `|| [ $? -eq 1 ]`; the verdict step exits with the JSON's `summary.exit_code`),
-  `.pre-commit-hooks.yaml` (`aisg-audit` at `pre-push`, `aisg-lint`, `aisg-misalign`),
-  the `aisg-audit` job in `.gitlab-ci-euaiact.yml` (git pin until wave 6) and the
+  `.pre-commit-hooks.yaml` (`aisafe-audit` at `pre-push`, `aisafe-lint`, `aisafe-misalign`),
+  the `aisafe-audit` job in `.gitlab-ci-euaiact.yml` (git pin until wave 6) and the
   `action` dogfood job in `tests.yml`. `test_ci_surface.py` pins the shapes.
 
 ## Persons and manipulation (P11)
@@ -832,33 +847,33 @@ Rules that hold:
   policy guard's disclosure is the only one.
 - **The output corpus** (`probes/manipulation_responses.yaml`, `kind: output`) holds model
   RESPONSES with a `verdict` (`manipulative` counts as an attack, `benign` as traffic that
-  must survive). `load_corpus(include_output=True)` loads it; `aisg probe` never does, and
-  `available_families()` never lists it. `aisg measure` routes output cases to OUTPUT-
+  must survive). `load_corpus(include_output=True)` loads it; `aisafe probe` never does, and
+  `available_families()` never lists it. `aisafe measure` routes output cases to OUTPUT-
   stage guards only and counts them in `output_seen/output_caught/output_catch_rate` and
   in the family matrix, never in the input headline; `catch_rate_meaningful` is true for an
   output guard once output cases reached it, and the terminal NOTE about output guards
   prints only when none did. `manipulation_elicitation` is attack family 7 (CI pins 7).
 - **The card's `prompt_audit` block** (`reviewed_at`, `reviewer`, `scope`, `notes`) is
   what AUD-1107 reads through `discover._build_system_card`, which also passes
-  `affected_persons` through; `aisg init` writes it with a `TODO` reviewer and asks two
+  `affected_persons` through; `aisafe init` writes it with a `TODO` reviewer and asks two
   more questions interactively.
 
-## `aisg attest`: levels, criteria and a named owner
+## `aisafe attest`: levels, criteria and a named owner
 
-`aisg attest` (`devtools/attest.py`) is the deterministic half of "declaring" a system.
-It reads the documents the other commands wrote (`.aisg-audit/audit-report-after.json`,
+`aisafe attest` (`devtools/attest.py`) is the deterministic half of "declaring" a system.
+It reads the documents the other commands wrote (`.aisafe-audit/audit-report-after.json`,
 falling back to `audit-report.json` with a stderr note; `audit-baseline.json`;
 `measure-report.json`; `probe-report.json`; `decision-report.json`; `ai-system-card.yaml`),
 evaluates the criteria in `attest-levels.yaml` (shipped in the wheel, mirrored at
 `config/`, pinned identical; `--level-criteria PATH` for another file) and writes
 `attestation.json`, `attestation.md`, `badge.json` and, with `--html`, `attestation.html`
-under `--out-dir` (`.aisg-audit/`). Rules that hold:
+under `--out-dir` (`.aisafe-audit/`). Rules that hold:
 
 - **A level is a list of criteria met on a date, signed by a person.** Levels 0 audited,
   1 triaged, 2 measured, 3 governed; the level reached is the highest N with every
   criterion of 0..N met, so a hole at level 1 caps the result at 0 whatever level 3 says.
   Each criterion row carries `met`, `evidence` and `missing` so a reader sees why. The
-  statement reads "<owner> states that <path> at commit <sha> meets the AISG level N
+  statement reads "<owner> states that <path> at commit <sha> meets the AnyAISafe level N
   (<name>) criteria on <date>."; when level 0 is not met it says so and the badge reads
   "no level". The disclaimer extends the audit's: the tool checked the listed criteria
   and nothing else. Nothing in the module's fixed strings may contain a
@@ -875,7 +890,7 @@ under `--out-dir` (`.aisg-audit/`). Rules that hold:
   a reason count as accepted: `L1.no_open_high` keeps a reason-free finding open and
   `L1.reasons` names how many fingerprints have no reason. `accepted_risks` copies the
   baseline's reasons (with `rule` and `file` from its `index`) next to the owner; attest
-  never edits a baseline, `aisg audit --amend-baseline --accept` is the only way in.
+  never edits a baseline, `aisafe audit --amend-baseline --accept` is the only way in.
 - **Absent is recorded, never fatal; wrong is fatal.** A missing measure, probe, decision
   or card makes the criteria that need it unmet and appears in `inputs` with null `file`,
   `generated_at` and `age_days`. A missing audit report is fatal (exit 2) with the command
@@ -895,34 +910,34 @@ under `--out-dir` (`.aisg-audit/`). Rules that hold:
 - **Document keys, in order:** `schema`, `kind`, `tool`, `target`, `generated_at`,
   `owner`, `level` (`reached`, `name`, `statement`, `criteria`), `inputs`,
   `accepted_risks`, `unknown`, `residual`, `next_review_by`, `notes`, `disclaimer`.
-  `[tool.aisg-attest]` defaults every other flag. Exit 0 written or met, 1 `--check`
+  `[tool.aisafe-attest]` defaults every other flag. Exit 0 written or met, 1 `--check`
   not met, 2 fatal, 130 interrupted. `scripts/attest.sh|ps1` is the skill's
   bootstrap for phase 7 (same resolver chain and pin as `audit.sh`), and
   `references/levels.md` is the generated table of the criteria.
 
-On this repository `aisg attest . --check` reads level 0: the self-audit runs
+On this repository `aisafe attest . --check` reads level 0: the self-audit runs
 `--no-external` (L1.scanners fails), and there is no committed measure or decision
 document and no system card. That is the honest reading, not a defect.
 
-## `aisg fleet` and the audit bench
+## `aisafe fleet` and the audit bench
 
-`aisg fleet LIST` (`devtools/fleet.py`) audits many repositories, one `aisg audit`
+`aisafe fleet LIST` (`devtools/fleet.py`) audits many repositories, one `aisafe audit`
 subprocess each, and aggregates counts, names and report paths into
-`.aisg-fleet/fleet-report.{json,csv,md}` (`"kind": "fleet"`). Rules that hold:
+`.aisafe-fleet/fleet-report.{json,csv,md}` (`"kind": "fleet"`). Rules that hold:
 
 - **The operator writes the list; the fleet never searches.** `LIST` is YAML (`repos:`
   with `name`, `url` or `path`, optional `sha` and `branch`; `bench/corpus.yaml` is a
   valid list) or CSV (`name,url|path,sha`). Its only network action is `git clone` of the
   URLs listed, through `devtools/_git.fetch_pinned` (shared with `bench/run.py`: init +
-  fetch-by-sha, branch fallback at depth 50, `.aisg-bench-sha` stamp, one-line
+  fetch-by-sha, branch fallback at depth 50, `.aisafe-bench-sha` stamp, one-line
   `GitError`). A local `path` is audited in place and never written into.
-- **One subprocess per repository**: `sys.executable -m aisg.cli audit . --format json
+- **One subprocess per repository**: `sys.executable -m aisafe.cli audit . --format json
   --no-external --fail-on <level> -o <out>/<name>/audit-report.json` with the clone as cwd
-  (the target's own `[tool.aisg-audit]` applies) and `--per-repo-timeout` as the
+  (the target's own `[tool.aisafe-audit]` applies) and `--per-repo-timeout` as the
   wall-clock cap, because an in-process audit cannot be interrupted and one pathological
   repository must not take the fleet down; never a launcher from
   `adapters.FORBIDDEN_LAUNCHERS`; `--jobs` is a thread pool over subprocesses; the child
-  gets this process's `aisg` on `PYTHONPATH` so a source checkout works without an install.
+  gets this process's `aisafe` on `PYTHONPATH` so a source checkout works without an install.
 - **Findings are the survey's content, not its failure.** Exit 0 when every repository
   was audited, 1 when one was not (`clone_failed`, `timeout`, `fatal`: an incomplete
   survey must not look complete), 2 fatal (unreadable list, `git` missing, `--out`
@@ -936,8 +951,8 @@ subprocess each, and aggregates counts, names and report paths into
   severity table, the plan table with the html plan's `who` rule, a blank decide table,
   the exact command, how to apply) with `file:line` and never evidence text. The fleet
   never pushes or opens a PR; `--resume` skips a repository whose report already parses;
-  `check_templates()` guards the fixed strings; `[tool.aisg-fleet]` defaults the flags.
-- **`bench/run.py --tool audit`** runs `aisg audit . --no-external --fail-on never` over
+  `check_templates()` guards the fixed strings; `[tool.aisafe-fleet]` defaults the flags.
+- **`bench/run.py --tool audit`** runs `aisafe audit . --no-external --fail-on never` over
   the same SHA-pinned corpus into `bench/results-audit/` and `findings-audit.csv`
   (`rule_id` = the parent rule, plus `sub` and the redacted first-evidence `snippet`);
   `bench/score.py --tool audit` writes `precision-audit.md` and a paste block keyed by
@@ -948,9 +963,9 @@ subprocess each, and aggregates counts, names and report paths into
 ## Adding a guard
 
 Subclass `GuardrailBase`, set `name`/`stage`, decorate with `@register_guard("name")`, implement
-`async def check`, wire the name into **all four** YAML presets (`config/` and `src/aisg/config/`),
-export from `src/aisg/__init__.py`, add tests. `GuardrailPipeline.from_config` fails loudly on an
-unregistered name. Then teach the audit the name (`discover._AISG_GUARD_RE`,
+`async def check`, wire the name into **all four** YAML presets (`config/` and `src/aisafe/config/`),
+export from `src/aisafe/__init__.py`, add tests. `GuardrailPipeline.from_config` fails loudly on an
+unregistered name. Then teach the audit the name (`discover._AISAFE_GUARD_RE`,
 `rules/guards._GUARD_CLASSES`), add a probe case per detection pattern with its `seed_pattern`
 (an OUTPUT guard's cases go in a `kind: output` corpus), accept the new guard's AUD-801 group in
 `audit-baseline.json` with a reason, and, if an audit rule names the class, add it to

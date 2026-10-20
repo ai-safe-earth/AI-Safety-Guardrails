@@ -1,8 +1,8 @@
 # Where this skill lives on each host
 
-`aisg skill install` copies the packaged `ai-safety-audit/` folder into the directory an
+`aisafe skill install` copies the packaged `ai-safety-audit/` folder into the directory an
 agent host reads skills from. The table records what was found on each vendor page when the
-package was built; `aisg skill list` prints the current flag and URL for the installed
+package was built; `aisafe skill list` prints the current flag and URL for the installed
 version.
 
 | host | project dir | global dir | verified | source |
@@ -15,7 +15,7 @@ version.
 | `antigravity` | `.agents/skills/` | `~/.agents/skills/` | no | (none) |
 
 "verified" means: as recorded at build time, the `source` page stated that directory.
-`aisg skill list` shows the current flag. A host marked `no` prints a note on install
+`aisafe skill list` shows the current flag. A host marked `no` prints a note on install
 saying the location was not verified against vendor documentation; `codex` in particular
 prints its resolved destination, because the vendor page (the design-time URL
 `developers.openai.com/codex/skills` redirects to it) names `.agents/skills` for
@@ -24,10 +24,10 @@ repository skills and `~/.agents/skills` for user-level skills without mentionin
 
 ## Hooks
 
-`aisg hook install --host <name>` writes this adapter's entries into the host's hook
+`aisafe hook install --host <name>` writes this adapter's entries into the host's hook
 configuration (it prints the diff and writes only with `--yes` or an interactive yes: those
 files are protected paths) and copies the pinned bootstrap `scripts/hook.sh` / `hook.ps1`
-next to it. `aisg hook list` prints the table for the installed version. In the skill's
+next to it. `aisafe hook list` prints the table for the installed version. In the skill's
 closing step the install is offered by name only: the host's hook file is a protected
 path (rule 4), so the user runs the command, reads the diff and answers yes themselves;
 the skill never writes it for them.
@@ -43,13 +43,13 @@ What the hooks decide, on every host that has the event: a secret-shaped literal
 written is denied; an edit to a protected path (host permission file, CI workflow, `.env*`,
 `.secrets*`, `.pre-commit-config.yaml`) asks; `curl ... | sh`, `wget -O- ... | sh` and
 plain-http `pip install` are denied; `npx -y`, a permission-bypass flag and a shell write to
-a protected path ask; after an edit, `aisg audit --only <file>` runs against the baseline and
+a protected path ask; after an edit, `aisafe audit --only <file>` runs against the baseline and
 new findings on that file become context; at Stop, a full audit against the baseline blocks
 once when a new finding at or above `fail-on` appears. Cursor has no pre-edit event, so its
 file checks are advisory and run after the edit; shell and MCP gating is enforced. Gemini
-has no "ask", so an `ask` follows `[tool.aisg-hook].ask-fallback` (`allow`, recorded, or
+has no "ask", so an `ask` follows `[tool.aisafe-hook].ask-fallback` (`allow`, recorded, or
 `deny`). The adapter fails OPEN on its own errors, records them in
-`.aisg-audit/hook-state.json` and says so at the next session start; it never calls a model,
+`.aisafe-audit/hook-state.json` and says so at the next session start; it never calls a model,
 never installs anything and never opens a socket.
 
 The Claude Code plugin (`claude plugin marketplace add ai-safe-earth/AnyAISafe`,
@@ -68,22 +68,22 @@ repo. `--host all --force-all` installs everywhere regardless.
 
 Project-local (the default; writes under the current repository):
 
-    aisg skill install --host claude
-    aisg skill install --host agents
-    aisg skill install --host all
+    aisafe skill install --host claude
+    aisafe skill install --host agents
+    aisafe skill install --host all
 
 Global (writes under the home directory):
 
-    aisg skill install --host claude --global
+    aisafe skill install --host claude --global
 
-Without `aisg` on PATH, through a pinned bootstrap (`<version>` is the `AISG_VERSION`
+Without `aisafe` on PATH, through a pinned bootstrap (`<version>` is the `AISAFE_VERSION`
 pinned in `scripts/audit.sh`; never leave it off):
 
-    uvx --from 'anyaisafe==<version>' aisg skill install --host all
-    pipx run --spec 'anyaisafe==<version>' aisg skill install --host all
+    uvx --from 'aisafe==<version>' aisafe skill install --host all
+    pipx run --spec 'aisafe==<version>' aisafe skill install --host all
 
-Other verbs: `aisg skill path` prints the packaged directory; `aisg skill list` prints the
-host table; `aisg skill diff --host <x>` compares the installed copy with the packaged one
+Other verbs: `aisafe skill path` prints the packaged directory; `aisafe skill list` prints the
+host table; `aisafe skill diff --host <x>` compares the installed copy with the packaged one
 and exits 1 when they differ. `install` refuses to overwrite a differing copy without
 `--force`; `--dry-run` prints what it would write.
 
@@ -96,17 +96,18 @@ That is the intersection of what the hosts above accept; host-specific metadata 
 ## Bootstrap scripts
 
 `scripts/audit.sh`, `audit.ps1`, `verify.sh`, `verify.ps1`, `hook.sh`, `hook.ps1`,
-`attest.sh` and `attest.ps1` resolve `aisg` in this order:
-`aisg` on PATH, else `uvx --from 'anyaisafe==<version>'`, else
-`pipx run --spec 'anyaisafe==<version>'`. `anyaisafe` is the distribution name; `aisg` is the
-importable name and the console script, and on PyPI it belongs to an unrelated project, so a
-bootstrap must never install by it. The version is pinned to the package
+`attest.sh` and `attest.ps1` resolve `aisafe` in this order:
+`aisafe` on PATH, else `uvx --from 'aisafe==<version>'`, else
+`pipx run --spec 'aisafe==<version>'`. `aisafe` is the distribution, the importable name
+and the console script; on PyPI the unrelated `aisafeguard` also installs an `aisafe`
+command, so `audit.sh` and `attest.sh` say which one ran and `hook.sh` fails open when
+the one it found rejects `hook run`. The version is pinned to the package
 that shipped the scripts and a test asserts it equals `pyproject.toml`; an unpinned bootstrap
 is what AUD-602 flags in targets, and the skill does not get an exception. When none of the
 three is available, `audit.sh` exits 2 with install hints, `verify.sh` prints
-`measure skipped: aisg not importable in target`, and `hook.sh` exits 0 with
+`measure skipped: aisafe not importable in target`, and `hook.sh` exits 0 with
 `hook skipped` on stderr: a hook is a gate on someone else's editor and fails open.
 `audit.sh` / `audit.ps1` and `attest.sh` / `attest.ps1` print one line on stderr before
-running, `aisg: <path> version <version> (pinned <version>)` (or `aisg: uvx
-anyaisafe==<version> ...`), so the conversation records which aisg ran; when the version
+running, `aisafe: <path> version <version> (pinned <version>)` (or `aisafe: uvx
+aisafe==<version> ...`), so the conversation records which aisafe ran; when the version
 differs from the pin, stop and say so before reading any result.

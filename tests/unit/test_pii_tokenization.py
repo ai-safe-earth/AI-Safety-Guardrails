@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from aisg.core.base import Action
-from aisg.modules.input.pii_detector import PII_TOKEN_MAP_KEY, PIIDetector, PIIRestorer
+from aisafe.core.base import Action
+from aisafe.modules.input.pii_detector import PII_TOKEN_MAP_KEY, PIIDetector, PIIRestorer
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -274,13 +274,13 @@ class TestTokenizeEndToEnd:
 
     @pytest.mark.asyncio
     async def test_restorer_registered_in_registry(self):
-        from aisg.core.registry import REGISTRY
+        from aisafe.core.registry import REGISTRY
 
         assert "pii_restorer" in REGISTRY
 
     @pytest.mark.asyncio
     async def test_detector_tokenize_registered(self):
-        from aisg.core.registry import REGISTRY
+        from aisafe.core.registry import REGISTRY
 
         assert "pii_detector" in REGISTRY
 
@@ -336,7 +336,7 @@ class TestDefaultEntities:
     def test_passport_available_when_asked_for(self):
         import asyncio
 
-        from aisg.modules.input.pii_detector import DEFAULT_ENTITIES
+        from aisafe.modules.input.pii_detector import DEFAULT_ENTITIES
 
         guard = PIIDetector(action="redact", entities=DEFAULT_ENTITIES + ["PASSPORT"])
         r = asyncio.run(guard("Passport AB1234567 expires soon", {}))

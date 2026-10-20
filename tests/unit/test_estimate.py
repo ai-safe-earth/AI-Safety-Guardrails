@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from aisg.modules.llm_judges import estimate
-from aisg.modules.llm_judges.estimate import (
+from aisafe.modules.llm_judges import estimate
+from aisafe.modules.llm_judges.estimate import (
     CHARS_PER_TOKEN,
     estimate_call,
     estimate_tokens,
@@ -37,7 +37,7 @@ def test_estimate_tokens_is_ceil_chars_over_four_and_deterministic():
 
 def test_import_pulls_no_provider_sdk():
     code = (
-        "import sys, aisg.modules.llm_judges.estimate; "
+        "import sys, aisafe.modules.llm_judges.estimate; "
         "print(sorted(m for m in sys.modules if m in ('anthropic', 'aiohttp', 'transformers')))"
     )
     import os
@@ -54,12 +54,12 @@ def test_import_pulls_no_provider_sdk():
 
 class TestPromptInjectionSite:
     def test_judge_off_means_no_site(self):
-        from aisg.modules.input.prompt_injection import PromptInjectionGuard
+        from aisafe.modules.input.prompt_injection import PromptInjectionGuard
 
         assert site_for(PromptInjectionGuard()) is None
 
     def test_site_uses_the_hoisted_template_cap_and_completion_cap(self):
-        from aisg.modules.input import prompt_injection
+        from aisafe.modules.input import prompt_injection
 
         guard = prompt_injection.PromptInjectionGuard(llm_judge=True)
         site = site_for(guard)
@@ -78,7 +78,7 @@ class TestPromptInjectionSite:
 
 class TestToxicitySite:
     def test_site_and_estimate(self):
-        from aisg.modules.output import toxicity
+        from aisafe.modules.output import toxicity
 
         assert site_for(toxicity.ToxicityFilter()) is None
         guard = toxicity.ToxicityFilter(use_llm_judge=True)
@@ -93,8 +93,8 @@ class TestToxicitySite:
 
 class TestJudgeSites:
     def test_claude_judge_modes_and_history_window(self):
-        from aisg.modules.llm_judges import claude_judge
-        from aisg.modules.llm_judges.claude_judge import ClaudeJudge
+        from aisafe.modules.llm_judges import claude_judge
+        from aisafe.modules.llm_judges.claude_judge import ClaudeJudge
 
         general = site_for_judge(ClaudeJudge(mode="general", api_key="k"))
         assert (
@@ -111,8 +111,8 @@ class TestJudgeSites:
         assert "safe" in injection.safe_reply
 
     def test_llamaguard_estimate_includes_the_safety_policy(self):
-        from aisg.modules.llm_judges import llamaguard
-        from aisg.modules.llm_judges.llamaguard import LlamaGuardJudge
+        from aisafe.modules.llm_judges import llamaguard
+        from aisafe.modules.llm_judges.llamaguard import LlamaGuardJudge
 
         site = site_for_judge(LlamaGuardJudge(provider="groq", api_key="k"))
         assert site.id == "llamaguard:groq" and site.model == "llama-guard-3-8b"
@@ -123,7 +123,7 @@ class TestJudgeSites:
         assert site.content_cap is None
 
     def test_moderation_site_is_the_content_itself(self):
-        from aisg.modules.llm_judges.openai_mod import OpenAIModerationJudge
+        from aisafe.modules.llm_judges.openai_mod import OpenAIModerationJudge
 
         site = site_for_judge(OpenAIModerationJudge(api_key="k"))
         assert site.id == "openai_mod" and site.provider == "openai"
@@ -131,22 +131,22 @@ class TestJudgeSites:
         assert usage.tokens_in == 100 and usage.tokens_out == 0
 
     def test_cached_judge_is_unwrapped(self):
-        from aisg.modules.llm_judges.cache import CachedJudge
-        from aisg.modules.llm_judges.claude_judge import ClaudeJudge
+        from aisafe.modules.llm_judges.cache import CachedJudge
+        from aisafe.modules.llm_judges.claude_judge import ClaudeJudge
 
         site = site_for_judge(CachedJudge(CachedJudge(ClaudeJudge(api_key="k"))))
         assert site.id == "claude_judge:general"
 
     def test_filters_resolve_through_their_judge(self):
-        from aisg.modules.input.llm_input_filter import LLMInputFilter
-        from aisg.modules.llm_judges.claude_judge import ClaudeJudge
+        from aisafe.modules.input.llm_input_filter import LLMInputFilter
+        from aisafe.modules.llm_judges.claude_judge import ClaudeJudge
 
         guard = LLMInputFilter(judge=ClaudeJudge(mode="injection", api_key="k"))
         assert site_for(guard).id == "claude_judge:injection"
 
     def test_unknown_judge_and_regex_guards_have_no_site(self):
-        from aisg.modules.input.pii_detector import PIIDetector
-        from aisg.modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
+        from aisafe.modules.input.pii_detector import PIIDetector
+        from aisafe.modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
 
         class Odd(LLMJudgeBase):
             async def _call(self, content, role, conversation_history):
@@ -168,10 +168,10 @@ def test_nemo_site_is_unavailable_never_estimated():
 
 
 def test_every_rendered_estimate_is_labelled_estimated():
-    from aisg.modules.input.prompt_injection import PromptInjectionGuard
-    from aisg.modules.llm_judges.claude_judge import ClaudeJudge
-    from aisg.modules.llm_judges.llamaguard import LlamaGuardJudge
-    from aisg.modules.llm_judges.openai_mod import OpenAIModerationJudge
+    from aisafe.modules.input.prompt_injection import PromptInjectionGuard
+    from aisafe.modules.llm_judges.claude_judge import ClaudeJudge
+    from aisafe.modules.llm_judges.llamaguard import LlamaGuardJudge
+    from aisafe.modules.llm_judges.openai_mod import OpenAIModerationJudge
 
     sites = [
         site_for(PromptInjectionGuard(llm_judge=True)),

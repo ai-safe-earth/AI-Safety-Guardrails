@@ -14,7 +14,7 @@ pip install -e ".[devtools,dev]"
 pytest -q                                          # no API keys, no network
 ```
 
-The distribution is `anyaisafe`; the import name and the console script are `aisg`. On
+The distribution, the import name and the console script are all `aisafe`. On
 Windows set `PYTHONIOENCODING=utf-8` before running the examples or the CLIs.
 
 ## The gate
@@ -24,10 +24,10 @@ Run from the repository root; everything green before a commit:
 ```bash
 pytest -q
 ruff check . && ruff format --check .
-aisg lint src examples --errors-only
-aisg misalign src
-aisg audit . --no-external --fail-on high --baseline audit-baseline.json   # must exit 0
-aisg measure --max-p99-ms 25
+aisafe lint src examples --errors-only
+aisafe misalign src
+aisafe audit . --no-external --fail-on high --baseline audit-baseline.json   # must exit 0
+aisafe measure --max-p99-ms 25
 python scripts/controls_md.py --check
 python scripts/levels_md.py --check
 python scripts/sync_skill.py --check
@@ -36,7 +36,7 @@ python scripts/bump_version.py --check
 
 A non-zero self-audit means a new finding at `high` or above that is not in
 `audit-baseline.json`: fix it, or accept it with a reason that describes the evidence
-without quoting the literal (`aisg audit --amend-baseline audit-baseline.json --accept
+without quoting the literal (`aisafe audit --amend-baseline audit-baseline.json --accept
 <fingerprint>="<reason>"`). A fingerprint without a reason is a suppression, not an
 acceptance.
 
@@ -49,7 +49,7 @@ acceptance.
   `kind` (`audit`, `audit-baseline`, `inventory`, `prices`, `decision`, `attestation`,
   `attest-levels`, `hook-state`). SARIF is the one exception; its marker is in the run's
   property bag.
-- Nothing under `aisg.devtools` calls a model, installs anything or opens a socket; the
+- Nothing under `aisafe.devtools` calls a model, installs anything or opens a socket; the
   tests wrap `socket.socket` to prove it. External scanners run only if already on PATH.
 - Never a verdict. `report.BANNED_PHRASES` lists the phrases no renderer may emit and a
   self-check runs against every template; do not spell them out in prose, point at the
@@ -59,10 +59,10 @@ acceptance.
   mapping and leaves-open text, `scripts/controls_md.py`), `references/levels.md` (the
   whole file, `scripts/levels_md.py`), and the three skill mirrors (`.claude/skills/`,
   `.agents/skills/`, `plugins/ai-safety-audit/skills/`, `scripts/sync_skill.py`).
-- `# aisg-audit: ignore-file` sits only on the files that are the audit's vocabulary; a
+- `# aisafe-audit: ignore-file` sits only on the files that are the audit's vocabulary; a
   real finding anywhere else goes in the baseline with a reason. The same holds for the
   `euaiact-lint` and `misalignment-check` markers.
-- YAML presets and data files exist twice on purpose (`src/aisg/config/` ships in the
+- YAML presets and data files exist twice on purpose (`src/aisafe/config/` ships in the
   wheel, `config/` is the local-dev copy); edit both, a test pins them identical.
 
 ## Adding things
@@ -71,7 +71,7 @@ acceptance.
   all four presets, export, probe cases with `seed_pattern`, the audit's name tables, an
   AUD-801 acceptance in the baseline, `CLASS_SYMBOLS` and an `apply/python.md` heading when
   a rule names it).
-- **An audit rule**: a class under `src/aisg/devtools/audit/rules/`, a row in
+- **An audit rule**: a class under `src/aisafe/devtools/audit/rules/`, a row in
   `SUBSYSTEM_OF_RULE`, a `recommendation.package` with `leaves_open` text whenever the
   mechanism is not `none`, a hand-written section in `references/controls.md` followed by
   `python scripts/controls_md.py`, a positive and a negative fixture under
@@ -81,7 +81,7 @@ acceptance.
   `attest-levels.yaml`, then `python scripts/levels_md.py` and `python scripts/sync_skill.py`.
 - **A price**: both copies of `prices.yaml`, with the date and the source URL. An
   unverifiable figure stays out; the model then renders `unavailable` and names itself.
-- **A probe or benign case**: the family's YAML under `src/aisg/probes/`, with its
+- **A probe or benign case**: the family's YAML under `src/aisafe/probes/`, with its
   `seed_pattern`; a benign case that a naive guard would flag is worth more than one that
   nothing would.
 

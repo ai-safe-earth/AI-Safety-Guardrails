@@ -1,7 +1,7 @@
 """
 tests/unit/test_system_card.py
 ------------------------------
-Tests for `aisg init`.
+Tests for `aisafe init`.
 
 The card records operator assertions. These tests pin the two things that must
 not drift: the file is valid YAML with the agreed keys, and it keeps saying out
@@ -16,7 +16,7 @@ import uuid
 import pytest
 import yaml
 
-from aisg.devtools.system_card import (
+from aisafe.devtools.system_card import (
     ANNEX_III,
     DEFAULT_CARD,
     DEPLOYMENTS,
@@ -72,7 +72,7 @@ class TestRenderCard:
 
     def test_default_incident_contact_is_a_todo_placeholder(self):
         """
-        `aisg audit` (AUD-703, AUD-1001) reads this key and treats a value
+        `aisafe audit` (AUD-703, AUD-1001) reads this key and treats a value
         that still starts with TODO as no contact at all -- the placeholder
         must never pass for a real one.
         """

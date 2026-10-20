@@ -14,10 +14,10 @@ exist is exit 2, not a warning.
 ## Run
 
 ```bash
-aisg lint <target>
-aisg lint <target> --format json     --output euaiact-report.json
-aisg lint <target> --format sarif    --output euaiact-results.sarif
-aisg lint <target> --format markdown --output euaiact-report.md
+aisafe lint <target>
+aisafe lint <target> --format json     --output euaiact-report.json
+aisafe lint <target> --format sarif    --output euaiact-results.sarif
+aisafe lint <target> --format markdown --output euaiact-report.md
 ```
 
 ## Gate
@@ -34,7 +34,7 @@ python -c "import json; d=json.load(open('euaiact-report.json')); print(d['summa
   did not look at: `skipped_files` (files carrying `# euaiact-lint: ignore-file`) and
   `suppressed_count` (findings silenced by a `# euaiact-lint: ignore <rule>` line directive).
 - Every ERROR finding with its rule ID, file, and line. Use
-  `aisg lint --list-rules` to explain any rule ID you cite.
+  `aisafe lint --list-rules` to explain any rule ID you cite.
 - Whether the gate would pass or fail in CI.
 
 Then say where the four output files landed, and offer to delete them — they are build artifacts,
@@ -43,10 +43,10 @@ comment, and the JSON is retained 90 days under Art. 12; none of that happens lo
 
 ## Sibling check
 
-`aisg misalign` takes the same flags and formats and is **not** part of the CI
+`aisafe misalign` takes the same flags and formats and is **not** part of the CI
 gate. Run it too if asked for a full audit.
 
-`aisg audit .` findings may be cited in this report only as observations, each marked
+`aisafe audit .` findings may be cited in this report only as observations, each marked
 `[UNMEASURED]` (no rule has a precision figure yet), and never as a verdict on any
 article, control or framework. Quote the finding's evidence lines and its UNKNOWN
 context; do not translate them into a pass or a fail against a regulation. The audit

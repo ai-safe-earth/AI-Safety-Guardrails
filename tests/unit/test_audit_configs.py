@@ -1,6 +1,6 @@
 """tests/unit/test_audit_configs.py
 ----------------------------
-Structured MCP / host / CI / env config parsers for `aisg audit`.
+Structured MCP / host / CI / env config parsers for `aisafe audit`.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.audit.configs import (
+from aisafe.devtools.audit.configs import (
     CiRecord,
     EnvBinding,
     HookCommand,

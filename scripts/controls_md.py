@@ -6,7 +6,7 @@ The skill ships one section per audit rule. Three things in each section are cop
 what the rule class says, and a copy drifts: the severity word in the heading, the
 `- Mapping:` bullet (the rule's `controls` tuple) and the "Leaves open:" text (the rule's
 `recommendation.package.leaves_open`). This tool rewrites those three from
-`aisg.devtools.audit.rules.ALL_RULES` and leaves every other word alone.
+`aisafe.devtools.audit.rules.ALL_RULES` and leaves every other word alone.
 
     python scripts/controls_md.py          # rewrite the canonical controls.md
     python scripts/controls_md.py --check  # list the drift, exit 1 if any, write nothing
@@ -24,7 +24,7 @@ import textwrap
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-CONTROLS_MD = REPO / "src" / "aisg" / "skills" / "ai-safety-audit" / "references" / "controls.md"
+CONTROLS_MD = REPO / "src" / "aisafe" / "skills" / "ai-safety-audit" / "references" / "controls.md"
 
 # The file's own wrap width; longer lines are only the table and one heading.
 WIDTH = 92
@@ -175,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     sys.path.insert(0, str(REPO / "src"))
-    from aisg.devtools.audit.rules import ALL_RULES
+    from aisafe.devtools.audit.rules import ALL_RULES
 
     if not CONTROLS_MD.is_file():
         print(f"not found: {CONTROLS_MD}", file=sys.stderr)

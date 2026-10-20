@@ -45,17 +45,17 @@ if "anthropic" not in sys.modules:
     _fake_anthropic.AsyncAnthropic = MagicMock()
     sys.modules["anthropic"] = _fake_anthropic
 
-from aisg.core.base import Severity
-from aisg.modules.llm_judges import build_judge
-from aisg.modules.llm_judges.base import (
+from aisafe.core.base import Severity
+from aisafe.modules.llm_judges import build_judge
+from aisafe.modules.llm_judges.base import (
     JudgeVerdict,
     LLMJudgeBase,
     _safe_fallback,
     _unsafe_fallback,
     category_to_severity,
 )
-from aisg.modules.llm_judges.claude_judge import ClaudeJudge
-from aisg.modules.llm_judges.llamaguard import (
+from aisafe.modules.llm_judges.claude_judge import ClaudeJudge
+from aisafe.modules.llm_judges.llamaguard import (
     CRITICAL_CATEGORIES,
     HIGH_CATEGORIES,
     LLAMAGUARD_CATEGORIES,
@@ -64,7 +64,7 @@ from aisg.modules.llm_judges.llamaguard import (
     _build_prompt,
     _parse_response,
 )
-from aisg.modules.llm_judges.openai_mod import OpenAIModerationJudge
+from aisafe.modules.llm_judges.openai_mod import OpenAIModerationJudge
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1205,13 +1205,13 @@ class TestJudgeReason:
     """
 
     def test_verdict_has_a_reason_field(self):
-        from aisg.modules.llm_judges.base import JudgeVerdict
+        from aisafe.modules.llm_judges.base import JudgeVerdict
 
         assert JudgeVerdict(safe=True).reason == ""
         assert JudgeVerdict(safe=False, reason="because").reason == "because"
 
     def test_claude_judge_keeps_the_reason(self):
-        from aisg.modules.llm_judges.claude_judge import ClaudeJudge
+        from aisafe.modules.llm_judges.claude_judge import ClaudeJudge
 
         judge = ClaudeJudge(api_key="k")
         raw = '{"safe": false, "categories": ["injection"], "confidence": 0.9, '
@@ -1221,7 +1221,7 @@ class TestJudgeReason:
         assert verdict.safe is False
 
     def test_missing_reason_is_empty_not_none(self):
-        from aisg.modules.llm_judges.claude_judge import ClaudeJudge
+        from aisafe.modules.llm_judges.claude_judge import ClaudeJudge
 
         judge = ClaudeJudge(api_key="k")
         verdict = judge._parse('{"safe": true, "categories": []}')

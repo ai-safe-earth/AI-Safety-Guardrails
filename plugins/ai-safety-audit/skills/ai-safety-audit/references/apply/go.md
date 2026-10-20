@@ -102,5 +102,5 @@ lengths of prompts, not their text (AUD-504). For LLM tracing, OpenTelemetry spa
 ## Verify (phase 6, with approval)
 
 `go test ./...` (`verify.sh` detects it from `go.mod`). If the service exposes an HTTP chat
-endpoint on loopback, `aisg probe http://127.0.0.1:<port>/chat -o probe-report.json` through
+endpoint on loopback, `aisafe probe http://127.0.0.1:<port>/chat -o probe-report.json` through
 the bootstrap chain; only `passed` means passed.

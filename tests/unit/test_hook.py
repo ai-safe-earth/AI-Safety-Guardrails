@@ -1,12 +1,12 @@
 """tests/unit/test_hook.py
 ------------------------
-`aisg hook`: the adapter between an agent host's command hooks and the audit. Payloads
+`aisafe hook`: the adapter between an agent host's command hooks and the audit. Payloads
 come from `tests/fixtures/hooks/<host>/*.json` (one per host and event, `{root}` is
 substituted); the tree is a copy of the py_agent fixture.
 
 Properties pinned here: every policy decision reaches the host in its own envelope; the
 hook fails OPEN on its own errors and records them; it never opens a socket, never
-imports a model SDK, never spawns an installer and writes only under `.aisg-audit/`
+imports a model SDK, never spawns an installer and writes only under `.aisafe-audit/`
 during `run`; `install` prints the diff and writes only with `--yes`.
 """
 
@@ -23,11 +23,11 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools import hook
-from aisg.devtools._config import find_pyproject
-from aisg.devtools.audit import patterns
-from aisg.devtools.audit.main import main as audit_main
-from aisg.devtools.hook import (
+from aisafe.devtools import hook
+from aisafe.devtools._config import find_pyproject
+from aisafe.devtools.audit import patterns
+from aisafe.devtools.audit.main import main as audit_main
+from aisafe.devtools.hook import (
     ALL_POLICIES,
     DEFAULT_POLICIES,
     STATE_FILE,
@@ -37,12 +37,12 @@ from aisg.devtools.hook import (
     merged_config,
     normalise,
 )
-from aisg.devtools.hosts import HOSTS
+from aisafe.devtools.hosts import HOSTS
 
 REPO = Path(__file__).resolve().parents[2]
 PY_AGENT = REPO / "tests" / "fixtures" / "audit" / "py_agent"
 FIXTURES = REPO / "tests" / "fixtures" / "hooks"
-HOOK_SOURCE = REPO / "src" / "aisg" / "devtools" / "hook.py"
+HOOK_SOURCE = REPO / "src" / "aisafe" / "devtools" / "hook.py"
 SH = shutil.which("sh")
 
 
@@ -54,7 +54,7 @@ SH = shutil.which("sh")
 @pytest.fixture(autouse=True)
 def no_socket(monkeypatch: pytest.MonkeyPatch) -> None:
     def refuse(*args, **kwargs):
-        raise AssertionError("aisg hook opened a socket")
+        raise AssertionError("aisafe hook opened a socket")
 
     monkeypatch.setattr(socket, "socket", refuse)
     monkeypatch.setattr(socket, "create_connection", refuse)
@@ -108,7 +108,7 @@ def state_of(root: Path) -> dict:
 
 
 def write_baseline(root: Path, monkeypatch: pytest.MonkeyPatch, capsys=None) -> str:
-    """Write the audit report and baseline under `.aisg-audit/`; drains captured stdout,
+    """Write the audit report and baseline under `.aisafe-audit/`; drains captured stdout,
     because the audit prints its terminal summary when `-o` is given."""
     monkeypatch.chdir(root)
     rc = audit_main(
@@ -118,16 +118,16 @@ def write_baseline(root: Path, monkeypatch: pytest.MonkeyPatch, capsys=None) -> 
             "--format",
             "json",
             "-o",
-            ".aisg-audit/audit-report.json",
+            ".aisafe-audit/audit-report.json",
             "--write-baseline",
-            ".aisg-audit/audit-baseline.json",
+            ".aisafe-audit/audit-baseline.json",
         ]
     )
     assert rc == 0
     monkeypatch.chdir(root.parent / "cwd")
     if capsys is not None:
         capsys.readouterr()
-    return ".aisg-audit/audit-baseline.json"
+    return ".aisafe-audit/audit-baseline.json"
 
 
 def snapshot(root: Path) -> dict[str, bytes]:
@@ -390,8 +390,8 @@ class TestClaudePreTool:
     def test_running_the_hook_installer_itself_asks(self, tree, monkeypatch, capsys):
         body = payload("claude/PreToolUse-bash-plain.json", tree)
         for command in (
-            "aisg hook install --host claude --yes",
-            "python -m aisg.cli hook uninstall --host cursor",
+            "aisafe hook install --host claude --yes",
+            "python -m aisafe.cli hook uninstall --host cursor",
         ):
             body["tool_input"]["command"] = command
             _rc, _out, doc = run(monkeypatch, capsys, tree, "claude", "PreToolUse", body)
@@ -414,7 +414,7 @@ class TestClaudePreTool:
 
     def test_a_disabled_policy_does_not_fire(self, tree, monkeypatch, capsys):
         (tree / "pyproject.toml").write_text(
-            '[tool.aisg-hook]\npolicies = ["protected_path"]\n', encoding="utf-8"
+            '[tool.aisafe-hook]\npolicies = ["protected_path"]\n', encoding="utf-8"
         )
         rc, out, _doc = run(
             monkeypatch,
@@ -506,7 +506,7 @@ class TestClaudeRecheck:
         )
         recheck = tree / hook.RECHECK_FILE
         assert recheck.is_file()
-        from aisg.devtools.audit import walk
+        from aisafe.devtools.audit import walk
 
         skipped: list[str] = []
         walk.walk(tree, walk.WalkOptions(), own_output_skipped=skipped)
@@ -524,7 +524,7 @@ class TestClaudeSessionStart:
             payload("claude/SessionStart.json", tree),
         )
         assert rc == 0 and doc is None
-        assert out.startswith("no .aisg-audit/audit-report.json; run the ai-safety-audit skill")
+        assert out.startswith("no .aisafe-audit/audit-report.json; run the ai-safety-audit skill")
         assert "absence of a report is not evidence of safety" in out
 
     def test_with_a_report_the_posture_lines(self, tree, monkeypatch, capsys):
@@ -540,13 +540,13 @@ class TestClaudeSessionStart:
         assert rc == 0
         lines = out.splitlines()
         assert (
-            lines[0].startswith("aisg audit report .aisg-audit/audit-report.json, ")
+            lines[0].startswith("aisafe audit report .aisafe-audit/audit-report.json, ")
             and "old" in lines[0]
         )
         assert lines[1].startswith("findings: critical ")
         assert lines[2].startswith("top: AUD-")
         assert any(line.startswith("UNKNOWN items: ") and "never a pass" in line for line in lines)
-        assert any(line == "baseline: .aisg-audit/audit-baseline.json" for line in lines)
+        assert any(line == "baseline: .aisafe-audit/audit-baseline.json" for line in lines)
         assert len(out) <= hook.CONTEXT_CAP + 1
 
     def test_hook_errors_since_the_last_start_are_surfaced(self, tree, monkeypatch, capsys):
@@ -568,13 +568,13 @@ class TestClaudeSessionStart:
             payload("claude/SessionStart.json", tree),
         )
         assert re.search(
-            r"aisg hook: 1 error\(s\) since the last session start; see .aisg-audit/hook-state.json",
+            r"aisafe hook: 1 error\(s\) since the last session start; see .aisafe-audit/hook-state.json",
             out,
         )
 
     def test_config_problems_are_surfaced(self, tree, monkeypatch, capsys):
         (tree / "pyproject.toml").write_text(
-            '[tool.aisg-hook]\nfail-on = "sometimes"\n', encoding="utf-8"
+            '[tool.aisafe-hook]\nfail-on = "sometimes"\n', encoding="utf-8"
         )
         _rc, out, _doc = run(
             monkeypatch,
@@ -584,7 +584,7 @@ class TestClaudeSessionStart:
             "SessionStart",
             payload("claude/SessionStart.json", tree),
         )
-        assert "aisg hook config: fail-on 'sometimes' is not a severity" in out
+        assert "aisafe hook config: fail-on 'sometimes' is not a severity" in out
 
 
 class TestClaudeStopGate:
@@ -616,7 +616,7 @@ class TestClaudeStopGate:
         assert doc["decision"] == "block"
         assert "new finding(s) at or above high since the baseline" in doc["reason"]
         assert "AUD-501" in doc["reason"] and "leak.py" in doc["reason"]
-        assert "--amend-baseline .aisg-audit/audit-baseline.json --accept" in doc["reason"]
+        assert "--amend-baseline .aisafe-audit/audit-baseline.json --accept" in doc["reason"]
         assert "sk-ant-api03-abcdefghij" not in json.dumps(doc)
         session = state_of(tree)["sessions"]["sess-claude-1"]
         assert session["blocked_at"] and session["touched"] == []
@@ -685,12 +685,12 @@ class TestClaudeStopGate:
         )
         ctx = doc["hookSpecificOutput"]["additionalContext"]
         assert doc["hookSpecificOutput"]["hookEventName"] == "Stop"
-        assert "Stop gate was skipped" in ctx and "aisg audit . --baseline" in ctx
+        assert "Stop gate was skipped" in ctx and "aisafe audit . --baseline" in ctx
 
     def test_fail_on_never_never_blocks(self, tree, monkeypatch, capsys):
         write_baseline(tree, monkeypatch, capsys)
         (tree / "pyproject.toml").write_text(
-            '[tool.aisg-hook]\nfail-on = "never"\n', encoding="utf-8"
+            '[tool.aisafe-hook]\nfail-on = "never"\n', encoding="utf-8"
         )
         (tree / "leak.py").write_text(
             payload("claude/PostToolUse-write-leak.json", tree)["tool_input"]["content"],
@@ -725,7 +725,7 @@ class TestClaudePrompt:
 
     def test_opt_in_flags_injection_shaped_text_as_context(self, tree, monkeypatch, capsys):
         (tree / "pyproject.toml").write_text(
-            '[tool.aisg-hook]\npolicies = ["prompt_injection"]\n', encoding="utf-8"
+            '[tool.aisafe-hook]\npolicies = ["prompt_injection"]\n', encoding="utf-8"
         )
         _rc, _out, doc = run(
             monkeypatch,
@@ -743,7 +743,7 @@ class TestClaudePrompt:
 
     def test_opt_in_stays_silent_on_a_plain_prompt(self, tree, monkeypatch, capsys):
         (tree / "pyproject.toml").write_text(
-            '[tool.aisg-hook]\npolicies = ["prompt_injection"]\n', encoding="utf-8"
+            '[tool.aisafe-hook]\npolicies = ["prompt_injection"]\n', encoding="utf-8"
         )
         rc, out, _doc = run(
             monkeypatch,
@@ -884,7 +884,7 @@ class TestGemini:
         rc, out, _doc = run(monkeypatch, capsys, tree, "gemini", "BeforeTool", body)
         assert rc == 0 and out == ""
         (tree / "pyproject.toml").write_text(
-            '[tool.aisg-hook]\nask-fallback = "deny"\n', encoding="utf-8"
+            '[tool.aisafe-hook]\nask-fallback = "deny"\n', encoding="utf-8"
         )
         _rc, _out, doc = run(monkeypatch, capsys, tree, "gemini", "BeforeTool", body)
         assert doc["decision"] == "deny" and "protected path" in doc["reason"]
@@ -976,7 +976,7 @@ class TestState:
             "PreToolUse",
             payload("claude/PreToolUse-bash-plain.json", tree),
             "--origin",
-            "path:/usr/bin/aisg",
+            "path:/usr/bin/aisafe",
             "--expect-version",
             "9.9.9",
         )
@@ -988,7 +988,7 @@ class TestState:
             and doc["schema"] == "aisg/1"
             and doc["kind"] == "hook-state"
         )
-        assert doc["origin"] == "path:/usr/bin/aisg" and doc["expected_version"] == "9.9.9"
+        assert doc["origin"] == "path:/usr/bin/aisafe" and doc["expected_version"] == "9.9.9"
         assert doc["version_mismatch"] is True
         assert not (tree / STATE_FILE).with_suffix(".json.tmp").exists()
 
@@ -1023,13 +1023,13 @@ class TestConfig:
 
     def test_fail_on_falls_back_to_the_audit_section(self, tree):
         (tree / "pyproject.toml").write_text(
-            '[tool.aisg-audit]\nfail-on = "medium"\n', encoding="utf-8"
+            '[tool.aisafe-audit]\nfail-on = "medium"\n', encoding="utf-8"
         )
         assert HookConfig.load(tree).fail_on == "medium"
 
     def test_values_and_problems(self, tree):
         (tree / "pyproject.toml").write_text(
-            "[tool.aisg-hook]\n"
+            "[tool.aisafe-hook]\n"
             'fail-on = "critical"\n'
             'policies = ["recheck", "nope"]\n'
             "max-audit-seconds = 3\n"
@@ -1045,18 +1045,30 @@ class TestConfig:
         assert cfg.baseline == "custom-baseline.json" and cfg.resolve_baseline(tree) is None
         assert len(cfg.problems) == 3
 
-    def test_baseline_resolution_prefers_aisg_audit_then_root(self, tree):
+    def test_baseline_resolution_prefers_aisafe_audit_then_root(self, tree):
         cfg = HookConfig.load(tree)
         assert cfg.resolve_baseline(tree) is None
         (tree / "audit-baseline.json").write_text("{}", encoding="utf-8")
         assert cfg.resolve_baseline(tree) == "audit-baseline.json"
+        (tree / ".aisafe-audit").mkdir()
+        (tree / ".aisafe-audit" / "audit-baseline.json").write_text("{}", encoding="utf-8")
+        assert cfg.resolve_baseline(tree) == ".aisafe-audit/audit-baseline.json"
+
+    def test_baseline_under_the_pre_rename_directory_is_still_found(self, tree):
+        # Before 2026-10-20 the skill kept its baseline under `.aisg-audit/`. Without it the
+        # stop gate would go quiet and every accepted finding would recheck as new.
+        cfg = HookConfig.load(tree)
+        (tree / "audit-baseline.json").write_text("{}", encoding="utf-8")
         (tree / ".aisg-audit").mkdir()
         (tree / ".aisg-audit" / "audit-baseline.json").write_text("{}", encoding="utf-8")
         assert cfg.resolve_baseline(tree) == ".aisg-audit/audit-baseline.json"
+        (tree / ".aisafe-audit").mkdir()
+        (tree / ".aisafe-audit" / "audit-baseline.json").write_text("{}", encoding="utf-8")
+        assert cfg.resolve_baseline(tree) == ".aisafe-audit/audit-baseline.json"
 
 
 class TestGuarantees:
-    def test_run_writes_only_under_aisg_audit(self, tree, monkeypatch, capsys):
+    def test_run_writes_only_under_aisafe_audit(self, tree, monkeypatch, capsys):
         before = snapshot(tree)
         for name in (
             "claude/PreToolUse-write-secret.json",
@@ -1074,7 +1086,7 @@ class TestGuarantees:
             )
         after = snapshot(tree)
         changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
-        assert changed and all(k.startswith(".aisg-audit/") for k in changed), changed
+        assert changed and all(k.startswith(".aisafe-audit/") for k in changed), changed
 
     def test_module_imports_no_model_sdk_and_spawns_no_installer(self):
         source = HOOK_SOURCE.read_text(encoding="utf-8")
@@ -1115,7 +1127,7 @@ class TestInstallClaude:
         out = capsys.readouterr().out
         assert rc == 0 and snapshot(tree) == before
         assert "+++ b/" in out and ".claude/settings.json" in out
-        assert "${CLAUDE_PROJECT_DIR}/.claude/hooks/aisg-hook.sh" in out
+        assert "${CLAUDE_PROJECT_DIR}/.claude/hooks/aisafe-hook.sh" in out
         assert "run --host claude --event PreToolUse" in out
         assert "copy packaged scripts/hook.sh" in out
 
@@ -1145,13 +1157,13 @@ class TestInstallClaude:
         pre = doc["hooks"]["PreToolUse"]
         assert pre[0]["hooks"][0]["command"] == "echo mine"
         ours = [h for entry in pre[1:] for h in entry["hooks"]]
-        assert len(ours) == 2 and all("aisg-hook.sh" in h["command"] for h in ours)
+        assert len(ours) == 2 and all("aisafe-hook.sh" in h["command"] for h in ours)
         assert {e["matcher"] for e in pre[1:]} == {"Edit|Write|MultiEdit|NotebookEdit", "Bash"}
         assert set(doc["hooks"]) == {"PreToolUse", "PostToolUse", "SessionStart", "Stop"}
         assert doc["hooks"]["Stop"][0]["hooks"][0]["timeout"] == 120
-        for name in ("aisg-hook.sh", "aisg-hook.ps1"):
+        for name in ("aisafe-hook.sh", "aisafe-hook.ps1"):
             copied = tree / ".claude" / "hooks" / name
-            assert copied.is_file() and b"aisg-audit: ignore-file" in copied.read_bytes()
+            assert copied.is_file() and b"aisafe-audit: ignore-file" in copied.read_bytes()
         raw = (tree / ".claude" / "settings.json").read_text(encoding="utf-8")
         assert "\r" not in raw and raw.endswith("\n")
 
@@ -1162,6 +1174,21 @@ class TestInstallClaude:
         assert hook.main(["install", "--host", "claude", "--yes"]) == 0
         assert "unchanged" in capsys.readouterr().out
         assert len(_settings(tree)["hooks"]["Stop"]) == 1
+
+    def test_install_replaces_the_entries_an_aisg_install_wrote(self, tree, monkeypatch, capsys):
+        # Before the rename the bootstrap was `aisg-hook.sh`. Those entries are ours, so a
+        # new install replaces them instead of running the audit twice per event.
+        monkeypatch.chdir(tree)
+        existing = _settings(tree)
+        old = 'sh "${CLAUDE_PROJECT_DIR}/.claude/hooks/aisg-hook.sh" run --host claude'
+        existing["hooks"] = {"Stop": [{"hooks": [{"type": "command", "command": old}]}]}
+        (tree / ".claude" / "settings.json").write_text(
+            json.dumps(existing, indent=2), encoding="utf-8"
+        )
+        assert hook.main(["install", "--host", "claude", "--yes"]) == 0
+        stop = _settings(tree)["hooks"]["Stop"]
+        commands = [h["command"] for entry in stop for h in entry["hooks"]]
+        assert len(commands) == 1 and "aisafe-hook.sh" in commands[0]
 
     def test_prompt_policy_adds_the_prompt_event(self, tree, monkeypatch, capsys):
         monkeypatch.chdir(tree)
@@ -1181,7 +1208,7 @@ class TestInstallClaude:
         command = _settings(tree)["hooks"]["Stop"][0]["hooks"][0]["command"]
         assert (
             command.startswith("powershell -NoProfile -ExecutionPolicy Bypass -File")
-            and "aisg-hook.ps1" in command
+            and "aisafe-hook.ps1" in command
         )
 
     def test_global_writes_the_interpreter_into_the_home_config(self, tree, monkeypatch, capsys):
@@ -1190,7 +1217,7 @@ class TestInstallClaude:
         assert hook.main(["install", "--host", "claude", "--global", "--yes"]) == 0
         doc = json.loads((home / ".claude" / "settings.json").read_text(encoding="utf-8"))
         command = doc["hooks"]["Stop"][0]["hooks"][0]["command"]
-        assert Path(sys.executable).as_posix() in command and "-m aisg.cli hook run" in command
+        assert Path(sys.executable).as_posix() in command and "-m aisafe.cli hook run" in command
         assert "--origin interpreter:" in command
         assert not (tree / ".claude" / "hooks").exists(), (
             "no bootstrap copy for a machine-local config"
@@ -1209,7 +1236,7 @@ class TestInstallClaude:
             == 0
         )
         command = _settings(tree)["hooks"]["Stop"][0]["hooks"][0]["command"]
-        assert command.startswith('"/opt/venv/bin/python" -m aisg.cli hook run')
+        assert command.startswith('"/opt/venv/bin/python" -m aisafe.cli hook run')
 
     def test_unparsable_existing_config_is_fatal_and_untouched(self, tree, monkeypatch, capsys):
         monkeypatch.chdir(tree)
@@ -1227,7 +1254,7 @@ class TestInstallClaude:
         doc = _settings(tree)
         assert doc["hooks"]["Stop"] == [{"hooks": [{"type": "command", "command": "echo bye"}]}]
         assert doc["hooks"]["PreToolUse"] == [] and "SessionStart" in doc["hooks"]
-        assert not (tree / ".claude" / "hooks" / "aisg-hook.sh").exists()
+        assert not (tree / ".claude" / "hooks" / "aisafe-hook.sh").exists()
         capsys.readouterr()
         assert hook.main(["uninstall", "--host", "claude", "--yes"]) == 0
         assert "unchanged" in capsys.readouterr().out
@@ -1247,9 +1274,9 @@ class TestInstallOtherHosts:
         }
         assert (
             doc["hooks"]["stop"][0]["command"]
-            == 'sh ".cursor/hooks/aisg-hook.sh" run --host cursor --event stop'
+            == 'sh ".cursor/hooks/aisafe-hook.sh" run --host cursor --event stop'
         )
-        assert (tree / ".cursor" / "hooks" / "aisg-hook.sh").is_file()
+        assert (tree / ".cursor" / "hooks" / "aisafe-hook.sh").is_file()
         assert "advisory" in capsys.readouterr().err
 
     def test_gemini_writes_matchers_and_millisecond_timeouts(self, tree, monkeypatch, capsys):
@@ -1287,7 +1314,7 @@ class TestMergedConfig:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": 'sh "x/aisg-hook.sh" run --host claude --event Stop',
+                                "command": 'sh "x/aisafe-hook.sh" run --host claude --event Stop',
                             }
                         ]
                     },
@@ -1297,12 +1324,12 @@ class TestMergedConfig:
         merged = merged_config(
             host,
             existing,
-            {"Stop": [{"hooks": [{"type": "command", "command": "aisg hook run new"}]}]},
+            {"Stop": [{"hooks": [{"type": "command", "command": "aisafe hook run new"}]}]},
         )
         assert merged["permissions"] == {"allow": ["Read"]}
         assert [h["command"] for e in merged["hooks"]["Stop"] for h in e["hooks"]] == [
             "echo mine",
-            "aisg hook run new",
+            "aisafe hook run new",
         ]
         removed = merged_config(host, existing, None)
         assert [h["command"] for e in removed["hooks"]["Stop"] for h in e["hooks"]] == ["echo mine"]
@@ -1314,7 +1341,7 @@ class TestMergedConfig:
             "hooks": {
                 "stop": [
                     {"command": "./mine.sh"},
-                    {"command": "sh aisg-hook.sh run --host cursor --event stop"},
+                    {"command": "sh aisafe-hook.sh run --host cursor --event stop"},
                 ]
             },
         }
@@ -1326,7 +1353,7 @@ class TestList:
     def test_list_prints_identity_hosts_and_policies(self, capsys):
         assert hook.main(["list"]) == 0
         out = capsys.readouterr().out
-        assert out.startswith("aisg-hook: aisg ")
+        assert out.startswith("aisafe-hook: aisafe ")
         for name in ("claude", "cursor", "gemini", "codex"):
             assert f"\n{name} " in out
         assert "policies (default):" in out and "prompt_injection" in out
@@ -1337,8 +1364,8 @@ class TestList:
 
 @pytest.mark.skipif(SH is None, reason="sh not on PATH")
 class TestBootstrapScript:
-    def test_without_aisg_the_bootstrap_fails_open(self, tmp_path):
-        script = REPO / "src" / "aisg" / "skills" / "ai-safety-audit" / "scripts" / "hook.sh"
+    def test_without_aisafe_the_bootstrap_fails_open(self, tmp_path):
+        script = REPO / "src" / "aisafe" / "skills" / "ai-safety-audit" / "scripts" / "hook.sh"
         env = {"PATH": str(tmp_path / "empty-bin")}
         (tmp_path / "empty-bin").mkdir()
         for host, expected in (("claude", ""), ("cursor", '{"permission":"allow"}\n')):
@@ -1354,3 +1381,27 @@ class TestBootstrapScript:
             assert proc.returncode == 0, proc.stderr
             assert proc.stdout == expected
             assert "hook skipped" in proc.stderr
+
+    def test_a_foreign_aisafe_on_path_fails_open(self, tmp_path):
+        # PyPI's `aisafeguard` also installs an `aisafe` command. Given `hook run` it exits 2
+        # with a usage error, which Claude Code reads as a block; the bootstrap must not.
+        script = REPO / "src" / "aisafe" / "skills" / "ai-safety-audit" / "scripts" / "hook.sh"
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        fake = bin_dir / "aisafe"
+        fake.write_bytes(b"#!/bin/sh\necho \"Error: No such command 'hook'.\" >&2\nexit 2\n")
+        fake.chmod(0o755)
+        env = {"PATH": str(bin_dir)}
+        for host, expected in (("claude", ""), ("cursor", '{"permission":"allow"}\n')):
+            proc = subprocess.run(
+                [SH, str(script), "run", "--host", host, "--event", "x"],
+                input="{}",
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=60,
+                check=False,
+            )
+            assert proc.returncode == 0, proc.stderr
+            assert proc.stdout == expected
+            assert "exited 2" in proc.stderr and "hook skipped" in proc.stderr

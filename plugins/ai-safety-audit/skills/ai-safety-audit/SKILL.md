@@ -1,12 +1,12 @@
 ---
 name: ai-safety-audit
-description: Audit any AI/LLM/agent codebase for safety gaps ordered by blast radius -- host permissions, ungated irreversible tools, the lethal trifecta, model-output sinks, secrets, MCP supply chain, observability, guard measurement, evals, governance, persons and manipulation -- in seven phases (run the deterministic `aisg audit`, render a before document of the user's system, price the proposed controls with `aisg decide`, apply the plan one row per approval, render an after document, verify, and attest a level that a named owner signs). Use when asked to review, harden, threat-model, add guardrails to, or declare a level for a project that calls an LLM or runs an agent. Never issues a compliance verdict; a level is a list of criteria an owner signs.
+description: Audit any AI/LLM/agent codebase for safety gaps ordered by blast radius -- host permissions, ungated irreversible tools, the lethal trifecta, model-output sinks, secrets, MCP supply chain, observability, guard measurement, evals, governance, persons and manipulation -- in seven phases (run the deterministic `aisafe audit`, render a before document of the user's system, price the proposed controls with `aisafe decide`, apply the plan one row per approval, render an after document, verify, and attest a level that a named owner signs). Use when asked to review, harden, threat-model, add guardrails to, or declare a level for a project that calls an LLM or runs an agent. Never issues a compliance verdict; a level is a list of criteria an owner signs.
 ---
 
 # AI safety audit
 
 You are running a seven-phase audit of the current repository: survey, document 1, decide,
-apply, document 2, verify, attest. The intelligence is in the `aisg` commands; your job is
+apply, document 2, verify, attest. The intelligence is in the `aisafe` commands; your job is
 to run them, read them, explain them, and change the code only with the user's per-item
 approval. The two html documents and the attestation are the record; nothing you say in
 the conversation goes into them. Read `references/report-format.md` before phase 2 and
@@ -17,7 +17,7 @@ Hard rules, in force for every phase:
 1. Never state or imply compliance with any regulation, standard or framework. Control
    mappings in the report are evidence for a human reviewer, nothing more. Risk
    classification under the EU AI Act is a legal determination the operator makes. A level
-   from `aisg attest` is a list of criteria the named owner signs; it is not a verdict.
+   from `aisafe attest` is a list of criteria the named owner signs; it is not a verdict.
 2. Every finding is labelled `UNMEASURED`. Say so when you present it. Do not invent a
    confidence number. A finding tagged `REPORTED <age>` came from a report file on disk, not
    from anything this audit ran; say how old it is.
@@ -28,17 +28,18 @@ Hard rules, in force for every phase:
    secrets, or `.env*` files unless the user approves that specific edit after seeing the
    diff. These are the paths the plan marks `you, approval needed`.
 5. One change per approval. Show the diff, wait, apply, then move to the next item.
-6. Do not run the project's tests, `aisg probe`, any eval tool, or `aisg measure
+6. Do not run the project's tests, `aisafe probe`, any eval tool, or `aisafe measure
    --allow-provider-calls` until the user has approved it in phase 6: they may call model
-   providers and cost money. The offline default of `aisg measure` calls no provider and
+   providers and cost money. The offline default of `aisafe measure` calls no provider and
    may run in phase 3, with the user's yes.
 7. The audit is not you. It never calls a model, installs anything or opens a socket; it
    reports what it matched. When your reading of the code disagrees with a finding, say
    both and let the user decide; do not silence the finding.
-8. Which aisg ran. `audit.sh` and `attest.sh` print one line on stderr before running,
-   `aisg: <path> version <version> (pinned <version>)`. Read it aloud in phase 1. When the
-   version differs from the pin, or the path is not the aisg you expect, stop and say so
-   before reading any result: on PyPI the name `aisg` belongs to an unrelated project.
+8. Which aisafe ran. `audit.sh` and `attest.sh` print one line on stderr before running,
+   `aisafe: <path> version <version> (pinned <version>)`. Read it aloud in phase 1. When the
+   version differs from the pin, or the path is not the aisafe you expect, stop and say so
+   before reading any result: on PyPI another package, `aisafeguard`, also installs a
+   command called `aisafe`.
 9. No push without approval. On the PR path you commit on a branch the user named; the
    `gh pr create` line is printed for the user to run. You never run `git push`.
 
@@ -49,17 +50,17 @@ repository being audited. Resolve that folder to an absolute path first (on Clau
 `<repo>/.claude/skills/ai-safety-audit/scripts/`, on agentskills hosts
 `<repo>/.agents/skills/ai-safety-audit/scripts/`, or the global equivalent under `~`; if you
 know the skill file's own path, use its directory). `<skill>` below stands for that absolute
-folder. Each script uses `aisg` if installed, otherwise `uvx --from 'anyaisafe==<pinned
-version>' aisg` (uv provisions Python itself, so this works on a machine with no Python),
+folder. Each script uses `aisafe` if installed, otherwise `uvx --from 'aisafe==<pinned
+version>' aisafe` (uv provisions Python itself, so this works on a machine with no Python),
 otherwise `pipx run`. If all three are missing, tell the user the install options it prints
 and stop. Every `sh <skill>/scripts/audit.sh ...` line below has a PowerShell twin:
 `powershell -ExecutionPolicy Bypass -File <skill>/scripts/audit.ps1 ...` with the same
-arguments; the same holds for `verify` and `attest`. `aisg decide` has no bootstrap of its
-own: run it as `aisg decide` when `aisg` is on PATH, else as `uvx --from
-'anyaisafe==<pinned version>' aisg decide` with the version the stderr line printed.
+arguments; the same holds for `verify` and `attest`. `aisafe decide` has no bootstrap of its
+own: run it as `aisafe decide` when `aisafe` is on PATH, else as `uvx --from
+'aisafe==<pinned version>' aisafe decide` with the version the stderr line printed.
 
-Every artefact goes under `.aisg-audit/` in the repository root, and **every command in this
-flow runs from the repository root**: `[tool.aisg-audit]` in `pyproject.toml` (`exclude`,
+Every artefact goes under `.aisafe-audit/` in the repository root, and **every command in this
+flow runs from the repository root**: `[tool.aisafe-audit]` in `pyproject.toml` (`exclude`,
 `fail-on`) resolves from the current working directory, so two documents made from different
 directories would not describe the same scan. The artefacts, by phase:
 
@@ -76,7 +77,7 @@ directories would not describe the same scan. The artefacts, by phase:
 The audit skips its own earlier output -- the JSON report, the inventory document, the
 attestation and the html files, whose line 1 is the ignore marker -- so a re-run does not
 report the previous run's output as findings; the inventory line `own_output_skipped`
-names what was skipped. `.aisg-audit/` is walked even when `.gitignore` lists it, so the
+names what was skipped. `.aisafe-audit/` is walked even when `.gitignore` lists it, so the
 measure, probe and decision reports there count as evidence whether or not they are
 committed.
 
@@ -88,10 +89,10 @@ fingerprint the baseline holds is `unchanged` and is not counted, with or withou
 
 ## Phase 1 -- Survey
 
-    sh <skill>/scripts/audit.sh . --format json -o .aisg-audit/audit-report.json --write-baseline .aisg-audit/audit-baseline.json
-    powershell -ExecutionPolicy Bypass -File <skill>/scripts/audit.ps1 . --format json -o .aisg-audit/audit-report.json --write-baseline .aisg-audit/audit-baseline.json
+    sh <skill>/scripts/audit.sh . --format json -o .aisafe-audit/audit-report.json --write-baseline .aisafe-audit/audit-baseline.json
+    powershell -ExecutionPolicy Bypass -File <skill>/scripts/audit.ps1 . --format json -o .aisafe-audit/audit-report.json --write-baseline .aisafe-audit/audit-baseline.json
 
-First, the stderr line (rule 8): say which aisg ran, from where, which version, and that it
+First, the stderr line (rule 8): say which aisafe ran, from where, which version, and that it
 equals the pin. `--write-baseline` writes the report to `-o` first, then the baseline, then
 exits 0 regardless of findings: it records, it does not judge. The baseline holds every
 fingerprint of this run plus an `index` (rule, file, title per fingerprint) so document 2
@@ -108,8 +109,8 @@ code or the prompts touch people (the `person_signals` inventory).
 
 ## Phase 2 -- Document 1
 
-    sh <skill>/scripts/audit.sh . --format html -o .aisg-audit/audit-before.html
-    powershell -ExecutionPolicy Bypass -File <skill>/scripts/audit.ps1 . --format html -o .aisg-audit/audit-before.html
+    sh <skill>/scripts/audit.sh . --format html -o .aisafe-audit/audit-before.html
+    powershell -ExecutionPolicy Bypass -File <skill>/scripts/audit.ps1 . --format html -o .aisafe-audit/audit-before.html
 
 Tell the user the path. The document is a schematic of THEIR system: Fig. 1 (eleven
 subsystem boxes drawn from the inventory -- Data in; Host and agent runtime; Model calls
@@ -129,10 +130,10 @@ always first when present.
 
 Two things to settle before phase 3:
 
-- Ask whether `.aisg-audit/` should be committed (the documents become part of the repo's
+- Ask whether `.aisafe-audit/` should be committed (the documents become part of the repo's
   history) or ignored. Propose the matching diff -- one line in `.gitignore`, or nothing --
   and apply it only after approval. This skill never edits `.gitignore` on its own. Either
-  way the audit keeps walking `.aisg-audit/`; ignoring it changes what git tracks, not what
+  way the audit keeps walking `.aisafe-audit/`; ignoring it changes what git tracks, not what
   the next audit reads as evidence.
 - Ask whether the user wants the direct path (edits on the current branch, one approval
   per row) or the PR path (a branch, one commit per row, a PR body for a reviewer). Both
@@ -141,42 +142,42 @@ Two things to settle before phase 3:
 ## Phase 3 -- Decide
 
 Every control in the plan is a trade: what it catches, what it breaks, what it costs in
-latency, tokens, dollars and human review. `aisg decide` prices that trade against the
+latency, tokens, dollars and human review. `aisafe decide` prices that trade against the
 budgets the operator declares, so the user chooses rows knowing the cost. Three inputs:
 
 1. The traffic and budgets. They come from the system card's `traffic:` and `budgets:`
-   blocks (`aisg init` writes them, `null` means unknown) or from flags
+   blocks (`aisafe init` writes them, `null` means unknown) or from flags
    (`--requests-per-day`, `--avg-input-tokens`, `--p99-budget-ms`, `--monthly-budget-usd`,
    `--human-review-capacity-per-day`). Ask the user for the figures; never invent them,
    and leave a budget unknown rather than guess it -- an unknown budget never counts as
    exceeded. When the card exists and the blocks are unset, propose the diff that fills
    them and apply it only after approval.
 2. A measure report, when a pipeline config exists in the repository (`guardrails.yaml`,
-   `aisg.yaml` or `config/*.yaml` with a top-level `input:`, `processing:`, `output:` or
-   `policy:` key). `aisg measure` is offline by default: it runs the aisg guards the config
+   `aisafe.yaml` or `config/*.yaml` with a top-level `input:`, `processing:`, `output:` or
+   `policy:` key). `aisafe measure` is offline by default: it runs the aisafe guards the config
    names against the packaged corpora in-process, never calls a model provider, and
    reports a judge-backed guard with ESTIMATED tokens and `llm_exercised: false`. With the
    user's yes, run it through the verify bootstrap with the project's tests left out:
 
-       AISG_VERIFY_RUN=1 AISG_VERIFY_SKIP_TESTS=1 sh <skill>/scripts/verify.sh
-       $env:AISG_VERIFY_RUN="1"; $env:AISG_VERIFY_SKIP_TESTS="1"; powershell -ExecutionPolicy Bypass -File <skill>/scripts/verify.ps1
+       AISAFE_VERIFY_RUN=1 AISAFE_VERIFY_SKIP_TESTS=1 sh <skill>/scripts/verify.sh
+       $env:AISAFE_VERIFY_RUN="1"; $env:AISAFE_VERIFY_SKIP_TESTS="1"; powershell -ExecutionPolicy Bypass -File <skill>/scripts/verify.ps1
 
    Without a pipeline config there is nothing to measure; every guard row is then
-   `unmeasured (run aisg measure first)` and says so. `--allow-provider-calls` waits for
+   `unmeasured (run aisafe measure first)` and says so. `--allow-provider-calls` waits for
    phase 6.
 3. The phase-1 report, which names the controls (`recommendation.package` of every
    finding).
 
 Then:
 
-    aisg decide --format json -o .aisg-audit/decision-report.json
-    aisg decide --format markdown -o .aisg-audit/decision.md
+    aisafe decide --format json -o .aisafe-audit/decision-report.json
+    aisafe decide --format markdown -o .aisafe-audit/decision.md
 
 Present the table from the JSON: one row per candidate control with catch rate (overall and
 for the families the guard is for), benign breakage, human-routing rate, p50/p99, tokens
 and dollars per request and per month, fail mode, and the verdict, which is a deterministic
 reading of the declared budgets: `apply`, `apply with <config change>`, `defer (over
-budget: <which>)`, `unmeasured (run aisg measure first)`. Say each row's provenance
+budget: <which>)`, `unmeasured (run aisafe measure first)`. Say each row's provenance
 (`MEASURED <date>`, `ESTIMATED <date>`, `UNMEASURED`) and read the UNMEASURED list
 verbatim; an estimate is labelled an estimate and a price is as good as the table's
 `as_of` date. `apply` is a reading of budgets, never a safety statement.
@@ -185,7 +186,7 @@ Settle with the user, in so many words, which rows to apply, which to defer and 
 order. Default to the plan's blast-radius order; a row the decision document marks `defer`
 is still offered, with the cost named, because the budget is the operator's to change. The
 result of this phase is the row order for phase 4 and the list of deferred rows, in the
-user's words. Exit 1 from `aisg decide` means a selected control or the total is over a
+user's words. Exit 1 from `aisafe decide` means a selected control or the total is over a
 declared budget; it is information, not a stop.
 
 ## Phase 4 -- Apply (one row per approval, top-down)
@@ -193,7 +194,7 @@ declared budget; it is information, not a stop.
 Walk the plan table in the order settled in phase 3. A row is never offered before every row
 above it is applied, deferred by the user in so many words, or accepted with a recorded
 reason. Never batch. The decision source for each row is the finding's
-`recommendation.package` block in `.aisg-audit/audit-report.json` -- `mechanism`,
+`recommendation.package` block in `.aisafe-audit/audit-report.json` -- `mechanism`,
 `symbols`, `same_control`, `leaves_open` -- never the prose in the html and never your own
 memory of the package. The plan's `who` column already applies the rule below: the
 language is the finding's file extension, else its unit's language, else the root unit's
@@ -211,14 +212,14 @@ group. Three branches:
   "in addition to, not instead of: <leaves_open>". The package lowers probability or
   records; it does not remove the blast radius on its own.
 - `mechanism: none`, or the language is not Python, or the file is a rule-4 file (`who:
-  you` or `you, approval needed`): state the outside-package action. aisg symbols are
+  you` or `you, approval needed`): state the outside-package action. aisafe symbols are
   Python-only; the control still applies in TypeScript, Go or anything else
   (`references/apply/<language>.md`, `generic.md` when none matches). A rule-4 file needs
   the user's approval of the specific diff; restate that it is a permission, pipeline or
   secret change before asking. The user then does it now, defers it, or records a reason:
 
-      sh <skill>/scripts/audit.sh . --amend-baseline .aisg-audit/audit-baseline.json --accept <fingerprint>="<reason>"
-      powershell -ExecutionPolicy Bypass -File <skill>/scripts/audit.ps1 . --amend-baseline .aisg-audit/audit-baseline.json --accept <fingerprint>="<reason>"
+      sh <skill>/scripts/audit.sh . --amend-baseline .aisafe-audit/audit-baseline.json --accept <fingerprint>="<reason>"
+      powershell -ExecutionPolicy Bypass -File <skill>/scripts/audit.ps1 . --amend-baseline .aisafe-audit/audit-baseline.json --accept <fingerprint>="<reason>"
 
   The reason is the user's words, ASCII, non-empty, and free of compliance language; the
   command refuses anything else (exit 2), refuses a fingerprint the baseline does not hold,
@@ -234,29 +235,29 @@ group. Three branches:
 After each applied diff: run `ruff format` on the file (Python only), then re-run the audit
 into a scratch file and say whether that fingerprint is still reported:
 
-    sh <skill>/scripts/audit.sh . --format json --quiet -o .aisg-audit/audit-recheck.json --baseline .aisg-audit/audit-baseline.json
+    sh <skill>/scripts/audit.sh . --format json --quiet -o .aisafe-audit/audit-recheck.json --baseline .aisafe-audit/audit-baseline.json
 
 Applying a diff is not evidence; the re-audit is. A fingerprint that is still reported
 after the diff means the rule cannot see the control you wired -- say so, do not accept it
-to make it go away. Stop after each row and ask whether to continue. Tests, `aisg probe`
-and `aisg measure --allow-provider-calls` still wait for phase 6.
+to make it go away. Stop after each row and ask whether to continue. Tests, `aisafe probe`
+and `aisafe measure --allow-provider-calls` still wait for phase 6.
 
 The PR path, when the user chose it in phase 2: create the branch the user named (suggest
-`aisg-audit/<date>`), and after each row's re-audit make one commit whose message names the
+`aisafe-audit/<date>`), and after each row's re-audit make one commit whose message names the
 finding (`AUD-201: approval gate on send_email`) and the re-audit result in the words of the
 JSON (`no longer reported`, or `still reported` with the reason the user accepted it). The
 diff of a rule-4 file is still shown and approved before it is committed. After phase 5,
-write `.aisg-audit/pr-body.md` from document 2: what is no longer reported, what is left,
+write `.aisafe-audit/pr-body.md` from document 2: what is no longer reported, what is left,
 what is still UNKNOWN, the decision table's rows for the controls that were wired, and the
 disclaimer verbatim. Print the line for the user to run and stop there (rule 9):
 
-    gh pr create --title "AI safety audit: <date>" --body-file .aisg-audit/pr-body.md
+    gh pr create --title "AI safety audit: <date>" --body-file .aisafe-audit/pr-body.md
 
 ## Phase 5 -- Document 2
 
-    sh <skill>/scripts/audit.sh . --format json -o .aisg-audit/audit-report-after.json --baseline .aisg-audit/audit-baseline.json
-    sh <skill>/scripts/audit.sh . --format html -o .aisg-audit/audit-after.html --baseline .aisg-audit/audit-baseline.json --decision .aisg-audit/decision-report.json
-    powershell -ExecutionPolicy Bypass -File <skill>/scripts/audit.ps1 . --format html -o .aisg-audit/audit-after.html --baseline .aisg-audit/audit-baseline.json --decision .aisg-audit/decision-report.json
+    sh <skill>/scripts/audit.sh . --format json -o .aisafe-audit/audit-report-after.json --baseline .aisafe-audit/audit-baseline.json
+    sh <skill>/scripts/audit.sh . --format html -o .aisafe-audit/audit-after.html --baseline .aisafe-audit/audit-baseline.json --decision .aisafe-audit/decision-report.json
+    powershell -ExecutionPolicy Bypass -File <skill>/scripts/audit.ps1 . --format html -o .aisafe-audit/audit-after.html --baseline .aisafe-audit/audit-baseline.json --decision .aisafe-audit/decision-report.json
 
 Both are **new** files, so the before and after survive side by side, and neither command
 touches the baseline: the reasons recorded in phase 4 stay where `--amend-baseline` put
@@ -278,36 +279,36 @@ questions in the conversation from the JSON, not from memory of phase 4:
 - What is still UNKNOWN: the `unknown` list, verbatim.
 
 The html is the record; the conversation is commentary on it. The after report,
-`.aisg-audit/audit-report-after.json`, is what phase 7 reads.
+`.aisafe-audit/audit-report-after.json`, is what phase 7 reads.
 
 ## Phase 6 -- Verify
 
 Only now, and only with approval, run `<skill>/scripts/verify.sh` / `verify.ps1` with
-`AISG_VERIFY_RUN=1`, which runs the project's test command if one is evident and, when a
-pipeline config is found (`guardrails.yaml`, `aisg.yaml` or `config/*.yaml` with a
+`AISAFE_VERIFY_RUN=1`, which runs the project's test command if one is evident and, when a
+pipeline config is found (`guardrails.yaml`, `aisafe.yaml` or `config/*.yaml` with a
 top-level `input:`, `processing:`, `output:` or `policy:` stage key -- the keys
-`GuardrailPipeline.from_config` builds guards from), `aisg measure --config <that file>
--o .aisg-audit/measure-report.json` (through the same bootstrap chain as `audit.sh`; it
-prints `measure skipped: aisg not importable in target` rather than nothing when it
-cannot). If the project serves an HTTP endpoint, offer `aisg probe <loopback-url>` (set
-`AISG_PROBE_URL` for `verify.sh`, which writes `.aisg-audit/probe-report.json`; remote
+`GuardrailPipeline.from_config` builds guards from), `aisafe measure --config <that file>
+-o .aisafe-audit/measure-report.json` (through the same bootstrap chain as `audit.sh`; it
+prints `measure skipped: aisafe not importable in target` rather than nothing when it
+cannot). If the project serves an HTTP endpoint, offer `aisafe probe <loopback-url>` (set
+`AISAFE_PROBE_URL` for `verify.sh`, which writes `.aisafe-audit/probe-report.json`; remote
 targets need `--i-have-authorization`, which the user must add themselves) and report its
 summary counts -- `sent`, `passed`, `failed`, `errors`, `skipped`, `inconclusive`; only
-`passed` means passed. Both reports land under `.aisg-audit/` like every other artefact of
+`passed` means passed. Both reports land under `.aisafe-audit/` like every other artefact of
 this flow, and a measure or probe report there is picked up as evidence by the next audit
 (`REPORTED <age>`) whether or not `.gitignore` lists the directory: the walker never
-prunes `.aisg-audit/`.
+prunes `.aisafe-audit/`.
 
 Offer `--allow-provider-calls` only with explicit approval: it costs money and needs
 credentials, and only then are a judge's tokens MEASURED rather than ESTIMATED. When the
-measure report changed, re-run `aisg decide` into the same `.aisg-audit/decision-report.json`
+measure report changed, re-run `aisafe decide` into the same `.aisafe-audit/decision-report.json`
 so the figures describe the wired configuration, and re-render document 2 with
 `--decision`. Say what the re-run changed: a verdict that moved from `unmeasured` to
 `apply` or `defer`, and any row that is over a budget now.
 
 ## Phase 7 -- Attest
 
-Read `references/levels.md` first: it is generated from the criteria file `aisg attest`
+Read `references/levels.md` first: it is generated from the criteria file `aisafe attest`
 evaluates, and it names what each criterion reads. Then ask who signs. An attestation is a
 statement by a named person -- `"<Name> <role>"`, for example `"J. Doe <risk owner>"` --
 that the tree at this commit meets the listed criteria on this date; the tool checks the
@@ -321,9 +322,9 @@ With the owner's name, write the attestation:
     sh <skill>/scripts/attest.sh . --owner "<Name <role>>" --html
     powershell -ExecutionPolicy Bypass -File <skill>/scripts/attest.ps1 . --owner "<Name <role>>" --html
 
-It reads `.aisg-audit/audit-report-after.json` (falling back to the phase-1 report with a
+It reads `.aisafe-audit/audit-report-after.json` (falling back to the phase-1 report with a
 note on stderr; say so if it does), the baseline, the measure, probe and decision reports
-and `ai-system-card.yaml`, and writes `.aisg-audit/attestation.json`, `attestation.md`,
+and `ai-system-card.yaml`, and writes `.aisafe-audit/attestation.json`, `attestation.md`,
 `attestation.html` and `badge.json`. Tell the user the paths. Then read, from the JSON:
 
 - `level.reached` and `level.name`, and the `level.statement` verbatim. The level is what
@@ -348,7 +349,7 @@ level the team chose:
     sh <skill>/scripts/attest.sh . --check --require-level 2
 
 When the user wants the attestation tied to the commit, offer `git tag -s
-aisg-attest/<date>` for them to run; signing a tag, like pushing, is their act (rule 9).
+aisafe-attest/<date>` for them to run; signing a tag, like pushing, is their act (rule 9).
 Close the phase by restating: the level reached and the criteria still missing, what is no
 longer reported, what remains, what is still UNKNOWN, and that nothing here constitutes a
 compliance assessment.
@@ -357,14 +358,14 @@ compliance assessment.
 
 Not a phase; offers, each needing the user's yes and each outside this skill's own edits:
 
-- `aisg hook install --host <claude|cursor|gemini>`: the audit's policies in the agent
+- `aisafe hook install --host <claude|cursor|gemini>`: the audit's policies in the agent
   host's command hooks (deny a secret-shaped literal, ask on a protected path, re-audit an
   edited file, block a Stop that introduced a new finding at or above `fail-on`). The host's
   hook file is a protected path (rule 4): the user runs the command, reads the diff it
   prints and answers yes themselves. `references/hosts.md` has the table.
 - The GitHub Action (`ai-safe-earth/AnyAISafe` `action.yml`): the audit on every
-  push with the SARIF uploaded to Code Scanning, and `aisg attest --check --require-level N`
+  push with the SARIF uploaded to Code Scanning, and `aisafe attest --check --require-level N`
   as the gate the team chose. A workflow file is a rule-4 file; propose the YAML, do not
   write it.
-- The `.gitignore` line for `.aisg-audit/`, if phase 2 settled on ignoring the directory
+- The `.gitignore` line for `.aisafe-audit/`, if phase 2 settled on ignoring the directory
   and the diff was not applied then.

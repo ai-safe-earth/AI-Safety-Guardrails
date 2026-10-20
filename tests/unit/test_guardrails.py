@@ -9,14 +9,14 @@ import asyncio
 
 import pytest
 
-from aisg.core.base import Action, CheckResult, GuardrailBase, GuardrailStage
-from aisg.core.exceptions import GuardrailBlockedError
-from aisg.core.pipeline import GuardrailPipeline
-from aisg.modules.input.pii_detector import PII_TOKEN_MAP_KEY, PIIDetector, PIIRestorer
-from aisg.modules.input.prompt_injection import PromptInjectionGuard
-from aisg.modules.output.toxicity import ToxicityFilter
-from aisg.modules.policy.eu_ai_act import EUAIActCompliance, RiskTier
-from aisg.modules.processing.tool_policy import ToolPolicy, ToolPolicyGuard
+from aisafe.core.base import Action, CheckResult, GuardrailBase, GuardrailStage
+from aisafe.core.exceptions import GuardrailBlockedError
+from aisafe.core.pipeline import GuardrailPipeline
+from aisafe.modules.input.pii_detector import PII_TOKEN_MAP_KEY, PIIDetector, PIIRestorer
+from aisafe.modules.input.prompt_injection import PromptInjectionGuard
+from aisafe.modules.output.toxicity import ToxicityFilter
+from aisafe.modules.policy.eu_ai_act import EUAIActCompliance, RiskTier
+from aisafe.modules.processing.tool_policy import ToolPolicy, ToolPolicyGuard
 
 # ---------------------------------------------------------------------------
 # PII Detector

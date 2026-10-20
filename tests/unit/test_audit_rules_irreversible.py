@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.audit.model import (
+from aisafe.devtools.audit.model import (
     AuditContext,
     Basis,
     EvidenceKind,
@@ -27,9 +27,9 @@ from aisg.devtools.audit.model import (
     Severity,
     UnknownCategory,
 )
-from aisg.devtools.audit.rules import run_rules
-from aisg.devtools.audit.rules.guards import GuardFailOpen
-from aisg.devtools.audit.rules.irreversible import (
+from aisafe.devtools.audit.rules import run_rules
+from aisafe.devtools.audit.rules.guards import GuardFailOpen
+from aisafe.devtools.audit.rules.irreversible import (
     DRY_RUN_SYMBOLS,
     RULES,
     InertGate,
@@ -107,7 +107,7 @@ def test_rule_metadata(rule):
     for token in rule.controls:
         assert CONTROL_TOKEN.match(token), token
     assert len(rule.recommendation.alternatives) >= 3
-    assert any("aisg" not in alt for alt in rule.recommendation.alternatives)
+    assert any("aisafe" not in alt for alt in rule.recommendation.alternatives)
     assert rule.measured_precision is None
     assert rule.related_lint_rules
     assert set(rule.related_lint_rules) <= ALLOWED_LINT_RULES
@@ -307,7 +307,7 @@ def _gate_tree(tmp_path: Path) -> Path:
         {
             "pyproject.toml": "[project]\nname = 'gate'\n",
             "agent.py": (
-                "from anthropic import Anthropic\nfrom aisg import ToolPolicyGuard\n\n"
+                "from anthropic import Anthropic\nfrom aisafe import ToolPolicyGuard\n\n"
                 "client = Anthropic()\nguard = ToolPolicyGuard(require_approval=True)\n\n\n"
                 "def run(prompt):\n    auto_approve = True\n"
                 "    return client.messages.create(model='m', max_tokens=10, messages=[])\n"
@@ -367,7 +367,7 @@ def _swallow_tree(tmp_path: Path) -> Path:
         {
             "pyproject.toml": "[project]\nname = 'swallow'\n",
             "agent.py": (
-                "from openai import OpenAI\nfrom aisg import ToolPolicyGuard\n\n"
+                "from openai import OpenAI\nfrom aisafe import ToolPolicyGuard\n\n"
                 "client = OpenAI()\nguard = ToolPolicyGuard(approval_callback=input)\n\n\n"
                 "def guarded(action):\n"
                 "    try:\n        guard.check(action)\n    except Exception:\n        pass\n"

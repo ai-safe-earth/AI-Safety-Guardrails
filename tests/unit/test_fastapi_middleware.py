@@ -19,10 +19,10 @@ pytest.importorskip("httpx", reason="needs httpx from the [dev] extra")
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from aisg.core.base import Action, CheckResult, GuardrailBase, GuardrailStage  # noqa: E402
-from aisg.core.pipeline import GuardrailPipeline  # noqa: E402
-from aisg.integrations.fastapi_middleware import FastAPIGuardrailMiddleware  # noqa: E402
-from aisg.modules.input.pii_detector import PIIDetector  # noqa: E402
+from aisafe.core.base import Action, CheckResult, GuardrailBase, GuardrailStage  # noqa: E402
+from aisafe.core.pipeline import GuardrailPipeline  # noqa: E402
+from aisafe.integrations.fastapi_middleware import FastAPIGuardrailMiddleware  # noqa: E402
+from aisafe.modules.input.pii_detector import PIIDetector  # noqa: E402
 
 
 class _BlockOn(GuardrailBase):

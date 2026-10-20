@@ -1,17 +1,17 @@
 # ai-safety-audit verify step (phase 5), PowerShell mirror of verify.sh.
-# aisg-audit: ignore-file
-# Detects the project's test command and prints it, then resolves `aisg` through the same
-# pinned bootstrap chain as audit.ps1 for `aisg measure` and, when AISG_PROBE_URL is set,
-# `aisg probe`. Nothing runs unless AISG_VERIFY_RUN=1: tests, measure and probe may call
+# aisafe-audit: ignore-file
+# Detects the project's test command and prints it, then resolves `aisafe` through the same
+# pinned bootstrap chain as audit.ps1 for `aisafe measure` and, when AISAFE_PROBE_URL is set,
+# `aisafe probe`. Nothing runs unless AISAFE_VERIFY_RUN=1: tests, measure and probe may call
 # model providers. This script never adds --i-have-authorization.
-# AISG_VERIFY_SKIP_TESTS=1 leaves the project's tests out (phase 3 runs the offline measure only).
-# Reports go under .aisg-audit/ like every other artefact of the flow; the next audit reads
+# AISAFE_VERIFY_SKIP_TESTS=1 leaves the project's tests out (phase 3 runs the offline measure only).
+# Reports go under .aisafe-audit/ like every other artefact of the flow; the next audit reads
 # them there as evidence (REPORTED <age>) whether or not .gitignore lists the directory.
-$AISG_VERSION = "0.1.0"   # pinned; test_skill_package.py asserts this equals pyproject.toml [project].version
-$run = if ($env:AISG_VERIFY_RUN) { $env:AISG_VERIFY_RUN } else { "0" }
-$skipTests = if ($env:AISG_VERIFY_SKIP_TESTS) { $env:AISG_VERIFY_SKIP_TESTS } else { "0" }
+$AISAFE_VERSION = "0.1.0"   # pinned; test_skill_package.py asserts this equals pyproject.toml [project].version
+$run = if ($env:AISAFE_VERIFY_RUN) { $env:AISAFE_VERIFY_RUN } else { "0" }
+$skipTests = if ($env:AISAFE_VERIFY_SKIP_TESTS) { $env:AISAFE_VERIFY_SKIP_TESTS } else { "0" }
 $status = 0
-$reportDir = ".aisg-audit"
+$reportDir = ".aisafe-audit"
 $measureReport = "$reportDir/measure-report.json"
 $probeReport = "$reportDir/probe-report.json"
 
@@ -32,7 +32,7 @@ if ($null -eq $testCmd) {
 } else {
     Write-Output "tests: $($testCmd -join ' ')"
     if ($skipTests -eq "1") {
-        Write-Output "tests: skipped (AISG_VERIFY_SKIP_TESTS=1)"
+        Write-Output "tests: skipped (AISAFE_VERIFY_SKIP_TESTS=1)"
     } elseif ($run -eq "1") {
         $testArgs = @($testCmd | Select-Object -Skip 1)
         & $testCmd[0] @testArgs
@@ -41,24 +41,24 @@ if ($null -eq $testCmd) {
             $status = 1
         }
     } else {
-        Write-Output "tests: not run (set AISG_VERIFY_RUN=1 to run)"
+        Write-Output "tests: not run (set AISAFE_VERIFY_RUN=1 to run)"
     }
 }
 
-# --- 2. aisg through the same bootstrap chain as audit.ps1 ------------------
-function Test-Aisg {
-    return [bool]((Get-Command aisg -ErrorAction SilentlyContinue) -or
+# --- 2. aisafe through the same bootstrap chain as audit.ps1 ------------------
+function Test-Aisafe {
+    return [bool]((Get-Command aisafe -ErrorAction SilentlyContinue) -or
                   (Get-Command uvx -ErrorAction SilentlyContinue) -or
                   (Get-Command pipx -ErrorAction SilentlyContinue))
 }
 
-function Invoke-Aisg {
-    if (Get-Command aisg -ErrorAction SilentlyContinue) {
-        & aisg @args
+function Invoke-Aisafe {
+    if (Get-Command aisafe -ErrorAction SilentlyContinue) {
+        & aisafe @args
     } elseif (Get-Command uvx -ErrorAction SilentlyContinue) {
-        & uvx --from "anyaisafe==$AISG_VERSION" aisg @args
+        & uvx --from "aisafe==$AISAFE_VERSION" aisafe @args
     } elseif (Get-Command pipx -ErrorAction SilentlyContinue) {
-        & pipx run --spec "anyaisafe==$AISG_VERSION" aisg @args
+        & pipx run --spec "aisafe==$AISAFE_VERSION" aisafe @args
     } else {
         $global:LASTEXITCODE = 127
     }
@@ -76,20 +76,20 @@ function Write-ProbeSummary($path) {
     Write-Output "probe: only 'passed' means passed; failed, errors, skipped and inconclusive are separate"
 }
 
-if (-not (Test-Aisg)) {
-    [Console]::Error.WriteLine("measure skipped: aisg not importable in target")
-    if ($env:AISG_PROBE_URL) {
-        [Console]::Error.WriteLine("probe skipped: aisg not importable in target")
+if (-not (Test-Aisafe)) {
+    [Console]::Error.WriteLine("measure skipped: aisafe not importable in target")
+    if ($env:AISAFE_PROBE_URL) {
+        [Console]::Error.WriteLine("probe skipped: aisafe not importable in target")
     }
     exit $status
 }
 
-# --- 3. aisg measure, when a pipeline config exists -------------------------
+# --- 3. aisafe measure, when a pipeline config exists -------------------------
 # GuardrailPipeline.from_config builds guards from the top-level stage keys input:,
 # processing:, output: and policy:; `pipeline:` is optional and holds only run settings,
-# and a file with no stage key enables no guards (aisg measure then exits 2 itself).
+# and a file with no stage key enables no guards (aisafe measure then exits 2 itself).
 $pipelineCfg = $null
-$candidates = @("guardrails.yaml", "aisg.yaml")
+$candidates = @("guardrails.yaml", "aisafe.yaml")
 if (Test-Path config) {
     $candidates += Get-ChildItem -Path config -File -Include *.yaml, *.yml -Recurse:$false -Name |
         ForEach-Object { "config/$_" }
@@ -103,28 +103,28 @@ foreach ($candidate in $candidates) {
 }
 
 if ($null -eq $pipelineCfg) {
-    Write-Output "measure: no pipeline config found (looked for guardrails.yaml, aisg.yaml, config/*.yaml with a top-level input:, processing:, output: or policy: stage key)"
+    Write-Output "measure: no pipeline config found (looked for guardrails.yaml, aisafe.yaml, config/*.yaml with a top-level input:, processing:, output: or policy: stage key)"
 } else {
-    Write-Output "measure: aisg measure --config $pipelineCfg -o $measureReport"
+    Write-Output "measure: aisafe measure --config $pipelineCfg -o $measureReport"
     if ($run -eq "1") {
         New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
-        Invoke-Aisg measure --config $pipelineCfg -o $measureReport
+        Invoke-Aisafe measure --config $pipelineCfg -o $measureReport
         if ($LASTEXITCODE -ne 0) {
-            [Console]::Error.WriteLine("measure: FAILED (aisg measure exited non-zero)")
+            [Console]::Error.WriteLine("measure: FAILED (aisafe measure exited non-zero)")
             $status = 1
         }
     } else {
-        Write-Output "measure: not run (set AISG_VERIFY_RUN=1 to run)"
+        Write-Output "measure: not run (set AISAFE_VERIFY_RUN=1 to run)"
     }
 }
 
-# --- 4. aisg probe, only when AISG_PROBE_URL is set --------------------------
-if ($env:AISG_PROBE_URL) {
-    Write-Output "probe: aisg probe $($env:AISG_PROBE_URL) -o $probeReport"
+# --- 4. aisafe probe, only when AISAFE_PROBE_URL is set --------------------------
+if ($env:AISAFE_PROBE_URL) {
+    Write-Output "probe: aisafe probe $($env:AISAFE_PROBE_URL) -o $probeReport"
     Write-Output "probe: a non-loopback target needs --i-have-authorization; this script never adds it"
     if ($run -eq "1") {
         New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
-        Invoke-Aisg probe $env:AISG_PROBE_URL -o $probeReport
+        Invoke-Aisafe probe $env:AISAFE_PROBE_URL -o $probeReport
         if ($LASTEXITCODE -ne 0) {
             [Console]::Error.WriteLine("probe: exited non-zero (1 = a case got through, 2 = errors/skipped/inconclusive present)")
             $status = 1
@@ -133,7 +133,7 @@ if ($env:AISG_PROBE_URL) {
             Write-ProbeSummary $probeReport
         }
     } else {
-        Write-Output "probe: not run (set AISG_VERIFY_RUN=1 to run)"
+        Write-Output "probe: not run (set AISAFE_VERIFY_RUN=1 to run)"
     }
 }
 

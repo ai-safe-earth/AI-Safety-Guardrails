@@ -1,7 +1,7 @@
 """
 tests/unit/test_measure.py
 --------------------------
-Tests for `aisg measure` and the Profile/Thresholds gate.
+Tests for `aisafe measure` and the Profile/Thresholds gate.
 
 The property under test throughout: a guard is a trade. Measuring only what it
 catches makes "block everything" optimal. These tests pin that the harness sees
@@ -16,21 +16,21 @@ import time
 
 import pytest
 
-from aisg.core.base import Action, CheckResult, GuardrailBase, GuardrailStage
-from aisg.core.measurement import (
+from aisafe.core.base import Action, CheckResult, GuardrailBase, GuardrailStage
+from aisafe.core.measurement import (
     DEFAULT_THRESHOLDS,
     MAX_FALSE_POSITIVE_RATE,
     MIN_PRECISION,
     Profile,
     Thresholds,
 )
-from aisg.devtools.measure import (
+from aisafe.devtools.measure import (
     TIMING_PASSES,
     GuardMeasurement,
     describe_measurement,
     measure_guard,
 )
-from aisg.devtools.probe import ProbeCase, load_corpus
+from aisafe.devtools.probe import ProbeCase, load_corpus
 
 
 def case(cid: str, payload: str, kind: str = "attack", must_survive: str = "") -> ProbeCase:
@@ -366,9 +366,9 @@ class TestAgainstTheShippedCorpus:
         matched any four English words). The assertion is now flipped so the
         regression cannot come back unnoticed.
         """
-        from aisg.modules.input.pii_detector import PIIDetector
-        from aisg.modules.input.prompt_injection import PromptInjectionGuard
-        from aisg.modules.processing.tool_policy import ToolPolicy, ToolPolicyGuard
+        from aisafe.modules.input.pii_detector import PIIDetector
+        from aisafe.modules.input.prompt_injection import PromptInjectionGuard
+        from aisafe.modules.processing.tool_policy import ToolPolicy, ToolPolicyGuard
 
         cases = load_corpus(include_benign=True)
         guards = [
@@ -389,8 +389,8 @@ class TestAgainstTheShippedCorpus:
         """The specific traffic that made the guard unusable for its own users."""
         import asyncio as _asyncio
 
-        from aisg.core.base import Action
-        from aisg.modules.input.prompt_injection import PromptInjectionGuard
+        from aisafe.core.base import Action
+        from aisafe.modules.input.prompt_injection import PromptInjectionGuard
 
         guard = PromptInjectionGuard(sensitivity="medium")
         for text in [
@@ -411,7 +411,7 @@ class TestAgainstTheShippedCorpus:
         """
         import asyncio as _asyncio
 
-        from aisg.modules.input.prompt_injection import PromptInjectionGuard
+        from aisafe.modules.input.prompt_injection import PromptInjectionGuard
 
         lenient = PromptInjectionGuard(sensitivity="medium", allow_security_discussion=True)
         strict = PromptInjectionGuard(sensitivity="medium", allow_security_discussion=False)
@@ -425,7 +425,7 @@ class TestAgainstTheShippedCorpus:
             )
 
     def test_measurement_produces_a_usable_profile(self):
-        from aisg.modules.input.pii_detector import PIIDetector
+        from aisafe.modules.input.pii_detector import PIIDetector
 
         cases = load_corpus(include_benign=True)
         m = asyncio.run(measure_guard(PIIDetector(action="redact"), cases))
@@ -451,15 +451,15 @@ class TestAgainstTheShippedCorpus:
 
 class TestShippedPresetsLoad:
     """
-    `aisg measure` found that eu_high_risk.yaml enabled seven guards that do not
+    `aisafe measure` found that eu_high_risk.yaml enabled seven guards that do not
     exist, so GuardrailPipeline.from_config() raised and the preset an operator
     with the strictest obligations would reach for had never been loadable.
     """
 
     @pytest.mark.parametrize("preset", ["default.yaml", "eu_high_risk.yaml"])
     def test_packaged_preset_builds_a_pipeline(self, preset):
-        from aisg.config import preset_path
-        from aisg.core.pipeline import GuardrailPipeline
+        from aisafe.config import preset_path
+        from aisafe.core.pipeline import GuardrailPipeline
 
         pipeline = GuardrailPipeline.from_config(preset_path(preset))
         guards = pipeline.input_guards + pipeline.processing_guards + pipeline.output_guards
@@ -470,8 +470,8 @@ class TestShippedPresetsLoad:
         """A clearer failure than the pipeline's, naming every offender at once."""
         import yaml
 
-        from aisg.config import preset_path
-        from aisg.core.registry import REGISTRY
+        from aisafe.config import preset_path
+        from aisafe.core.registry import REGISTRY
 
         cfg = yaml.safe_load(preset_path(preset).read_text(encoding="utf-8"))
         unknown = [
@@ -486,13 +486,13 @@ class TestShippedPresetsLoad:
         """The dev copy and the shipped copy must not drift apart."""
         from pathlib import Path
 
-        from aisg.config import PRESETS, preset_path
+        from aisafe.config import PRESETS, preset_path
 
         root = Path(__file__).resolve().parent.parent.parent / "config"
         for name in PRESETS:
             packaged = preset_path(name).read_text(encoding="utf-8")
             dev = (root / name).read_text(encoding="utf-8")
-            assert packaged == dev, f"{name} differs between config/ and src/aisg/config/"
+            assert packaged == dev, f"{name} differs between config/ and src/aisafe/config/"
 
 
 # ---------------------------------------------------------------------------
@@ -524,14 +524,14 @@ class TestReportProvenance:
 
     @staticmethod
     def _report(config_path, measurements=None):
-        from aisg.devtools.measure import build_report
+        from aisafe.devtools.measure import build_report
 
         ms = measurements or [GuardMeasurement(guard_name="x", stage="input")]
         return build_report(ms, config_path, 1, 1, DEFAULT_THRESHOLDS)
 
     def test_keys_present_after_a_real_measurement(self):
-        from aisg.config import preset_path
-        from aisg.modules.input.pii_detector import PIIDetector
+        from aisafe.config import preset_path
+        from aisafe.modules.input.pii_detector import PIIDetector
 
         cases = load_corpus(include_benign=True)[:6]
         m = asyncio.run(measure_guard(PIIDetector(action="redact"), cases))
@@ -540,7 +540,7 @@ class TestReportProvenance:
         assert report["guards"][0]["name"] == "pii_detector"
 
     def test_generated_at_follows_schema(self):
-        from aisg.config import preset_path
+        from aisafe.config import preset_path
 
         report = self._report(preset_path("default.yaml"))
         assert list(report)[:2] == ["schema", "generated_at"]
@@ -548,14 +548,14 @@ class TestReportProvenance:
     def test_generated_at_is_utc_iso_8601(self):
         from datetime import datetime
 
-        from aisg.config import preset_path
+        from aisafe.config import preset_path
 
         ts = self._report(preset_path("default.yaml"))["generated_at"]
         assert ts.endswith("Z")
         datetime.strptime(ts, _TS_FORMAT)
 
     def test_existing_keys_keep_their_order(self):
-        from aisg.config import preset_path
+        from aisafe.config import preset_path
 
         keys = list(self._report(preset_path("default.yaml")))
         assert keys[:3] == ["schema", "generated_at", "measured_on"]
@@ -568,8 +568,8 @@ class TestReportProvenance:
 
     def test_keyless_config_names_no_model(self):
         """The packaged default names no judge model; nothing may be invented for it."""
-        from aisg.config import preset_path
-        from aisg.devtools.measure import config_models
+        from aisafe.config import preset_path
+        from aisafe.devtools.measure import config_models
 
         assert config_models(preset_path("default.yaml")) == []
         assert self._report(preset_path("default.yaml"))["models"] == []
@@ -581,14 +581,14 @@ class TestReportProvenance:
         report records what the config says, not what the class would fall
         back to.
         """
-        from aisg.devtools.measure import config_models
+        from aisafe.devtools.measure import config_models
 
         cfg = tmp_path / "p.yaml"
         cfg.write_text("input:\n  prompt_injection:\n    enabled: true\n", encoding="utf-8")
         assert config_models(cfg) == []
 
     def test_models_named_by_the_config_are_reported(self, tmp_path):
-        from aisg.devtools.measure import config_models
+        from aisafe.devtools.measure import config_models
 
         cfg = tmp_path / "p.yaml"
         cfg.write_text(_NAMED_MODEL_CONFIG, encoding="utf-8")
@@ -597,7 +597,7 @@ class TestReportProvenance:
 
     def test_models_are_sorted_and_unique_across_stages(self, tmp_path):
         """Both real key spellings count: judge_model (LLM*Filter) and llm_judge_model."""
-        from aisg.devtools.measure import config_models
+        from aisafe.devtools.measure import config_models
 
         cfg = tmp_path / "p.yaml"
         cfg.write_text(
@@ -615,7 +615,7 @@ class TestReportProvenance:
 
     def test_disabled_guard_models_are_not_reported(self, tmp_path):
         """A disabled guard is not part of the measured pipeline."""
-        from aisg.devtools.measure import config_models
+        from aisafe.devtools.measure import config_models
 
         cfg = tmp_path / "p.yaml"
         cfg.write_text(
@@ -625,14 +625,14 @@ class TestReportProvenance:
         assert config_models(cfg) == []
 
     def test_non_string_model_values_are_ignored(self, tmp_path):
-        from aisg.devtools.measure import config_models
+        from aisafe.devtools.measure import config_models
 
         cfg = tmp_path / "p.yaml"
         cfg.write_text("input:\n  x:\n    model: 3\n    judge_model: ''\n", encoding="utf-8")
         assert config_models(cfg) == []
 
     def test_no_file_means_no_digest_and_no_models(self):
-        from aisg.devtools.measure import config_digest, config_models
+        from aisafe.devtools.measure import config_digest, config_models
 
         assert config_digest(None) is None
         assert config_models(None) == []
@@ -642,7 +642,7 @@ class TestReportProvenance:
         import hashlib
         import re
 
-        from aisg.devtools.measure import config_digest
+        from aisafe.devtools.measure import config_digest
 
         cfg = tmp_path / "p.yaml"
         cfg.write_text(_NAMED_MODEL_CONFIG, encoding="utf-8")
@@ -665,7 +665,7 @@ class TestReportProvenance:
 
     def test_no_guard_carries_a_precision(self):
         """The corpus is a stand-in; it cannot ground a precision figure."""
-        from aisg.config import preset_path
+        from aisafe.config import preset_path
 
         for guard in self._report(preset_path("default.yaml"))["guards"]:
             assert "precision" not in guard
@@ -673,7 +673,7 @@ class TestReportProvenance:
     def test_never_claims_compliance(self):
         import json
 
-        from aisg.config import preset_path
+        from aisafe.config import preset_path
 
         blob = json.dumps(self._report(preset_path("default.yaml"))).lower()
         for banned in (
@@ -691,7 +691,7 @@ class TestReportProvenance:
         import json
         from datetime import datetime
 
-        from aisg.devtools.measure import main
+        from aisafe.devtools.measure import main
 
         cfg = tmp_path / "p.yaml"
         cfg.write_text(_NAMED_MODEL_CONFIG, encoding="utf-8")

@@ -1,6 +1,6 @@
 # action.yml
 # ---------------------------------------------------------------------------
-# `aisg audit` as a composite GitHub Action, so any repository can add one step:
+# `aisafe audit` as a composite GitHub Action, so any repository can add one step:
 #
 #   - uses: ai-safe-earth/AnyAISafe@v0.1.0
 #     with:
@@ -15,8 +15,8 @@
 # The version default is pinned to this repository's pyproject by a test; `install-from:
 # action-path` installs the checkout the action was fetched from (dogfooding and forks).
 # ---------------------------------------------------------------------------
-name: aisg audit
-description: Static AI-safety audit of a repository (aisg audit). Findings describe evidence; no compliance verdict.
+name: aisafe audit
+description: Static AI-safety audit of a repository (aisafe audit). Findings describe evidence; no compliance verdict.
 author: AI SAFE EARTH
 branding:
   icon: shield
@@ -33,10 +33,10 @@ inputs:
     description: path of an audit-baseline.json (empty = none; only new findings count when set)
     default: ""
   extra-args:
-    description: extra flags passed to every aisg audit call (e.g. --exclude vendor)
+    description: extra flags passed to every aisafe audit call (e.g. --exclude vendor)
     default: ""
   version:
-    description: anyaisafe version to install from PyPI (pinned to this repository's release)
+    description: aisafe version to install from PyPI (pinned to this repository's release)
     default: "0.1.0"
   install-from:
     description: "pypi | action-path (install the checkout this action came from)"
@@ -49,7 +49,7 @@ inputs:
     default: "true"
   sarif-category:
     description: Code Scanning category for the upload
-    default: aisg-audit
+    default: aisafe-audit
   step-summary:
     description: append the markdown report to the job summary
     default: "true"
@@ -58,7 +58,7 @@ inputs:
     default: "false"
   output-dir:
     description: where the three documents are written
-    default: .aisg-audit
+    default: .aisafe-audit
 
 outputs:
   exit-code:
@@ -81,10 +81,10 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
-    - name: Install anyaisafe
+    - name: Install aisafe
       shell: bash
       env:
-        AISG_VERSION: ${{ inputs.version }}
+        AISAFE_VERSION: ${{ inputs.version }}
         INSTALL_FROM: ${{ inputs.install-from }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
@@ -92,10 +92,10 @@ runs:
         if [ "$INSTALL_FROM" = "action-path" ]; then
           pip install --quiet "${ACTION_PATH}[devtools]"
         else
-          pip install --quiet "anyaisafe[devtools]==${AISG_VERSION}"
+          pip install --quiet "aisafe[devtools]==${AISAFE_VERSION}"
         fi
-        aisg --version
-        python -c "import aisg; print(aisg.__file__)"
+        aisafe --version
+        python -c "import aisafe; print(aisafe.__file__)"
 
     - name: Audit
       shell: bash
@@ -112,11 +112,11 @@ runs:
         if [ -n "$BASELINE" ]; then args+=(--baseline "$BASELINE"); fi
         # Each call tolerates only exit 1 (findings); a fatal 2 fails the step here.
         # shellcheck disable=SC2086
-        aisg audit "${args[@]}" $EXTRA --format json -o "$OUT/audit-report.json" || [ $? -eq 1 ]
+        aisafe audit "${args[@]}" $EXTRA --format json -o "$OUT/audit-report.json" || [ $? -eq 1 ]
         # shellcheck disable=SC2086
-        aisg audit "${args[@]}" $EXTRA --format sarif -o "$OUT/audit-results.sarif" || [ $? -eq 1 ]
+        aisafe audit "${args[@]}" $EXTRA --format sarif -o "$OUT/audit-results.sarif" || [ $? -eq 1 ]
         # shellcheck disable=SC2086
-        aisg audit "${args[@]}" $EXTRA --format markdown -o "$OUT/audit-summary.md" || [ $? -eq 1 ]
+        aisafe audit "${args[@]}" $EXTRA --format markdown -o "$OUT/audit-summary.md" || [ $? -eq 1 ]
 
     - name: Job summary
       if: inputs.step-summary == 'true'
@@ -136,7 +136,7 @@ runs:
       if: inputs.pr-comment == 'true' && github.event_name == 'pull_request'
       uses: marocchino/sticky-pull-request-comment@v2
       with:
-        header: aisg-audit
+        header: aisafe-audit
         path: ${{ inputs.output-dir }}/audit-summary.md
 
     - name: Verdict
@@ -149,7 +149,7 @@ runs:
         import json, os, sys
         report = json.load(open(sys.argv[1], encoding="utf-8"))
         if report.get("schema") != "aisg/1" or report.get("kind") != "audit":
-            sys.exit(f"not an aisg audit report: {sys.argv[1]}")
+            sys.exit(f"not an aisafe audit report: {sys.argv[1]}")
         summary = report["summary"]
         code = int(summary["exit_code"])
         new = summary.get("baseline_new")

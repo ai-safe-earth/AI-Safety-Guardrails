@@ -1,6 +1,6 @@
 """tests/unit/test_audit_pydeep.py
 -------------------------------
-Python AST layer of `aisg audit`: call sites, loops, tools, gates, prompts, taint, trifecta.
+Python AST layer of `aisafe audit`: call sites, loops, tools, gates, prompts, taint, trifecta.
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from aisg.devtools.audit.model import UnknownCategory  # noqa: E402
-from aisg.devtools.audit.pydeep import (  # noqa: E402
+from aisafe.devtools.audit.model import UnknownCategory  # noqa: E402
+from aisafe.devtools.audit.pydeep import (  # noqa: E402
     LLM_CALL_ATTRS,
     SINK_ATTRS,
     Assembly,
@@ -377,7 +377,7 @@ def test_star_kwargs_gate_is_unknown_not_a_gate(tmp_path):
 _MULTI_LINE_GATE_SHAPES = {
     "assign_star": (
         """
-        from aisg import GuardrailPipeline, ToolPolicyGuard
+        from aisafe import GuardrailPipeline, ToolPolicyGuard
         pipeline = GuardrailPipeline(
             processing_guards=[
                 ToolPolicyGuard(**cfg),
@@ -389,7 +389,7 @@ _MULTI_LINE_GATE_SHAPES = {
     ),
     "assign_empty": (
         """
-        from aisg import GuardrailPipeline, ToolPolicyGuard
+        from aisafe import GuardrailPipeline, ToolPolicyGuard
         pipeline = GuardrailPipeline(
             processing_guards=[
                 ToolPolicyGuard(require_approval=[]),
@@ -401,7 +401,7 @@ _MULTI_LINE_GATE_SHAPES = {
     ),
     "outer_call_star": (
         """
-        from aisg import GuardrailPipeline, ToolPolicyGuard
+        from aisafe import GuardrailPipeline, ToolPolicyGuard
         run(
             GuardrailPipeline(
                 processing_guards=[
@@ -415,7 +415,7 @@ _MULTI_LINE_GATE_SHAPES = {
     ),
     "outer_call_empty": (
         """
-        from aisg import GuardrailPipeline, ToolPolicyGuard
+        from aisafe import GuardrailPipeline, ToolPolicyGuard
         run(
             GuardrailPipeline(
                 processing_guards=[
@@ -461,7 +461,7 @@ def test_multi_line_phantom_gate_does_not_satisfy_the_join(tmp_path):
         tmp_path,
         """
         from langchain_core.tools import tool
-        from aisg import GuardrailPipeline, ToolPolicyGuard
+        from aisafe import GuardrailPipeline, ToolPolicyGuard
 
         def build():
             return GuardrailPipeline(
@@ -547,7 +547,7 @@ def test_inert_gate_is_not_reported_live_through_the_join(tmp_path):
         tmp_path,
         """
         from langchain_core.tools import tool
-        from aisg import ToolPolicyGuard
+        from aisafe import ToolPolicyGuard
 
         def guarded_send(to, body):
             guard = ToolPolicyGuard(require_approval=True)
@@ -862,7 +862,7 @@ def test_fail_open_guard_call_is_recorded(tmp_path):
     facts = _facts(
         tmp_path,
         """
-        from aisg import PromptInjectionGuard
+        from aisafe import PromptInjectionGuard
         guard = PromptInjectionGuard()
 
         async def check(x):
@@ -982,8 +982,8 @@ _BYPASS_EXAMPLES = (
 
 @pytest.mark.parametrize("example", _APPROVAL_EXAMPLES)
 def test_gate_anchors_cover_every_approval_branch(example: str) -> None:
-    from aisg.devtools.audit import pydeep as pydeep_module
-    from aisg.devtools.audit import vocab
+    from aisafe.devtools.audit import pydeep as pydeep_module
+    from aisafe.devtools.audit import vocab
 
     assert vocab.APPROVAL_SYMBOLS.search(example), example
     assert pydeep_module._gate_possible(example), example
@@ -991,15 +991,15 @@ def test_gate_anchors_cover_every_approval_branch(example: str) -> None:
 
 @pytest.mark.parametrize("example", _BYPASS_EXAMPLES)
 def test_gate_anchors_cover_every_bypass_branch(example: str) -> None:
-    from aisg.devtools.audit import pydeep as pydeep_module
-    from aisg.devtools.audit import vocab
+    from aisafe.devtools.audit import pydeep as pydeep_module
+    from aisafe.devtools.audit import vocab
 
     assert vocab.GATE_BYPASS.search(example), example
     assert pydeep_module._gate_possible(example), example
 
 
 def test_gate_prefilter_is_quiet_on_a_plain_call() -> None:
-    from aisg.devtools.audit import pydeep as pydeep_module
+    from aisafe.devtools.audit import pydeep as pydeep_module
 
     assert not pydeep_module._gate_possible(
         "client.messages.create(model='claude-sonnet-4-20250514', messages=history)"
@@ -1009,7 +1009,7 @@ def test_gate_prefilter_is_quiet_on_a_plain_call() -> None:
 def test_every_gate_anchor_is_exercised_by_a_matching_example() -> None:
     """No anchor without a branch behind it: each one appears in an example that the
     vocabulary matches, so a stale or misspelled anchor fails here."""
-    from aisg.devtools.audit import vocab
+    from aisafe.devtools.audit import vocab
 
     examples = _APPROVAL_EXAMPLES + _BYPASS_EXAMPLES
     for anchor in vocab.GATE_TEXT_ANCHORS:
@@ -1019,7 +1019,7 @@ def test_every_gate_anchor_is_exercised_by_a_matching_example() -> None:
 def test_module_unparse_is_memoised_per_node(tmp_path: Path) -> None:
     import ast as ast_module
 
-    from aisg.devtools.audit import pydeep as pydeep_module
+    from aisafe.devtools.audit import pydeep as pydeep_module
 
     text = "x = call(a, b)\ny = x.attr\n"
     mod = pydeep_module._Module("m.py", None, ast_module.parse(text), text)

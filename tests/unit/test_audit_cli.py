@@ -1,12 +1,12 @@
 """
 tests/unit/test_audit_cli.py
 ----------------------------
-End-to-end pins for `aisg audit` run in-process: exit codes, flag handling,
+End-to-end pins for `aisafe audit` run in-process: exit codes, flag handling,
 the document shape, baseline round-trip, pyproject defaults, and the two
 properties that must never regress -- no socket is ever opened, and no output
-carries verdict language. Most tests call `aisg.devtools.audit.main.main`
+carries verdict language. Most tests call `aisafe.devtools.audit.main.main`
 directly; the ones named `..._console_entry_...` (and the baseline and
-pyproject-override pins) go through `aisg.cli.main` so the console script's
+pyproject-override pins) go through `aisafe.cli.main` so the console script's
 REMAINDER pass-through is on the path too.
 """
 
@@ -21,12 +21,12 @@ from pathlib import Path
 
 import pytest
 
-from aisg import cli
-from aisg.devtools._config import find_pyproject
-from aisg.devtools.audit import adapters, walk
-from aisg.devtools.audit.baseline import read_baseline
-from aisg.devtools.audit.html import _T_BANNER_NO_RULES
-from aisg.devtools.audit.main import (
+from aisafe import cli
+from aisafe.devtools._config import find_pyproject
+from aisafe.devtools.audit import adapters, walk
+from aisafe.devtools.audit.baseline import read_baseline
+from aisafe.devtools.audit.html import _T_BANNER_NO_RULES
+from aisafe.devtools.audit.main import (
     EXIT_FATAL,
     EXIT_FINDINGS,
     EXIT_INTERRUPTED,
@@ -38,14 +38,14 @@ from aisg.devtools.audit.main import (
     main,
     run_audit,
 )
-from aisg.devtools.audit.model import SCHEMA_VERSION, TRIFECTA_RULE_ID
-from aisg.devtools.audit.patterns import OWN_HTML_MARKER_LINE
-from aisg.devtools.audit.report import BANNED_PHRASES, FORMATS
-from aisg.devtools.audit.rules import rule_by_id
+from aisafe.devtools.audit.model import SCHEMA_VERSION, TRIFECTA_RULE_ID
+from aisafe.devtools.audit.patterns import OWN_HTML_MARKER_LINE
+from aisafe.devtools.audit.report import BANNED_PHRASES, FORMATS
+from aisafe.devtools.audit.rules import rule_by_id
 
-# The package's PEP 562 hook rebinds `aisg.devtools.audit.main` to the function,
+# The package's PEP 562 hook rebinds `aisafe.devtools.audit.main` to the function,
 # so the module object has to come from the import system directly.
-audit_main = importlib.import_module("aisg.devtools.audit.main")
+audit_main = importlib.import_module("aisafe.devtools.audit.main")
 
 # Assembled at runtime so this file never spells the banned word itself.
 BANNED_WORD = re.compile(r"\bcl" + r"ean\b", re.IGNORECASE)
@@ -63,7 +63,7 @@ def no_socket(monkeypatch: pytest.MonkeyPatch) -> None:
     """The audit must never talk to the network; any socket is a test failure."""
 
     def refuse(*args, **kwargs):
-        raise AssertionError("aisg audit opened a socket")
+        raise AssertionError("aisafe audit opened a socket")
 
     monkeypatch.setattr(socket, "socket", refuse)
     monkeypatch.setattr(socket, "create_connection", refuse)
@@ -71,7 +71,7 @@ def no_socket(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def neutral_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Run from a directory without a pyproject so the repo's [tool.aisg-audit] stays out."""
+    """Run from a directory without a pyproject so the repo's [tool.aisafe-audit] stays out."""
     cwd = tmp_path / "cwd"
     cwd.mkdir()
     monkeypatch.chdir(cwd)
@@ -116,7 +116,7 @@ def _assert_no_verdict_language(text: str) -> None:
 
 def test_parser_defaults_match_the_design() -> None:
     parser = build_parser()
-    assert parser.prog == "aisg audit"
+    assert parser.prog == "aisafe audit"
     ns = parser.parse_args([])
     assert ns.path == "."
     assert ns.format == "terminal"
@@ -262,7 +262,7 @@ def test_console_entry_every_renderer_is_free_of_verdict_language(
     py_agent: Path, tmp_path: Path, capsys
 ) -> None:
     """
-    The end-to-end pin from the carry-forward: through the `aisg audit` console
+    The end-to-end pin from the carry-forward: through the `aisafe audit` console
     entry, on the reference fixture, none of the five renderings (json, sarif,
     markdown, terminal full, terminal quiet) carries a banned phrase or the
     banned word -- and neither does anything printed to stdout or stderr on the way.
@@ -478,7 +478,7 @@ def test_inventory_only_html_renders_the_page_with_no_rule_ran(
     assert code == EXIT_OK
     assert "inventory written to" in capsys.readouterr().err
     text = out.read_text(encoding="utf-8")
-    assert text.splitlines()[0] == OWN_HTML_MARKER_LINE == "<!-- # aisg-audit: ignore-file -->"
+    assert text.splitlines()[0] == OWN_HTML_MARKER_LINE == "<!-- # aisafe-audit: ignore-file -->"
     assert _T_BANNER_NO_RULES in text
     assert "0 of" in text and "rules ran" in text
     # the same counts the inventory document carries are on the page
@@ -552,7 +552,7 @@ def test_exclude_prunes_the_walk(py_agent: Path, tmp_path: Path) -> None:
     assert "secrets.py" not in touched
     assert len(pruned["findings"]) < len(full["findings"])
     # The report says what was not walked: two documents made from different working
-    # directories (and so different `[tool.aisg-audit]` excludes) show the mismatch.
+    # directories (and so different `[tool.aisafe-audit]` excludes) show the mismatch.
     assert full["target"]["exclude"] == []
     assert pruned["target"]["exclude"] == ["tools.py", "secrets.py"]
 
@@ -707,7 +707,7 @@ def test_write_baseline_creates_the_target_directory(
     py_agent: Path, neutral_cwd: Path, capsys
 ) -> None:
     """
-    `.aisg-audit/` usually does not exist on the first run. The write comes after the
+    `.aisafe-audit/` usually does not exist on the first run. The write comes after the
     scan and the render, so a missing directory used to surface as a raw fatal error
     once all the work was done; the parent is created like `-o` does.
     """
@@ -1215,7 +1215,7 @@ def test_write_baseline_prefers_the_compared_reason_over_the_refreshed_one(
 
 
 def _double_run(py_agent: Path, fmt: str, out_name: str) -> dict:
-    own = py_agent / ".aisg-audit"
+    own = py_agent / ".aisafe-audit"
     report = own / out_name
     baseline = own / "baseline.json"
     first = [
@@ -1244,9 +1244,9 @@ def test_double_run_json_report_is_skipped_as_own_output(py_agent: Path) -> None
     doc = _double_run(py_agent, "json", "report.json")
     assert doc["summary"]["baseline_new"] == 0
     assert doc["baseline"]["new"] == 0
-    assert doc["inventory"]["own_output_skipped"] == [".aisg-audit/report.json"]
+    assert doc["inventory"]["own_output_skipped"] == [".aisafe-audit/report.json"]
     touched = {ev["file"] for f in doc["findings"] for ev in f["evidence"]}
-    assert not any(path.startswith(".aisg-audit/") for path in touched)
+    assert not any(path.startswith(".aisafe-audit/") for path in touched)
 
 
 def test_html_output_starts_with_the_marker_line_lf_only_and_no_bom(
@@ -1257,7 +1257,7 @@ def test_html_output_starts_with_the_marker_line_lf_only_and_no_bom(
     code = main([str(py_agent), "--no-external", "--format", "html", "-o", str(out)])
     assert code == EXIT_FINDINGS
     raw = out.read_bytes()
-    assert raw.startswith(b"<!-- # aisg-audit: ignore-file -->\n")
+    assert raw.startswith(b"<!-- # aisafe-audit: ignore-file -->\n")
     assert b"\r" not in raw
     assert not raw.startswith(b"\xef\xbb\xbf")
 
@@ -1269,9 +1269,9 @@ def test_double_run_html_report_is_skipped_by_its_marker(py_agent: Path) -> None
     # The html carries the ignore marker on line 1. `walk.is_own_html` recognises that
     # exact line and lists the page as own output, like the JSON report: the skip is
     # visible in the inventory, not a silent ignore-file skip.
-    assert doc["inventory"]["own_output_skipped"] == [".aisg-audit/report.html"]
+    assert doc["inventory"]["own_output_skipped"] == [".aisafe-audit/report.html"]
     touched = {ev["file"] for f in doc["findings"] for ev in f["evidence"]}
-    assert not any(path.startswith(".aisg-audit/") for path in touched)
+    assert not any(path.startswith(".aisafe-audit/") for path in touched)
 
 
 def test_oversize_files_are_counted_and_listed_under_unknown(
@@ -1308,10 +1308,33 @@ def test_oversize_files_are_counted_and_listed_under_unknown(
 
 def test_pyproject_section_is_honoured(py_agent: Path, neutral_cwd: Path) -> None:
     (neutral_cwd / "pyproject.toml").write_text(
-        f'[tool.aisg-audit]\nfail-on = "high"\nrules = ["{LOW_RULE}"]\n', encoding="utf-8"
+        f'[tool.aisafe-audit]\nfail-on = "high"\nrules = ["{LOW_RULE}"]\n', encoding="utf-8"
     )
     assert main([str(py_agent), "--no-external"]) == EXIT_OK
     assert main([str(py_agent), "--no-external", "--fail-on", "low"]) == EXIT_FINDINGS
+
+
+def test_pre_rename_pyproject_section_is_read_with_a_note(
+    py_agent: Path, neutral_cwd: Path, capsys
+) -> None:
+    # A project configured before the command was renamed keeps its settings.
+    (neutral_cwd / "pyproject.toml").write_text(
+        f'[tool.aisg-audit]\nfail-on = "high"\nrules = ["{LOW_RULE}"]\n', encoding="utf-8"
+    )
+    assert main([str(py_agent), "--no-external"]) == EXIT_OK
+    assert "rename it to [tool.aisafe-audit]" in capsys.readouterr().err
+
+
+def test_the_new_pyproject_section_wins_over_the_old(
+    py_agent: Path, neutral_cwd: Path, capsys
+) -> None:
+    (neutral_cwd / "pyproject.toml").write_text(
+        '[tool.aisg-audit]\nfail-on = "low"\n'
+        f'[tool.aisafe-audit]\nfail-on = "high"\nrules = ["{LOW_RULE}"]\n',
+        encoding="utf-8",
+    )
+    assert main([str(py_agent), "--no-external"]) == EXIT_OK
+    assert "[tool.aisg-audit]" not in capsys.readouterr().err
 
 
 def test_explicit_fail_on_overrides_pyproject_high(
@@ -1324,7 +1347,7 @@ def test_explicit_fail_on_overrides_pyproject_high(
     `--fail-on info` on the command line counts all three.
     """
     (neutral_cwd / "pyproject.toml").write_text(
-        '[tool.aisg-audit]\nfail-on = "high"\n', encoding="utf-8"
+        '[tool.aisafe-audit]\nfail-on = "high"\n', encoding="utf-8"
     )
     target = str(audit_fixture("info_only"))
     assert cli.main(["audit", target, "--no-external"]) == EXIT_OK
@@ -1340,7 +1363,7 @@ def test_pyproject_list_values_become_csv(
     py_agent: Path, neutral_cwd: Path, tmp_path: Path
 ) -> None:
     (neutral_cwd / "pyproject.toml").write_text(
-        '[tool.aisg-audit]\nfail-on = "never"\nfail-on-unknown = ["reports"]\n'
+        '[tool.aisafe-audit]\nfail-on = "never"\nfail-on-unknown = ["reports"]\n'
         'exclude = ["tools.py", "secrets.py"]\ntrusted-mcp-hosts = ["localhost", "mcp.internal"]\n',
         encoding="utf-8",
     )
@@ -1354,7 +1377,7 @@ def test_pyproject_list_values_become_csv(
 
 def test_pyproject_boolean_fail_on_unknown(py_agent: Path, neutral_cwd: Path) -> None:
     (neutral_cwd / "pyproject.toml").write_text(
-        '[tool.aisg-audit]\nfail-on = "never"\nfail-on-unknown = true\n', encoding="utf-8"
+        '[tool.aisafe-audit]\nfail-on = "never"\nfail-on-unknown = true\n', encoding="utf-8"
     )
     assert main([str(py_agent), "--no-external"]) == EXIT_FINDINGS
 
@@ -1382,7 +1405,7 @@ def test_not_configurable_names_every_per_invocation_action() -> None:
 
 
 def _pyproject_lines(baseline: Path, fingerprint: str, target: Path) -> dict[str, str]:
-    """One `[tool.aisg-audit]` line per key a pyproject must not be able to set."""
+    """One `[tool.aisafe-audit]` line per key a pyproject must not be able to set."""
     posix = str(baseline).replace("\\", "/")
     target_posix = str(target).replace("\\", "/")
     return {
@@ -1418,7 +1441,7 @@ def test_pyproject_cannot_set_a_per_invocation_action(
     target = tmp_path / "from-pyproject.json"
     lines = _pyproject_lines(baseline, fingerprint, target)
     (neutral_cwd / "pyproject.toml").write_text(
-        "[tool.aisg-audit]\n" + "\n".join(lines[key] for key in keys) + "\n", encoding="utf-8"
+        "[tool.aisafe-audit]\n" + "\n".join(lines[key] for key in keys) + "\n", encoding="utf-8"
     )
     capsys.readouterr()
 
@@ -1436,9 +1459,9 @@ def test_pyproject_cannot_set_a_per_invocation_action(
 
 
 def test_repo_pyproject_carries_the_section() -> None:
-    from aisg.devtools._config import load_tool_config
+    from aisafe.devtools._config import load_tool_config
 
     repo_root = Path(__file__).resolve().parents[2]
-    config = load_tool_config("aisg-audit", start=repo_root)
+    config = load_tool_config("aisafe-audit", start=repo_root)
     assert config["fail_on"] == "high"
-    assert config["exclude"] == "tests,src/aisg/probes"
+    assert config["exclude"] == "tests,src/aisafe/probes"

@@ -3,8 +3,8 @@
 Generate the skill's `references/levels.md` from the packaged `attest-levels.yaml`.
 
 The skill reads the attestation levels aloud in phase 7, so the document must say exactly
-what `aisg attest` checks. Rather than copy the criteria by hand, this tool renders the
-whole file from `aisg.devtools.attest.load_levels()` (the same loader the command uses) and
+what `aisafe attest` checks. Rather than copy the criteria by hand, this tool renders the
+whole file from `aisafe.devtools.attest.load_levels()` (the same loader the command uses) and
 `attest.CRITERION_READS` (what each criterion kind reads). The prose around the tables is
 fixed here; the tables are data.
 
@@ -22,13 +22,13 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-LEVELS_MD = REPO / "src" / "aisg" / "skills" / "ai-safety-audit" / "references" / "levels.md"
+LEVELS_MD = REPO / "src" / "aisafe" / "skills" / "ai-safety-audit" / "references" / "levels.md"
 
 _HEAD = """# The attestation levels
 
 Generated from the packaged `attest-levels.yaml` by `scripts/levels_md.py`; do not edit by
 hand (`python scripts/levels_md.py --check` fails on drift). Read this in phase 7, before
-running `aisg attest`.
+running `aisafe attest`.
 
 A level is a list of criteria met on a date, signed by the named owner. It is not a
 verdict, a grade or a statement about any regulation: the tool checked the listed
@@ -41,7 +41,7 @@ Every criterion row in `attestation.json` (`level.criteria[]`) carries `id`, `le
 `met`, `evidence` (what was read) and `missing` (what would have to change). Read the
 `missing` text aloud for every unmet row; it is the whole explanation.
 
-The criteria are evaluated against the documents under `.aisg-audit/` (the audit report,
+The criteria are evaluated against the documents under `.aisafe-audit/` (the audit report,
 the baseline, the measure, probe and decision reports) and `ai-system-card.yaml`. A
 document that is absent is recorded as absent and fails the criteria that need it; it
 never fails the run. A document of the wrong kind, or one that cannot be parsed, is fatal
@@ -54,9 +54,9 @@ _RULES = """## Rules that hold
   carry a reason count as accepted. A finding whose fingerprint the baseline holds without
   a reason stays open for `no_open_findings_at_or_above` and `rules_closed`, and
   `accepted_reasons_present` names how many fingerprints have no reason. The only way to
-  record a reason is `aisg audit --amend-baseline <baseline> --accept <fingerprint>="<reason>"`.
+  record a reason is `aisafe audit --amend-baseline <baseline> --accept <fingerprint>="<reason>"`.
 - **Freshness is relative to the run.** `max_age_days` is read against the clock of the
-  `aisg attest` run; `report_names_head` compares the report's `target.git_sha` with HEAD,
+  `aisafe attest` run; `report_names_head` compares the report's `target.git_sha` with HEAD,
   so a report from another commit fails level 0 until the audit is re-run.
 - **The dirty-tree rule.** `tree_clean` (level {tree_level}) fails when `git status
   --porcelain` lists anything, and no other criterion reads the working tree, so uncommitted
@@ -129,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     sys.path.insert(0, str(REPO / "src"))
-    from aisg.devtools.attest import CRITERION_READS, load_levels
+    from aisafe.devtools.attest import CRITERION_READS, load_levels
 
     levels = load_levels()
     generated = render(levels, CRITERION_READS)

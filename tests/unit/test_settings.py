@@ -17,7 +17,7 @@ import pytest
 # `settings` extra so these run there.
 pytest.importorskip("pydantic_settings", reason="needs the [settings] extra")
 
-from aisg.config.settings import Settings  # noqa: E402
+from aisafe.config.settings import Settings  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -128,7 +128,7 @@ class TestDefaults:
     def test_observability_defaults(self):
         s = make()
         assert s.otel_exporter_otlp_endpoint == ""
-        assert s.otel_service_name == "anyaisafe"
+        assert s.otel_service_name == "aisafe"
         assert s.prometheus_enabled is False
         assert s.prometheus_port == 9090
 
@@ -360,14 +360,14 @@ class TestJudgeKwargs:
 
     def test_judge_kwargs_feeds_build_judge(self):
         """judge_kwargs() output is accepted by build_judge() without error."""
-        from aisg.modules.llm_judges import build_judge
+        from aisafe.modules.llm_judges import build_judge
 
         s = make(default_judge_type="llamaguard", default_judge_provider="groq")
         judge = build_judge(**s.judge_kwargs())
         assert judge.name == "llamaguard3_groq"
 
     def test_judge_kwargs_claude(self):
-        from aisg.modules.llm_judges import build_judge
+        from aisafe.modules.llm_judges import build_judge
 
         s = make(default_judge_type="claude")
         judge = build_judge(**s.judge_kwargs())

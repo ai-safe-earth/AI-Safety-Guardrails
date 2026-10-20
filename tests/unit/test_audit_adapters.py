@@ -1,6 +1,6 @@
 """tests/unit/test_audit_adapters.py
 -----------------------------------
-External tool adapters for `aisg audit`: pure argv, fixture-driven parsing, and a
+External tool adapters for `aisafe audit`: pure argv, fixture-driven parsing, and a
 `run()` that never installs, never opens a socket, and reports what it could not do.
 """
 
@@ -18,8 +18,8 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-from aisg.devtools.audit import adapters
-from aisg.devtools.audit.adapters import (
+from aisafe.devtools.audit import adapters
+from aisafe.devtools.audit.adapters import (
     ADAPTERS,
     DEFAULT_TOOL_NAMES,
     FORBIDDEN_LAUNCHERS,
@@ -37,7 +37,7 @@ from aisg.devtools.audit.adapters import (
     sink_rule_by_kind,
     tool_finding,
 )
-from aisg.devtools.audit.model import (
+from aisafe.devtools.audit.model import (
     Basis,
     Bucket,
     EvidenceKind,
@@ -46,11 +46,11 @@ from aisg.devtools.audit.model import (
     Status,
     UnknownCategory,
 )
-from aisg.devtools.audit.report import BANNED_PHRASES
+from aisafe.devtools.audit.report import BANNED_PHRASES
 
 REPO = Path(__file__).resolve().parents[2]
 TOOL_OUTPUT = REPO / "tests" / "fixtures" / "audit" / "tool_output"
-ADAPTERS_SRC = REPO / "src" / "aisg" / "devtools" / "audit" / "adapters.py"
+ADAPTERS_SRC = REPO / "src" / "aisafe" / "devtools" / "audit" / "adapters.py"
 
 # The word the audit vocabulary bans, built from parts so this file never contains it.
 _BANNED_WORD = re.compile(r"\bcl" + r"ean\b", re.IGNORECASE)
@@ -206,11 +206,11 @@ class TestSemgrepRules:
         kinds = sink_rule_by_kind()
         for rule in rules:
             meta = rule["metadata"]
-            assert rule["id"].startswith("aisg-sink-")
-            assert re.fullmatch(r"AUD-40[1-6]", meta["aisg_rule"])
-            assert meta["aisg_rule_id"] == meta["aisg_rule"]
+            assert rule["id"].startswith("aisafe-sink-")
+            assert re.fullmatch(r"AUD-40[1-6]", meta["aisafe_rule"])
+            assert meta["aisafe_rule_id"] == meta["aisafe_rule"]
             assert meta["kind"] in kinds
-            assert kinds[meta["kind"]] == meta["aisg_rule"]
+            assert kinds[meta["kind"]] == meta["aisafe_rule"]
             assert rule["mode"] == "taint"
             assert rule["pattern-sources"] and rule["pattern-sinks"]
             assert rule["severity"] in ("ERROR", "WARNING")
@@ -393,14 +393,19 @@ class TestParse:
             return res
 
         payload["results"] = [
-            result("custom.rule", {"aisg_rule": "AUD-403"}),
+            result("custom.rule", {"aisafe_rule": "AUD-403"}),
             result("custom.rule", {"kind": "sql"}),
             result("x.aud-405-y", {}),
-            result("aisg-sink-fs-js", {}),
+            result("aisafe-sink-fs-js", {}),
             result("unrelated.rule", {"category": "security"}),
         ]
         findings = SemgrepAdapter().parse(payload, root=".")
         assert [f.id for f in findings] == ["AUD-403", "AUD-403", "AUD-405", "AUD-406"]
+
+    def test_semgrep_pre_rename_metadata_key_is_still_read(self):
+        assert SemgrepAdapter._rule_id("custom.rule", {"aisg_rule": "aud-402"}, {}) == "AUD-402"
+        both = {"aisafe_rule": "AUD-401", "aisg_rule": "AUD-402"}
+        assert SemgrepAdapter._rule_id("custom.rule", both, {}) == "AUD-401"
 
     def test_promptfoo(self):
         findings = PromptfooAdapter().parse(
@@ -466,8 +471,8 @@ class TestRuleMeta:
             assert meta.id == rule_id
             alternatives = meta.recommendation.alternatives
             assert len(alternatives) >= 3, rule_id
-            assert any("aisg" not in alt.lower() for alt in alternatives), rule_id
-            assert any("aisg" in alt.lower() for alt in alternatives), rule_id
+            assert any("aisafe" not in alt.lower() for alt in alternatives), rule_id
+            assert any("aisafe" in alt.lower() for alt in alternatives), rule_id
             assert meta.controls
             assert meta.priority == int(rule_id.split("-")[1][:-2])
 
@@ -482,7 +487,7 @@ class TestRuleMeta:
 
     def test_registry_wins_when_present(self):
         try:
-            from aisg.devtools.audit.rules import rule_by_id
+            from aisafe.devtools.audit.rules import rule_by_id
         except Exception:  # registry not built yet: nothing to compare against
             pytest.skip("rule registry unavailable")
         rule = rule_by_id("AUD-501")
@@ -664,7 +669,7 @@ class TestRun:
         assert by_name["pip-audit"].network is True
         assert [u for u in unknown if u.category is UnknownCategory.TOOLS] == unknown
         assert len(unknown) == 1 and "osv-scanner" in unknown[0].why
-        assert "aisg audit" in unknown[0].how_to_resolve
+        assert "aisafe audit" in unknown[0].how_to_resolve
 
         for argv in fake.calls:
             assert Path(argv[0]).stem.lower() not in FORBIDDEN_LAUNCHERS
@@ -750,7 +755,7 @@ class TestRun:
             if result.status is Status.NOT_ON_PATH:
                 assert len(unknown) == 1, name
                 assert unknown[0].category is UnknownCategory.TOOLS
-                assert "aisg audit" in unknown[0].how_to_resolve
+                assert "aisafe audit" in unknown[0].how_to_resolve
                 assert adapter.install_hint in unknown[0].how_to_resolve
                 assert unknown[0].rule_ids == adapter.rule_ids
             elif result.status is Status.NOT_APPLICABLE:
@@ -899,7 +904,7 @@ class TestVocabulary:
 
     def test_unknown_items_name_commands_as_text(self):
         for adapter in ADAPTERS.values():
-            item = adapter.unknown("why", f"{adapter.install_hint} && aisg audit .")
+            item = adapter.unknown("why", f"{adapter.install_hint} && aisafe audit .")
             assert item.category is UnknownCategory.TOOLS
-            assert item.how_to_resolve.endswith("aisg audit .")
+            assert item.how_to_resolve.endswith("aisafe audit .")
             assert item.rule_ids == adapter.rule_ids

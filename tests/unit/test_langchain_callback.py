@@ -16,10 +16,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from aisg.core.pipeline import GuardrailPipeline
-from aisg.integrations.langchain_callback import LangChainGuardrailCallback
-from aisg.modules.input.pii_detector import PII_TOKEN_MAP_KEY, PIIDetector, PIIRestorer
-from aisg.modules.processing.tool_policy import ToolPolicy, ToolPolicyGuard
+from aisafe.core.pipeline import GuardrailPipeline
+from aisafe.integrations.langchain_callback import LangChainGuardrailCallback
+from aisafe.modules.input.pii_detector import PII_TOKEN_MAP_KEY, PIIDetector, PIIRestorer
+from aisafe.modules.processing.tool_policy import ToolPolicy, ToolPolicyGuard
 
 
 def _pipeline(**guard_kwargs) -> GuardrailPipeline:

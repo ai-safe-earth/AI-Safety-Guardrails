@@ -1,12 +1,12 @@
 # attest-levels.yaml
 # ---------------------------------------------------------------------------
-# The criteria `aisg attest` evaluates. A level is reached when every criterion of
+# The criteria `aisafe attest` evaluates. A level is reached when every criterion of
 # that level and of every level below it is met. The level is a list of criteria met
 # on a date, signed by a named owner; it is not a compliance verdict, and no renderer
 # calls it one.
 #
-# Shipped in the wheel (src/aisg/config/) and mirrored at config/; the two are kept
-# identical by a test. `--level-criteria PATH` points `aisg attest` at another file.
+# Shipped in the wheel (src/aisafe/config/) and mirrored at config/; the two are kept
+# identical by a test. `--level-criteria PATH` points `aisafe attest` at another file.
 #
 # Criterion kinds (attest.CRITERION_KINDS):
 #   report_present(max_age_days)          an audit report, fresh enough

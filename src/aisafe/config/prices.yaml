@@ -1,0 +1,72 @@
+# prices.yaml -- list prices `aisafe decide` joins token counts with.
+#
+# This file is DATA copied by a person from the provider pricing pages on `as_of`,
+# and it says so: every dollar the decision tool prints carries this date, and a
+# table older than `stale_after_days` marks every figure `stale`. Nothing fetches a
+# price; the audit and the decision never open a socket. A model that is not listed
+# renders `unavailable` and names itself -- it is never guessed. To add one, copy
+# the figure from the provider's own page, add the page to `sources`, and move
+# `as_of` to the day you did it.
+#
+# Units: USD per million tokens. `free: true` is a hosted model that charges nothing
+# (a moderation endpoint); `local: true` runs on the operator's own hardware, which
+# this table does not price (both cost 0.0 here, labelled so).
+schema: aisg/1
+kind: prices
+as_of: 2026-10-19
+currency: USD
+unit: usd_per_million_tokens
+stale_after_days: 90
+sources:
+  - https://platform.claude.com/docs/en/about-claude/pricing
+  - https://platform.openai.com/docs/guides/moderation
+models:
+  # --- Anthropic (the defaults of PromptInjectionGuard, ToxicityFilter and ClaudeJudge,
+  #     plus the current generation a deployer is likely to configure). `cached_input`
+  #     is the cache-hit (read) price.
+  claude-sonnet-4-20250514:
+    provider: anthropic
+    input_usd_per_mtok: 3.0
+    output_usd_per_mtok: 15.0
+    cached_input_usd_per_mtok: 0.30
+    # Listed as retired except on Bedrock and Google Cloud on the as_of date; still the
+    # shipped default of the two inline judges, so it stays priced.
+  claude-haiku-4-5-20251001:
+    provider: anthropic
+    input_usd_per_mtok: 1.0
+    output_usd_per_mtok: 5.0
+    cached_input_usd_per_mtok: 0.10
+    aliases: [claude-haiku-4-5]
+  claude-haiku-5-5:
+    provider: anthropic
+    input_usd_per_mtok: 0.10
+    output_usd_per_mtok: 0.50
+    cached_input_usd_per_mtok: 0.01
+    # The tier for prompts up to 100,000 tokens; the page prices longer prompts at 5x.
+  claude-sonnet-5-5:
+    provider: anthropic
+    input_usd_per_mtok: 2.0
+    output_usd_per_mtok: 10.0
+    cached_input_usd_per_mtok: 0.10
+  claude-opus-5-5:
+    provider: anthropic
+    input_usd_per_mtok: 4.0
+    output_usd_per_mtok: 20.0
+    cached_input_usd_per_mtok: 0.20
+  # --- OpenAI moderation: free to use (the default of OpenAIModerationJudge).
+  omni-moderation-latest:
+    provider: openai
+    free: true
+  # --- LlamaGuard run locally (LlamaGuardJudge providers ollama and huggingface).
+  llama-guard3:
+    provider: ollama
+    local: true
+  meta-llama/Llama-Guard-3-8B:
+    provider: huggingface
+    local: true
+  # --- Not listed on purpose: LlamaGuardJudge's hosted defaults `llama-guard-3-8b`
+  #     (groq) and `Meta-Llama/Llama-Guard-3-8B` (together). On the as_of date neither
+  #     provider's public model list carried a Llama Guard 3 price (Groq lists Prompt
+  #     Guard 2 only; Together offers no serverless moderation model), so a figure here
+  #     would be invented. They render `unavailable` with the model named until someone
+  #     copies a published price and adds the page to `sources`.

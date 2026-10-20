@@ -19,10 +19,10 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.euaiact_lint import main
-from aisg.devtools.misalignment_check import TOOL as MISALIGN_TOOL
-from aisg.devtools.misalignment_check import main as misalign_main
-from aisg.modules.policy.code_analyzer.analyzer import (
+from aisafe.devtools.euaiact_lint import main
+from aisafe.devtools.misalignment_check import TOOL as MISALIGN_TOOL
+from aisafe.devtools.misalignment_check import main as misalign_main
+from aisafe.modules.policy.code_analyzer.analyzer import (
     DEFAULT_TOOL,
     IGNORE_MARKER,
     MARKER_LINES,
@@ -35,13 +35,13 @@ from aisg.modules.policy.code_analyzer.analyzer import (
     ignored_rules,
     is_excluded,
 )
-from aisg.modules.policy.code_analyzer.reporters import (
+from aisafe.modules.policy.code_analyzer.reporters import (
     JSONReporter,
     MarkdownReporter,
     SARIFReporter,
     TerminalReporter,
 )
-from aisg.modules.policy.code_analyzer.rules import ALL_RULES
+from aisafe.modules.policy.code_analyzer.rules import ALL_RULES
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -202,8 +202,8 @@ class TestLineSuppression:
     @pytest.mark.parametrize(
         "rel",
         [
-            "src/aisg/modules/policy/code_analyzer/rules/__init__.py",
-            "src/aisg/devtools/misalignment/rules/__init__.py",
+            "src/aisafe/modules/policy/code_analyzer/rules/__init__.py",
+            "src/aisafe/devtools/misalignment/rules/__init__.py",
         ],
     )
     def test_rule_tables_count_physical_lines(self, rel):
@@ -226,7 +226,7 @@ class TestLineSuppression:
 
 
 # ---------------------------------------------------------------------------
-# Tool scoping: the analyzer is shared with `aisg misalign`
+# Tool scoping: the analyzer is shared with `aisafe misalign`
 # ---------------------------------------------------------------------------
 
 ALIGN_TRIPWIRE = "skip" + "_" + "guardrail"  # trips ALIGN-001, assembled so this file does not
@@ -234,7 +234,7 @@ ALIGN_RULE = "ALIGN-001"
 
 
 def _align_rule():
-    from aisg.devtools.misalignment.rules import MISALIGNMENT_RULES
+    from aisafe.devtools.misalignment.rules import MISALIGNMENT_RULES
 
     return [r for r in MISALIGNMENT_RULES if r.rule_id == ALIGN_RULE]
 
@@ -389,7 +389,7 @@ class TestDiffBranch:
         assert [f.file for f in report.findings] == [str(kept)]
 
     def test_staged_run_honours_the_pyproject_exclude(self, tmp_path, monkeypatch):
-        """The shipped pre-commit hook is `aisg lint --staged --errors-only`.
+        """The shipped pre-commit hook is `aisafe lint --staged --errors-only`.
         A staged fixture must not block the commit when the full scan excludes it."""
         _write(tmp_path, "src/app.py", "x = 1\n")
         _write(tmp_path, "tests/fixtures/bad.py", f"x = '{TRIPWIRE}'\n")
@@ -398,7 +398,7 @@ class TestDiffBranch:
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "aisg.devtools.euaiact_lint.subprocess.run",
+            "aisafe.devtools.euaiact_lint.subprocess.run",
             lambda *a, **k: _Completed(0, "src/app.py\ntests/fixtures/bad.py\n"),
         )
         out = tmp_path / "r.json"
@@ -410,7 +410,10 @@ class TestDiffBranch:
 
     @pytest.mark.parametrize(
         ("entry", "module"),
-        [(main, "aisg.devtools.euaiact_lint"), (misalign_main, "aisg.devtools.misalignment_check")],
+        [
+            (main, "aisafe.devtools.euaiact_lint"),
+            (misalign_main, "aisafe.devtools.misalignment_check"),
+        ],
         ids=["lint", "misalign"],
     )
     def test_a_failing_git_diff_is_fatal(self, entry, module, monkeypatch, capsys):
@@ -430,13 +433,13 @@ class TestDiffBranch:
         def _missing(*a, **k):
             raise FileNotFoundError("git")
 
-        monkeypatch.setattr("aisg.devtools.euaiact_lint.subprocess.run", _missing)
+        monkeypatch.setattr("aisafe.devtools.euaiact_lint.subprocess.run", _missing)
         assert main(["--diff", "--format", "json"]) == 2
         assert "cannot run git" in capsys.readouterr().err
 
     def test_no_changed_python_files_is_a_clean_zero(self, monkeypatch, capsys):
         monkeypatch.setattr(
-            "aisg.devtools.euaiact_lint.subprocess.run",
+            "aisafe.devtools.euaiact_lint.subprocess.run",
             lambda *a, **k: _Completed(0, "README.md\n"),
         )
         assert main(["--staged"]) == 0
@@ -649,7 +652,7 @@ class TestSARIF:
         assert uri == "src/app.py"
 
     def test_a_real_scan_is_uploadable(self, tmp_path):
-        """The shape CI uploads: `aisg lint src examples --format sarif` on our own tree."""
+        """The shape CI uploads: `aisafe lint src examples --format sarif` on our own tree."""
         out = tmp_path / "results.sarif"
         main([str(REPO_ROOT / "src"), str(REPO_ROOT / "examples"), "-f", "sarif", "-o", str(out)])
         doc = json.loads(out.read_text(encoding="utf-8"))
@@ -706,18 +709,18 @@ class TestComplianceGate:
         """The marker is for files that ARE the rule tables. Nothing else earns it,
         and each tool's marker sits only on that tool's own tables."""
         assert self._marked(DEFAULT_TOOL) == [
-            "src/aisg/devtools/audit/persons_patterns.py",
-            "src/aisg/modules/policy/code_analyzer/rules/__init__.py",
-            "src/aisg/modules/policy/eu_ai_act.py",
+            "src/aisafe/devtools/audit/persons_patterns.py",
+            "src/aisafe/modules/policy/code_analyzer/rules/__init__.py",
+            "src/aisafe/modules/policy/eu_ai_act.py",
         ]
         assert self._marked(MISALIGN_TOOL) == [
-            "src/aisg/devtools/audit/persons_patterns.py",
-            "src/aisg/devtools/misalignment/rules/__init__.py",
+            "src/aisafe/devtools/audit/persons_patterns.py",
+            "src/aisafe/devtools/misalignment/rules/__init__.py",
         ]
 
 
 class TestCITemplates:
-    """The two CI files that call `aisg lint`. Both are checked into the repo,
+    """The two CI files that call `aisafe lint`. Both are checked into the repo,
     so both must parse, pin what they install, and never call the linter in a
     way that hides a broken run behind a findings exit."""
 
@@ -765,33 +768,32 @@ class TestCITemplates:
     def test_gitlab_template_pins_the_package_to_pyproject(self):
         """The template installs from this project's own repository at a tag
         that tracks pyproject.toml, never from PyPI by name: the distribution
-        (`anyaisafe`) is not published, and the importable name `aisg` belongs
-        on PyPI to an unrelated project, so a PyPI spec by either name would
-        fail to resolve or install someone else's code.
+        (`aisafe`) is not published yet, so a PyPI spec would fail to resolve
+        (or, should someone else claim the name first, install their code).
 
-        The name in the install spec must also be the distribution name, not
-        the importable one -- pip rejects a `name @ url` whose name does not
-        match the metadata of what it downloaded."""
+        The name in the install spec must be the distribution name -- pip
+        rejects a `name @ url` whose name does not match the metadata of what
+        it downloaded."""
         import re
 
         doc = self._load(self.GITLAB)
-        pin = doc["variables"]["AISG_VERSION"]
+        pin = doc["variables"]["AISAFE_VERSION"]
         m = re.search(r'^version\s*=\s*"([^"]+)"', (REPO_ROOT / "pyproject.toml").read_text(), re.M)
         assert m and pin == m.group(1), (pin, m and m.group(1))
         name = re.search(r'^name\s*=\s*"([^"]+)"', (REPO_ROOT / "pyproject.toml").read_text(), re.M)
-        assert name and name.group(1) == "anyaisafe", name and name.group(1)
-        assert doc["variables"]["AISG_SOURCE"].startswith("git+https://github.com/ai-safe-earth/")
+        assert name and name.group(1) == "aisafe", name and name.group(1)
+        assert doc["variables"]["AISAFE_SOURCE"].startswith("git+https://github.com/ai-safe-earth/")
         install = " ".join(doc[".eu-ai-act-base"]["before_script"])
-        assert f"{name.group(1)}[devtools] @ " + "${AISG_SOURCE}@v${AISG_VERSION}" in install, (
+        assert f"{name.group(1)}[devtools] @ " + "${AISAFE_SOURCE}@v${AISAFE_VERSION}" in install, (
             install
         )
         text = self.GITLAB.read_text(encoding="utf-8")
-        assert not re.search(r"\b(anyaisafe|aisg)(\[[^\]]*\])?==", text), "PyPI spec by name"
+        assert not re.search(r"\baisafe(\[[^\]]*\])?==", text), "PyPI spec by name"
         assert "pip install pyyaml" not in text
 
     @pytest.mark.parametrize("path", [GITHUB, GITLAB], ids=["github", "gitlab"])
     def test_every_gated_lint_call_tolerates_only_exit_1(self, path: Path):
-        """`aisg lint ... || [ $? -eq 1 ]` lets findings through to the verdict
+        """`aisafe lint ... || [ $? -eq 1 ]` lets findings through to the verdict
         step; a bare `|| true` or `|| EXIT_CODE=1` would also swallow exit 2 --
         or, after a `git diff`, turn a bad revision into "nothing to scan"."""
         text = path.read_text(encoding="utf-8")
@@ -806,14 +808,14 @@ class TestArticleFiveLetters:
     The code used to label biometric identification (d) and predictive policing (e)."""
 
     def test_linter_rule_005b_is_letter_h(self):
-        from aisg.modules.policy.code_analyzer.rules import ALL_RULES
+        from aisafe.modules.policy.code_analyzer.rules import ALL_RULES
 
         rule = next(r for r in ALL_RULES if r.rule_id == "EU-AIA-005b")
         assert rule.article == "Art. 5(1)(h)"
         assert "(h)" in rule.description and "(d)" not in rule.description
 
     def test_runtime_guard_labels(self):
-        from aisg.modules.policy.eu_ai_act import PROHIBITED_PATTERNS
+        from aisafe.modules.policy.eu_ai_act import PROHIBITED_PATTERNS
 
         labels = [label for _rx, label in PROHIBITED_PATTERNS]
         biometric = next(label for label in labels if "biometric" in label.lower())

@@ -13,7 +13,7 @@ Tests cover:
 
 import pytest
 
-from aisg.modules.input.advanced_injection_detectors import (
+from aisafe.modules.input.advanced_injection_detectors import (
     AdvancedInjectionDetectors,
     EncodingDetector,
     ManyShotDetector,

@@ -1,6 +1,6 @@
 """tests/unit/test_hosts.py
 -------------------------
-The shared host table: one source for `aisg skill` (where skills live) and `aisg hook`
+The shared host table: one source for `aisafe skill` (where skills live) and `aisafe hook`
 (where hooks are configured). Keys are pinned because `references/hosts.md` and the
 install tests name them.
 """
@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from aisg.devtools import hosts, skill
-from aisg.devtools.hosts import HOOK_HOSTS, HOSTS, HookSupport, Host, hook_hosts
+from aisafe.devtools import hosts, skill
+from aisafe.devtools.hosts import HOOK_HOSTS, HOSTS, HookSupport, Host, hook_hosts
 
 EXPECTED_KEYS = {"claude", "agents", "codex", "cursor", "gemini", "antigravity"}
 

@@ -1,7 +1,7 @@
 """tests/unit/test_levels_md.py
 ----------------------------
 `references/levels.md` is generated from the packaged criteria file, so the skill reads
-exactly what `aisg attest` checks. These tests pin that the committed file equals the
+exactly what `aisafe attest` checks. These tests pin that the committed file equals the
 generator's output, that `--check` catches drift, and that the text is ASCII and free of the
 report module's banned phrases.
 """
@@ -16,12 +16,12 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.attest import CRITERION_KINDS, CRITERION_READS, load_levels
-from aisg.devtools.audit.report import BANNED_PHRASES
+from aisafe.devtools.attest import CRITERION_KINDS, CRITERION_READS, load_levels
+from aisafe.devtools.audit.report import BANNED_PHRASES
 
 REPO = Path(__file__).resolve().parents[2]
 TOOL = REPO / "scripts" / "levels_md.py"
-LEVELS_MD = REPO / "src" / "aisg" / "skills" / "ai-safety-audit" / "references" / "levels.md"
+LEVELS_MD = REPO / "src" / "aisafe" / "skills" / "ai-safety-audit" / "references" / "levels.md"
 BANNED_WORD = re.compile(r"\bcl" + r"ean\b", re.IGNORECASE)
 
 

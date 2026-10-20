@@ -1,6 +1,6 @@
 """tests/unit/test_attest.py
 --------------------------
-`aisg attest` evaluates the level criteria against the documents the other commands wrote
+`aisafe attest` evaluates the level criteria against the documents the other commands wrote
 and lets a named owner sign the result. These tests pin the criteria file (shape, mirror,
 every rule id and card path real), each criterion kind met and unmet against a fixed clock,
 the cumulative level, the document (key order, ASCII, no banned phrase, badge colours),
@@ -19,10 +19,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from aisg.config import ATTEST_LEVELS_FILE, preset_path
-from aisg.devtools import attest
-from aisg.devtools._config import find_pyproject
-from aisg.devtools.attest import (
+from aisafe.config import ATTEST_LEVELS_FILE, preset_path
+from aisafe.devtools import attest
+from aisafe.devtools._config import find_pyproject
+from aisafe.devtools.attest import (
     CRITERION_KINDS,
     DISCLAIMER,
     EXIT_FATAL,
@@ -47,11 +47,11 @@ from aisg.devtools.attest import (
     validate_levels,
     validate_owner,
 )
-from aisg.devtools.audit import discover, walk
-from aisg.devtools.audit.patterns import OWN_HTML_MARKER_LINE
-from aisg.devtools.audit.report import BANNED_PHRASES
-from aisg.devtools.audit.rules import ALL_RULES
-from aisg.devtools.system_card import DEFAULT_CARD
+from aisafe.devtools.audit import discover, walk
+from aisafe.devtools.audit.patterns import OWN_HTML_MARKER_LINE
+from aisafe.devtools.audit.report import BANNED_PHRASES
+from aisafe.devtools.audit.rules import ALL_RULES
+from aisafe.devtools.system_card import DEFAULT_CARD
 
 REPO = Path(__file__).resolve().parents[2]
 NOW = dt.datetime(2026, 10, 19, 12, 0, 0, tzinfo=dt.timezone.utc)
@@ -102,7 +102,7 @@ def _report(
     doc = {
         "schema": "aisg/1",
         "kind": "audit",
-        "tool": {"name": "aisg-audit", "version": "0.1.0"},
+        "tool": {"name": "aisafe-audit", "version": "0.1.0"},
         "target": {"path": "repo", "git_sha": git_sha, "dirty": False, "exclude": []},
         "generated_at": generated_at if generated_at is not None else _stamp(),
         "disclaimer": "d",
@@ -133,7 +133,7 @@ def _baseline(fingerprints: list[str], reasons: dict[str, str] | None = None) ->
         "schema": "aisg/1",
         "kind": "audit-baseline",
         "generated_at": _stamp(NOW - dt.timedelta(days=2)),
-        "tool": {"name": "aisg-audit", "version": "0.1.0"},
+        "tool": {"name": "aisafe-audit", "version": "0.1.0"},
         "fingerprints": sorted(fingerprints),
         "accepted": [
             {"fingerprint": fp, "rule": "AUD-501", "file": "app.py:3", "reason": reason}
@@ -210,7 +210,7 @@ def _tree(
     card: dict | None = None,
 ) -> Path:
     root = tmp_path / "repo"
-    out = root / ".aisg-audit"
+    out = root / ".aisafe-audit"
     out.mkdir(parents=True)
     if report is not None:
         (out / report_name).write_text(json.dumps(report), encoding="utf-8")
@@ -257,7 +257,7 @@ def _criterion(kind: str, **params: object) -> Criterion:
 @pytest.fixture(autouse=True)
 def no_socket(monkeypatch: pytest.MonkeyPatch) -> None:
     def refuse(*args, **kwargs):
-        raise AssertionError("aisg attest opened a socket")
+        raise AssertionError("aisafe attest opened a socket")
 
     monkeypatch.setattr(socket, "socket", refuse)
     monkeypatch.setattr(socket, "create_connection", refuse)
@@ -716,7 +716,7 @@ class TestLevel:
                 "generated_at": None,
                 "age_days": None,
             }
-        assert rows["audit"]["file"] == ".aisg-audit/audit-report-after.json"
+        assert rows["audit"]["file"] == ".aisafe-audit/audit-report-after.json"
         assert rows["audit"]["age_days"] == 0
         assert doc["level"]["reached"] == 0
 
@@ -745,7 +745,7 @@ class TestDocument:
             "disclaimer",
         ]
         assert doc["schema"] == "aisg/1" and doc["kind"] == "attestation"
-        assert doc["tool"]["name"] == "aisg-attest"
+        assert doc["tool"]["name"] == "aisafe-attest"
         assert list(doc["level"]) == ["reached", "name", "statement", "criteria"]
         assert list(doc["level"]["criteria"][0]) == ["id", "level", "met", "evidence", "missing"]
         assert list(doc["inputs"][0]) == ["kind", "file", "generated_at", "age_days"]
@@ -754,7 +754,7 @@ class TestDocument:
     def test_statement_names_owner_path_commit_level_and_date(self, tmp_path: Path, levels):
         doc = self._doc(tmp_path, levels)
         assert doc["level"]["statement"] == (
-            f"{OWNER} states that repo at commit {SHA[:7]} meets the AISG level 3 (governed) "
+            f"{OWNER} states that repo at commit {SHA[:7]} meets the AnyAISafe level 3 (governed) "
             "criteria on 2026-10-19."
         )
         assert doc["target"] == {
@@ -772,7 +772,7 @@ class TestDocument:
         assert "reaches no level" in doc["level"]["statement"]
         assert badge(doc) == {
             "schemaVersion": 1,
-            "label": "aisg",
+            "label": "aisafe",
             "message": "no level (2026-10-19)",
             "color": "lightgrey",
         }
@@ -796,7 +796,7 @@ class TestDocument:
         assert doc["unknown"] == [{"category": "tools", "what": "gitleaks", "why": "not on PATH"}]
 
     def test_disclaimer_extends_the_audit_disclaimer(self, tmp_path: Path, levels):
-        from aisg.devtools.audit.model import DISCLAIMER as AUDIT
+        from aisafe.devtools.audit.model import DISCLAIMER as AUDIT
 
         doc = self._doc(tmp_path, levels)
         assert doc["disclaimer"] == DISCLAIMER
@@ -807,7 +807,7 @@ class TestDocument:
         doc = self._doc(tmp_path, levels)
         assert badge(doc) == {
             "schemaVersion": 1,
-            "label": "aisg",
+            "label": "aisafe",
             "message": "level 3 (2026-10-19)",
             "color": "informational",
         }
@@ -833,7 +833,7 @@ class TestDocument:
     def test_markdown_has_the_sections_and_the_disclaimer_first(self, tmp_path: Path, levels):
         md = render_markdown(self._doc(tmp_path, levels))
         lines = md.splitlines()
-        assert lines[0] == "# aisg attest"
+        assert lines[0] == "# aisafe attest"
         assert lines[2].startswith("> ") and "named owner" in lines[2]
         for heading in (
             "## Criteria",
@@ -850,24 +850,24 @@ class TestDocument:
     def test_html_first_line_is_the_own_output_marker(self, tmp_path: Path, levels):
         html = render_html(self._doc(tmp_path, levels))
         assert html.splitlines()[0] == OWN_HTML_MARKER_LINE
-        assert "<title>aisg attest:" in html
+        assert "<title>aisafe attest:" in html
         assert "<h1>Attestation</h1>" in html
 
     def test_attestation_is_the_toolchain_own_output(self, tmp_path: Path, levels):
         doc = self._doc(tmp_path, levels)
         root = tmp_path / "scan"
         root.mkdir()
-        attest.write_outputs(doc, root / ".aisg-audit", html=True)
+        attest.write_outputs(doc, root / ".aisafe-audit", html=True)
         (root / "app.py").write_text("x = 1\n", encoding="utf-8")
         skipped: list[str] = []
         records, _, _ = walk.walk(root, own_output_skipped=skipped)
         rels = sorted(r.relpath for r in records)
-        assert ".aisg-audit/attestation.json" not in rels
-        assert ".aisg-audit/attestation.html" not in rels
-        assert ".aisg-audit/attestation.md" in rels and ".aisg-audit/badge.json" in rels
-        assert set(skipped) == {".aisg-audit/attestation.json", ".aisg-audit/attestation.html"}
+        assert ".aisafe-audit/attestation.json" not in rels
+        assert ".aisafe-audit/attestation.html" not in rels
+        assert ".aisafe-audit/attestation.md" in rels and ".aisafe-audit/badge.json" in rels
+        assert set(skipped) == {".aisafe-audit/attestation.json", ".aisafe-audit/attestation.html"}
         assert "attestation" in discover._OWN_OUTPUT_KINDS
-        record, unknown = discover.read_report(root / ".aisg-audit" / "attestation.json", root)
+        record, unknown = discover.read_report(root / ".aisafe-audit" / "attestation.json", root)
         assert record is None and unknown is None
 
 
@@ -888,14 +888,14 @@ class TestOwnerAndInputs:
     def test_missing_report_is_fatal_with_the_command_to_run(self, tmp_path: Path):
         root = tmp_path / "repo"
         root.mkdir()
-        with pytest.raises(AttestError, match="aisg audit"):
+        with pytest.raises(AttestError, match="aisafe audit"):
             load_inputs(root)
 
     def test_default_report_falls_back_to_the_survey_report_with_a_note(self, tmp_path: Path):
         inputs = load_inputs(_tree(tmp_path, report=_report(), report_name="audit-report.json"))
-        assert inputs.report.path == ".aisg-audit/audit-report.json"
+        assert inputs.report.path == ".aisafe-audit/audit-report.json"
         assert inputs.notes == [
-            "no .aisg-audit/audit-report-after.json; using the survey report .aisg-audit/audit-report.json"
+            "no .aisafe-audit/audit-report-after.json; using the survey report .aisafe-audit/audit-report.json"
         ]
 
     def test_wrong_kind_or_schema_is_fatal(self, tmp_path: Path):
@@ -910,7 +910,7 @@ class TestOwnerAndInputs:
 
     def test_invalid_baseline_is_fatal_not_ignored(self, tmp_path: Path):
         root = _tree(tmp_path, report=_report())
-        (root / ".aisg-audit" / "audit-baseline.json").write_text(
+        (root / ".aisafe-audit" / "audit-baseline.json").write_text(
             '{"schema": "aisg/1", "kind": "nope"}', encoding="utf-8"
         )
         with pytest.raises(AttestError, match="baseline"):
@@ -918,7 +918,7 @@ class TestOwnerAndInputs:
 
     def test_unreadable_json_is_fatal(self, tmp_path: Path):
         root = _tree(tmp_path, report=_report())
-        (root / ".aisg-audit" / "measure-report.json").write_text("{not json", encoding="utf-8")
+        (root / ".aisafe-audit" / "measure-report.json").write_text("{not json", encoding="utf-8")
         with pytest.raises(AttestError, match="not valid JSON"):
             load_inputs(root)
 
@@ -933,7 +933,7 @@ class TestCli:
         with pytest.raises(SystemExit) as exc:
             build_parser().parse_args(["--help"])
         assert exc.value.code == 0
-        assert capsys.readouterr().out.startswith("usage: aisg attest")
+        assert capsys.readouterr().out.startswith("usage: aisafe attest")
 
     def test_not_configurable_is_owner_and_check(self):
         assert NOT_CONFIGURABLE == frozenset({"owner", "check"})
@@ -943,27 +943,27 @@ class TestCli:
         code = main([str(root), "--owner", OWNER, "--html"])
         out = capsys.readouterr().out
         assert code == EXIT_OK
-        names = sorted(p.name for p in (root / ".aisg-audit").iterdir())
+        names = sorted(p.name for p in (root / ".aisafe-audit").iterdir())
         assert {"attestation.json", "attestation.md", "attestation.html", "badge.json"} <= set(
             names
         )
-        doc = json.loads((root / ".aisg-audit" / "attestation.json").read_text(encoding="utf-8"))
+        doc = json.loads((root / ".aisafe-audit" / "attestation.json").read_text(encoding="utf-8"))
         assert doc["level"]["reached"] == 3 and doc["owner"] == OWNER
         assert out.splitlines()[0] == "level reached: 3 (governed)"
         assert "written: " in out
-        badge_doc = json.loads((root / ".aisg-audit" / "badge.json").read_text(encoding="utf-8"))
+        badge_doc = json.loads((root / ".aisafe-audit" / "badge.json").read_text(encoding="utf-8"))
         assert badge_doc["color"] == "informational"
 
     def test_without_html_flag_no_html_is_written(self, tmp_path: Path, neutral_cwd: Path):
         root = _full_tree(tmp_path)
         assert main([str(root), "--owner", OWNER]) == EXIT_OK
-        assert not (root / ".aisg-audit" / "attestation.html").exists()
+        assert not (root / ".aisafe-audit" / "attestation.html").exists()
 
     def test_owner_is_required_to_write(self, tmp_path: Path, neutral_cwd: Path, capsys):
         root = _full_tree(tmp_path)
         assert main([str(root)]) == EXIT_FATAL
         assert "--owner is required" in capsys.readouterr().err
-        assert not (root / ".aisg-audit" / "attestation.json").exists()
+        assert not (root / ".aisafe-audit" / "attestation.json").exists()
 
     @pytest.mark.parametrize("owner", ["", "Zoë", "a\x01b"])
     def test_bad_owner_is_fatal(self, tmp_path: Path, neutral_cwd: Path, owner: str):
@@ -974,10 +974,10 @@ class TestCli:
         self, tmp_path: Path, neutral_cwd: Path, capsys
     ):
         root = _full_tree(tmp_path)
-        before = sorted(p.name for p in (root / ".aisg-audit").iterdir())
+        before = sorted(p.name for p in (root / ".aisafe-audit").iterdir())
         assert main([str(root), "--check"]) == EXIT_OK
         out = capsys.readouterr().out
-        assert sorted(p.name for p in (root / ".aisg-audit").iterdir()) == before
+        assert sorted(p.name for p in (root / ".aisafe-audit").iterdir()) == before
         assert (
             out.splitlines()[0] == "level reached: 2 (measured)"
         )  # unsigned: L3.owner needs an owner
@@ -1024,7 +1024,7 @@ class TestCli:
     ):
         root = _full_tree(tmp_path)
         (root / "pyproject.toml").write_text(
-            '[tool.aisg-attest]\nowner = "Config Owner"\ncheck = true\nhtml = true\nout-dir = "signed"\n',
+            '[tool.aisafe-attest]\nowner = "Config Owner"\ncheck = true\nhtml = true\nout-dir = "signed"\n',
             encoding="utf-8",
         )
         monkeypatch.chdir(root)
@@ -1034,7 +1034,7 @@ class TestCli:
         # check from pyproject is ignored: with --owner the command writes, into out-dir, with html
         assert main([".", "--owner", OWNER]) == EXIT_OK
         assert (root / "signed" / "attestation.html").exists()
-        assert not (root / ".aisg-audit" / "attestation.json").exists()
+        assert not (root / ".aisafe-audit" / "attestation.json").exists()
 
     def test_debug_self_checks_the_templates(
         self, tmp_path: Path, neutral_cwd: Path, monkeypatch: pytest.MonkeyPatch, capsys
@@ -1045,7 +1045,7 @@ class TestCli:
         assert "template self-check failed" in capsys.readouterr().err
 
     def test_console_script_routes_attest(self):
-        from aisg import cli
+        from aisafe import cli
 
         assert "attest" in cli.COMMANDS
-        assert "aisg attest ." in cli._EPILOG
+        assert "aisafe attest ." in cli._EPILOG

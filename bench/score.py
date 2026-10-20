@@ -45,16 +45,16 @@ LABELS = {
         "title": "euaiact-lint rule precision",
         "run": "python bench/run.py",
         "score": "python bench/score.py",
-        "gate": "`aisg lint --experimental`",
+        "gate": "`aisafe lint --experimental`",
     },
     "audit": {
         "csv": BENCH / "findings-audit.csv",
         "results": BENCH / "results-audit",
         "out": BENCH / "precision-audit.md",
-        "title": "aisg audit rule precision",
+        "title": "aisafe audit rule precision",
         "run": "python bench/run.py --tool audit",
         "score": "python bench/score.py --tool audit",
-        "gate": "`aisg audit --experimental`",
+        "gate": "`aisafe audit --experimental`",
     },
 }
 
@@ -182,7 +182,7 @@ def rule_metadata(tool: str) -> dict[str, dict]:
     meta: dict[str, dict] = {}
     try:
         if tool == "audit":
-            from aisg.devtools.audit.rules import ALL_RULES as AUDIT_RULES
+            from aisafe.devtools.audit.rules import ALL_RULES as AUDIT_RULES
 
             for r in AUDIT_RULES:
                 meta[r.id] = {
@@ -193,7 +193,7 @@ def rule_metadata(tool: str) -> dict[str, dict]:
                     "class_name": type(r).__name__,
                 }
             return meta
-        from aisg.modules.policy.code_analyzer.rules import ALL_RULES
+        from aisafe.modules.policy.code_analyzer.rules import ALL_RULES
     except Exception:
         return meta
     for r in ALL_RULES:

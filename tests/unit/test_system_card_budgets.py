@@ -1,15 +1,15 @@
 """tests/unit/test_system_card_budgets.py
 ---------------------------------------
 The card's `traffic:` and `budgets:` blocks: what the operator expects the system to
-carry and can afford. Written by `aisg init`, read by `aisg decide`, never verified.
+carry and can afford. Written by `aisafe init`, read by `aisafe decide`, never verified.
 """
 
 from __future__ import annotations
 
 import yaml
 
-from aisg.core.measurement import Budget
-from aisg.devtools.system_card import DEFAULT_CARD, NUMERIC_BLOCKS, render_card
+from aisafe.core.measurement import Budget
+from aisafe.devtools.system_card import DEFAULT_CARD, NUMERIC_BLOCKS, render_card
 
 
 def _card(**overrides):

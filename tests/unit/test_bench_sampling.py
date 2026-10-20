@@ -222,10 +222,10 @@ class TestAuditTool:
         proc = subprocess.run(argv, capture_output=True, text=True, timeout=120, check=False)
         assert proc.returncode == 0, proc.stderr
         text = (tmp_path / "precision-audit.md").read_text(encoding="utf-8")
-        assert text.startswith("# aisg audit rule precision")
+        assert text.startswith("# aisafe audit rule precision")
         assert "measured_precision = 0.333" in text
         assert "# AUD-501 SecretLiteral: 1/3 judged" in text or "# AUD-501 " in text
-        assert "`aisg audit --experimental`" in text
+        assert "`aisafe audit --experimental`" in text
 
 
 class TestShippedCorpusIsLabellable:

@@ -57,7 +57,7 @@ def test_every_mandatory_site_matches_its_pattern() -> None:
 
 def test_sarif_schema_version_is_not_a_site() -> None:
     """The reporter's `"version": "2.1.0"` is the SARIF schema, not ours."""
-    text = (REPO / "src/aisg/modules/policy/code_analyzer/reporters.py").read_text("utf-8")
+    text = (REPO / "src/aisafe/modules/policy/code_analyzer/reporters.py").read_text("utf-8")
     assert '"version": "2.1.0"' in text
     for site, found in bump_version.site_versions(REPO):
         if site.relpath.endswith("reporters.py"):
@@ -81,13 +81,13 @@ def test_tag_must_match_pyproject() -> None:
 
 def test_a_drifted_site_is_named(tmp_path: Path) -> None:
     _copy_sites(tmp_path)
-    init = tmp_path / "src/aisg/__init__.py"
+    init = tmp_path / "src/aisafe/__init__.py"
     init.write_text(
         init.read_text("utf-8").replace('__version__ = "', '__version__ = "9.'), "utf-8"
     )
     problems = bump_version.check(tmp_path)
     assert len(problems) == 1
-    assert problems[0].startswith("src/aisg/__init__.py: says 9.")
+    assert problems[0].startswith("src/aisafe/__init__.py: says 9.")
 
 
 def test_bump_rewrites_every_site_and_retitles_the_changelog(tmp_path: Path) -> None:

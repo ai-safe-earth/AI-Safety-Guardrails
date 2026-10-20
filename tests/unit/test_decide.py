@@ -1,6 +1,6 @@
 """tests/unit/test_decide.py
 --------------------------
-`aisg decide` joins the audit's proposed controls with the measure report, a dated
+`aisafe decide` joins the audit's proposed controls with the measure report, a dated
 price table and the declared traffic, and gives each control a verdict that is a
 deterministic function of the budgets. These tests pin the document shape, the four
 verdicts, the honesty rules (unknown never counts, estimates stay labelled, judges
@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
-from aisg.core.measurement import Budget
-from aisg.devtools import decide as decide_module
-from aisg.devtools.decide import (
+from aisafe.core.measurement import Budget
+from aisafe.devtools import decide as decide_module
+from aisafe.devtools.decide import (
     EXIT_FATAL,
     EXIT_OK,
     EXIT_OVER_BUDGET,
@@ -39,7 +39,7 @@ from aisg.devtools.decide import (
     render_markdown,
     render_terminal,
 )
-from aisg.devtools.prices import load_prices
+from aisafe.devtools.prices import load_prices
 
 REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "tests" / "fixtures" / "decide"
@@ -135,7 +135,7 @@ class TestDocumentShape:
         assert {r["id"] for r in tool_policy["rules"]} >= {"AUD-201", "AUD-103", "AUD-105"}
         assert any(r["same_control"] for r in tool_policy["rules"])
         assert "gate" in tool_policy["mechanisms"] and "budget" in tool_policy["mechanisms"]
-        assert _row(doc, "aisg measure")["kind"] == "action"
+        assert _row(doc, "aisafe measure")["kind"] == "action"
         assert _row(doc, "AuditLogger")["kind"] == "record"
         assert _row(doc, "ToolPolicy")["kind"] == "config"
         # a `none` package never makes a row
@@ -143,19 +143,19 @@ class TestDocumentShape:
 
     def test_symbol_classification_follows_the_registry(self):
         classes = guard_classes()
-        from aisg.core.registry import REGISTRY
+        from aisafe.core.registry import REGISTRY
 
         for klass, name in classes.items():
             assert REGISTRY[name].__name__ == klass
         assert classify_symbol("PIIDetector", classes) == ("pii_detector", "guard")
         assert classify_symbol("AuditLogger", classes) == ("AuditLogger", "record")
-        assert classify_symbol("aisg measure", classes) == ("aisg measure", "action")
+        assert classify_symbol("aisafe measure", classes) == ("aisafe measure", "action")
         assert classify_symbol("SomethingElse", classes) == ("SomethingElse", "config")
         for symbol in NON_GUARD_SYMBOLS:
             assert symbol not in classes
 
     def test_guard_families_name_registry_guards_and_corpus_families(self):
-        from aisg.devtools.probe import available_families
+        from aisafe.devtools.probe import available_families
 
         classes = guard_classes()
         families = set(available_families())
@@ -295,10 +295,10 @@ class TestVerdicts:
 
 class TestRenderers:
     def test_no_banned_phrase_in_templates_or_source(self):
-        from aisg.devtools.audit.report import BANNED_PHRASES
+        from aisafe.devtools.audit.report import BANNED_PHRASES
 
         assert check_templates() == []
-        source = (REPO / "src/aisg/devtools/decide.py").read_text(encoding="utf-8").lower()
+        source = (REPO / "src/aisafe/devtools/decide.py").read_text(encoding="utf-8").lower()
         for phrase in BANNED_PHRASES:
             assert phrase not in source, phrase
 
@@ -317,7 +317,7 @@ class TestRenderers:
 
     def test_markdown_is_a_pipe_table(self):
         text = render_markdown(decide(_inputs()))
-        assert text.startswith("## aisg decide")
+        assert text.startswith("## aisafe decide")
         assert re.search(r"^\| control \| rules \|", text, re.M)
 
 
@@ -325,7 +325,7 @@ class TestCLI:
     def test_missing_audit_report_exits_2_with_a_hint(self, tmp_path, capsys):
         rc = main(["--audit", str(tmp_path / "none.json"), "--card", str(tmp_path / "no-card")])
         assert rc == EXIT_FATAL
-        assert "run `aisg audit" in capsys.readouterr().err
+        assert "run `aisafe audit" in capsys.readouterr().err
 
     def test_bad_schema_exits_2(self, tmp_path, capsys):
         bad = tmp_path / "audit.json"
@@ -405,7 +405,7 @@ class TestCLI:
         assert "select" in {a.dest for a in parser._actions}
 
     def test_registered_in_the_cli(self):
-        from aisg.cli import _EPILOG, COMMANDS
+        from aisafe.cli import _EPILOG, COMMANDS
 
         assert "decide" in COMMANDS
         assert "decide" in _EPILOG

@@ -1,7 +1,7 @@
 """
 tests/unit/test_audit_vocab.py
 ------------------------------
-Pins `aisg.devtools.audit.vocab`: capability classification is token-based (not
+Pins `aisafe.devtools.audit.vocab`: capability classification is token-based (not
 substring), the risk-tier order of authority, the kill-switch vocabulary's deliberate
 exclusions, the env-read regexes, MCP implied legs, the ignore marker on line 1, and
 that no source file under the audit package spells out the banned word or a phrase.
@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.audit import vocab
-from aisg.devtools.audit.report import BANNED_PHRASES
-from aisg.devtools.audit.vocab import (
+from aisafe.devtools.audit import vocab
+from aisafe.devtools.audit.report import BANNED_PHRASES
+from aisafe.devtools.audit.vocab import (
     ALLOWLIST_SYMBOLS,
     APPROVAL_SYMBOLS,
     BUDGET_SYMBOLS,
@@ -35,8 +35,8 @@ from aisg.devtools.audit.vocab import (
     classify_tool,
     risk_tier_for,
 )
-from aisg.modules.processing.llm_tool_filter import LLMToolFilter
-from aisg.modules.processing.tool_policy import TOOL_RISK_TIERS
+from aisafe.modules.processing.llm_tool_filter import LLMToolFilter
+from aisafe.modules.processing.tool_policy import TOOL_RISK_TIERS
 
 CAPABILITY_LABELS = {
     "external_action",
@@ -62,7 +62,7 @@ LEGS = {"private", "untrusted", "external_action"}
 
 def test_line_one_is_the_ignore_marker():
     first = Path(vocab.__file__).read_text(encoding="utf-8").splitlines()[0]
-    assert first == "# aisg-audit: ignore-file"
+    assert first == "# aisafe-audit: ignore-file"
 
 
 # The word the design bans outright, assembled from fragments as `baseline.py` does so

@@ -1,6 +1,6 @@
 """tests/unit/test_measure_cost.py
 --------------------------------
-Cost is the third column of the trade and `aisg measure` reports it honestly or not
+Cost is the third column of the trade and `aisafe measure` reports it honestly or not
 at all: offline by default (no provider call, tokens estimated from the exact prompt,
 the judge marked not exercised), measured only with --allow-provider-calls, human
 routing and fail mode per guard, and the mode written into `measured_on`.
@@ -11,9 +11,9 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import patch
 
-from aisg.core.base import Action, CheckResult, GuardrailBase, GuardrailStage
-from aisg.core.measurement import DEFAULT_THRESHOLDS, LLMUsage
-from aisg.devtools.measure import (
+from aisafe.core.base import Action, CheckResult, GuardrailBase, GuardrailStage
+from aisafe.core.measurement import DEFAULT_THRESHOLDS, LLMUsage
+from aisafe.devtools.measure import (
     APPROVAL_NOTE,
     CACHE_NOTE,
     OFFLINE_NOTE_FILTER,
@@ -27,9 +27,9 @@ from aisg.devtools.measure import (
     measure_guard,
     pipeline_settings,
 )
-from aisg.devtools.probe import ProbeCase
-from aisg.modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
-from aisg.modules.llm_judges.llamaguard import LlamaGuardJudge
+from aisafe.devtools.probe import ProbeCase
+from aisafe.modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
+from aisafe.modules.llm_judges.llamaguard import LlamaGuardJudge
 
 
 def case(cid: str, payload: str, kind: str = "attack", must_survive: str = "") -> ProbeCase:
@@ -76,7 +76,7 @@ class _OpaqueJudge(LLMJudgeBase):
 
 class TestOfflineDefault:
     def test_offline_is_the_default_and_makes_no_provider_call(self):
-        from aisg.modules.input.prompt_injection import PromptInjectionGuard
+        from aisafe.modules.input.prompt_injection import PromptInjectionGuard
 
         guard = PromptInjectionGuard(llm_judge=True)
         cases = [case("b1", "what is the capital of france", kind="benign")]
@@ -92,7 +92,7 @@ class TestOfflineDefault:
         assert m.errors == []
 
     def test_inline_judge_calls_per_case_is_the_fraction_the_regex_let_through(self):
-        from aisg.modules.input.prompt_injection import PromptInjectionGuard
+        from aisafe.modules.input.prompt_injection import PromptInjectionGuard
 
         guard = PromptInjectionGuard(llm_judge=True)
         cases = [
@@ -104,7 +104,7 @@ class TestOfflineDefault:
         assert m.llm_calls_per_attack == 0.0 and m.llm_calls_per_benign == 1.0
 
     def test_toxicity_offline_restores_its_switch(self):
-        from aisg.modules.output.toxicity import ToxicityFilter
+        from aisafe.modules.output.toxicity import ToxicityFilter
 
         guard = ToxicityFilter(use_llm_judge=True)
         m = asyncio.run(measure_guard(guard, [case("b1", "have a nice day", kind="benign")]))
@@ -112,7 +112,7 @@ class TestOfflineDefault:
         assert m.llm_site == "toxicity_output:inline" and m.cost_basis == "estimated"
 
     def test_filter_offline_swaps_the_judge_and_restores_it(self):
-        from aisg.modules.input.llm_input_filter import LLMInputFilter
+        from aisafe.modules.input.llm_input_filter import LLMInputFilter
 
         judge = _UsageJudge(raise_=True)
         guard = LLMInputFilter(judge=judge)
@@ -128,8 +128,8 @@ class TestOfflineDefault:
         assert report["guards"][0]["llm_exercised"] is False
 
     def test_unknown_judge_offline_is_unavailable_not_estimated(self):
-        from aisg.devtools.measure import OFFLINE_NOTE_UNKNOWN_JUDGE
-        from aisg.modules.input.llm_input_filter import LLMInputFilter
+        from aisafe.devtools.measure import OFFLINE_NOTE_UNKNOWN_JUDGE
+        from aisafe.modules.input.llm_input_filter import LLMInputFilter
 
         guard = LLMInputFilter(judge=_OpaqueJudge())
         m = asyncio.run(measure_guard(guard, [case("a1", "x")]))
@@ -154,7 +154,7 @@ class TestOfflineDefault:
 
 class TestProviderCalls:
     def test_allow_provider_calls_reads_the_measured_usage(self):
-        from aisg.modules.input.llm_input_filter import LLMInputFilter
+        from aisafe.modules.input.llm_input_filter import LLMInputFilter
 
         judge = _UsageJudge(tokens=(40, 2))
         m = asyncio.run(
@@ -166,15 +166,15 @@ class TestProviderCalls:
         assert m.llm_calls_per_case == 1.0
 
     def test_judge_raising_with_provider_calls_lands_in_errors(self):
-        from aisg.modules.input.llm_input_filter import LLMInputFilter
+        from aisafe.modules.input.llm_input_filter import LLMInputFilter
 
         guard = LLMInputFilter(judge=_UsageJudge(raise_=True))
         m = asyncio.run(measure_guard(guard, [case("a1", "x")], provider_calls=True))
         assert m.errors and "RuntimeError" in m.errors[0]
 
     def test_cached_judge_is_cleared_before_every_timing_pass(self):
-        from aisg.modules.input.llm_input_filter import LLMInputFilter
-        from aisg.modules.llm_judges.cache import CachedJudge
+        from aisafe.modules.input.llm_input_filter import LLMInputFilter
+        from aisafe.modules.llm_judges.cache import CachedJudge
 
         class Inner(LLMJudgeBase):
             name = "inner"
@@ -211,10 +211,10 @@ class TestOtherMetrics:
         assert m.to_profile("t").human_rate == 1.0
 
     def test_fail_mode_per_guard_shape(self):
-        from aisg.modules.input.llm_input_filter import LLMInputFilter
-        from aisg.modules.input.pii_detector import PIIDetector
-        from aisg.modules.input.prompt_injection import PromptInjectionGuard
-        from aisg.modules.processing.llm_tool_filter import LLMToolFilter
+        from aisafe.modules.input.llm_input_filter import LLMInputFilter
+        from aisafe.modules.input.pii_detector import PIIDetector
+        from aisafe.modules.input.prompt_injection import PromptInjectionGuard
+        from aisafe.modules.processing.llm_tool_filter import LLMToolFilter
 
         assert fail_mode_of(PIIDetector()) == "n/a"
         assert fail_mode_of(PromptInjectionGuard()) == "n/a"
@@ -224,14 +224,14 @@ class TestOtherMetrics:
         assert fail_mode_of(LLMToolFilter(judge=_UsageJudge())) == "mixed"
 
     def test_tool_policy_without_callback_is_noted(self):
-        from aisg.modules.processing.tool_policy import ToolPolicyGuard
+        from aisafe.modules.processing.tool_policy import ToolPolicyGuard
 
         guard = ToolPolicyGuard(require_approval=["send_email"])
         m = asyncio.run(measure_guard(guard, [case("a1", "x")]))
         assert APPROVAL_NOTE in m.notes
 
     def test_benign_modified_rate_sits_beside_the_false_positive_rate(self):
-        from aisg.modules.input.pii_detector import PIIDetector
+        from aisafe.modules.input.pii_detector import PIIDetector
 
         cases = [
             case(
@@ -247,8 +247,8 @@ class TestOtherMetrics:
         assert report["guards"][0]["benign_modified_rate"] == 1.0
 
     def test_policy_guards_are_measured_only_on_request(self):
-        from aisg.config import preset_path
-        from aisg.core.pipeline import GuardrailPipeline
+        from aisafe.config import preset_path
+        from aisafe.core.pipeline import GuardrailPipeline
 
         pipeline = GuardrailPipeline.from_config(preset_path("eu_high_risk.yaml"))
         names = {g.name for g in collect_guards(pipeline)}
@@ -259,7 +259,7 @@ class TestOtherMetrics:
 class TestReportShape:
     def test_measured_on_names_the_mode_and_pipeline_block_reflects_the_config(self, tmp_path):
         offline = describe_measurement(48, 42)
-        assert offline.startswith("aisg probe corpus (48 attack + 42 benign)")
+        assert offline.startswith("aisafe probe corpus (48 attack + 42 benign)")
         assert "offline (judge calls estimated, not made)" in offline
         assert "provider calls allowed" in describe_measurement(48, 42, provider_calls=True)
         cfg = tmp_path / "p.yaml"
@@ -281,7 +281,7 @@ class TestReportShape:
         assert report["measured_on"].endswith("provider calls allowed")
 
     def test_per_guard_cost_keys_follow_errors_in_order(self):
-        from aisg.modules.input.pii_detector import PIIDetector
+        from aisafe.modules.input.pii_detector import PIIDetector
 
         m = asyncio.run(measure_guard(PIIDetector(), [case("a1", "x")]))
         guard = build_report([m], None, 1, 0, DEFAULT_THRESHOLDS)["guards"][0]
@@ -334,7 +334,7 @@ class TestReportShape:
         assert guard["llm_calls_per_case"] is None  # a regex guard has no call rate, not 0
 
     def test_report_never_carries_a_dollar_figure(self):
-        from aisg.modules.input.prompt_injection import PromptInjectionGuard
+        from aisafe.modules.input.prompt_injection import PromptInjectionGuard
 
         m = asyncio.run(
             measure_guard(PromptInjectionGuard(llm_judge=True), [case("b1", "hi", kind="benign")])

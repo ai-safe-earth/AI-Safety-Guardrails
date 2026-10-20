@@ -1,6 +1,6 @@
 """tests/unit/test_audit_discover.py
 ---
-Grep-level discovery for `aisg audit`: what the fixtures must yield, what they
+Grep-level discovery for `aisafe audit`: what the fixtures must yield, what they
 must never yield, and the honesty rules (redaction, UNKNOWN, report age).
 """
 
@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.audit import configs, discover, patterns, walk
-from aisg.devtools.audit.discover import (
+from aisafe.devtools.audit import configs, discover, patterns, walk
+from aisafe.devtools.audit.discover import (
     ConfigFacts,
     DiscoverOptions,
     ai_surface_units,
@@ -27,10 +27,10 @@ from aisg.devtools.audit.discover import (
     read_system_card,
     unit_ai_surface,
 )
-from aisg.devtools.audit.model import INVENTORY_KEYS, Hit, Inventory, UnknownCategory
-from aisg.devtools.audit.rules.observability import contact_named
-from aisg.devtools.audit.walk import FileRecord
-from aisg.devtools.system_card import DEFAULT_CARD, _yaml_scalar
+from aisafe.devtools.audit.model import INVENTORY_KEYS, Hit, Inventory, UnknownCategory
+from aisafe.devtools.audit.rules.observability import contact_named
+from aisafe.devtools.audit.walk import FileRecord
+from aisafe.devtools.system_card import DEFAULT_CARD, _yaml_scalar
 
 BASELINE_FIXTURE = "clean_py"  # the fixture with no AI surface at all
 
@@ -451,7 +451,7 @@ def test_reports_are_read_with_age(reports_root: Path) -> None:
 
 
 def test_reports_are_not_eval_entries(reports_root: Path) -> None:
-    # A report names the tool that wrote it ("aisg probe"); that is evidence of a past
+    # A report names the tool that wrote it ("aisafe probe"); that is evidence of a past
     # run, not an eval harness. The grep hit stays; the evals[] entry does not.
     (reports_root / "promptfooconfig.yaml").write_text(
         "description: promptfoo suite\nprompts: [p.txt]\ntests:\n  - vars: {q: benign question}\n",
@@ -545,7 +545,7 @@ def test_own_output_is_neither_a_report_nor_an_unknown(tmp_path: Path, kind: str
 
 
 def test_gitignored_audit_dir_report_is_still_evidence(reports_root: Path) -> None:
-    # The skill writes its measure and probe reports under `.aisg-audit/` and proposes
+    # The skill writes its measure and probe reports under `.aisafe-audit/` and proposes
     # that directory for `.gitignore`. Once the line lands the reports must still be
     # discovered, flagged as gitignored, and read with an age -- not silently pruned.
     audit_dir = reports_root / patterns.AUDIT_DIR
@@ -563,6 +563,20 @@ def test_gitignored_audit_dir_report_is_still_evidence(reports_root: Path) -> No
     assert rel in reports
     assert reports[rel].kind == "measure"
     assert reports[rel].age_source == "generated_at"
+
+
+def test_gitignored_pre_rename_audit_dir_report_is_still_evidence(reports_root: Path) -> None:
+    # A project audited by a version named `aisg` keeps its reports under `.aisg-audit/`.
+    legacy = patterns.LEGACY_AUDIT_DIRS[0]
+    (reports_root / legacy).mkdir()
+    shutil.move(
+        str(reports_root / "measure-report-new.json"), str(reports_root / legacy / "measure.json")
+    )
+    (reports_root / ".gitignore").write_text(f"{legacy}/\n", encoding="utf-8")
+
+    inv, _hits, _facts = run(reports_root)
+    reports = {r.file: r for r in inv.reports}
+    assert reports[f"{legacy}/measure.json"].kind == "measure"
 
 
 def test_read_system_card(tmp_path: Path, audit_fixture) -> None:
@@ -592,7 +606,7 @@ def test_read_system_card(tmp_path: Path, audit_fixture) -> None:
 def test_incident_contact_placeholder_counts_as_absent(
     tmp_path: Path, value: str, recorded: str | None
 ) -> None:
-    # `aisg init` writes a TODO placeholder for `incident_contact`; an unfilled one must
+    # `aisafe init` writes a TODO placeholder for `incident_contact`; an unfilled one must
     # not satisfy the contact rule the way a real contact does. The inventory records
     # the placeholder string as written (so AUD-703 can say the key is unfilled, not
     # missing), and `contact_named` reads it as absent; a YAML null or an empty
@@ -606,10 +620,10 @@ def test_incident_contact_placeholder_counts_as_absent(
     assert contact_named(inv.system_card["incident_contact"]) is False
 
 
-def test_incident_contact_from_aisg_init_defaults_is_recorded_as_written(
+def test_incident_contact_from_aisafe_init_defaults_is_recorded_as_written(
     tmp_path: Path, audit_fixture
 ) -> None:
-    # The line `aisg init --defaults` writes: the key is present, the value is the
+    # The line `aisafe init --defaults` writes: the key is present, the value is the
     # placeholder. The card must carry that string, and the string must not be a contact.
     root = tmp_path / "card"
     shutil.copytree(audit_fixture("py_agent"), root)
@@ -818,7 +832,7 @@ def test_guardrail_entries_carry_unit_and_llm_judge(tmp_path: Path) -> None:
         tmp_path,
         {
             "judge.py": """
-                from aisg import ClaudeJudge, GuardrailPipeline
+                from aisafe import ClaudeJudge, GuardrailPipeline
                 judge = ClaudeJudge(model="claude-sonnet-4-5")
                 """,
             "rails.py": "import nemoguardrails\nrails = nemoguardrails.RailsConfig()\n",
@@ -830,29 +844,29 @@ def test_guardrail_entries_carry_unit_and_llm_judge(tmp_path: Path) -> None:
                     fail_open: true
                 """,
             "svc/pyproject.toml": '[project]\nname = "svc"\n',
-            "svc/guard.py": "from aisg import PIIDetector\nd = PIIDetector()\n",
+            "svc/guard.py": "from aisafe import PIIDetector\nd = PIIDetector()\n",
         },
     )
     inv, _hits, _facts = run(root)
     entries = {(e["file"], e["lib"]): e for e in inv.guardrails}
     assert set(entries) == {
-        ("judge.py", "aisg"),
+        ("judge.py", "aisafe"),
         ("rails.py", "nemoguardrails"),
-        ("preset.yaml", "aisg_preset"),
-        ("svc/guard.py", "aisg"),
+        ("preset.yaml", "aisafe_preset"),
+        ("svc/guard.py", "aisafe"),
     }
     for entry in entries.values():
         assert set(entry) == {"lib", "file", "line", "unit", "fail_open", "llm_judge"}, entry
-    assert entries[("judge.py", "aisg")]["llm_judge"] is True
-    assert entries[("preset.yaml", "aisg_preset")]["llm_judge"] is True
-    assert entries[("preset.yaml", "aisg_preset")]["fail_open"] is True
+    assert entries[("judge.py", "aisafe")]["llm_judge"] is True
+    assert entries[("preset.yaml", "aisafe_preset")]["llm_judge"] is True
+    assert entries[("preset.yaml", "aisafe_preset")]["fail_open"] is True
     # Absence of the literal is not evidence of absence: None, never False.
     assert entries[("rails.py", "nemoguardrails")]["llm_judge"] is None
-    assert entries[("svc/guard.py", "aisg")]["llm_judge"] is None
-    assert entries[("judge.py", "aisg")]["fail_open"] is None
+    assert entries[("svc/guard.py", "aisafe")]["llm_judge"] is None
+    assert entries[("judge.py", "aisafe")]["fail_open"] is None
     units = {e["unit"] for e in entries.values()}
     assert units == {inv.units[0].id, next(u.id for u in inv.units if u.root == "svc")}
-    assert entries[("svc/guard.py", "aisg")]["unit"] != entries[("judge.py", "aisg")]["unit"]
+    assert entries[("svc/guard.py", "aisafe")]["unit"] != entries[("judge.py", "aisafe")]["unit"]
 
 
 @pytest.mark.parametrize("newline", ["\n", "\r\n"])
@@ -875,7 +889,7 @@ def test_preset_guard_anchors_on_the_key_line_after_a_blank_line(
     )
     (root / "preset.yaml").write_bytes(body.encode("utf-8"))
     inv, hits, _facts = run(root)
-    entry = next(e for e in inv.guardrails if e["lib"] == "aisg_preset")
+    entry = next(e for e in inv.guardrails if e["lib"] == "aisafe_preset")
     assert entry["line"] == 4
     hit = next(h for h in by_table(hits, "guardrail") if h.file == "preset.yaml")
     assert hit.line == 4
@@ -993,9 +1007,9 @@ def test_python_comments_and_docstrings_are_not_deployments(tmp_path: Path) -> N
                 Wraps the model with LlamaGuard and reports traces to langfuse; run
                 the promptfoo suite before deploying gpt-4o-mini.
                 """
-                # from aisg import GuardrailPipeline  -- disabled until the preset lands
+                # from aisafe import GuardrailPipeline  -- disabled until the preset lands
                 import os  # model: gpt-4o-mini
-                from aisg import GuardrailPipeline
+                from aisafe import GuardrailPipeline
                 from anthropic import Anthropic
 
                 PROMPT = """You are a helper. Never mention claude-3-5-haiku-20241022."""
@@ -1011,7 +1025,7 @@ def test_python_comments_and_docstrings_are_not_deployments(tmp_path: Path) -> N
     # The module docstring (2-6), both comment shapes (7, 8, the tail of 14) and the
     # triple-quoted prompt (12) record nothing; the live import, call and literal do.
     assert got == {
-        ("agent.py", 9, "guardrail", "aisg"),
+        ("agent.py", 9, "guardrail", "aisafe"),
         ("agent.py", 14, "model_id", "anthropic:claude-sonnet-4-5"),
         ("agent.py", 15, "llm_observability", "langfuse"),
     }
@@ -1151,22 +1165,22 @@ def test_llm_judge_flag_ignores_comments_and_docstrings(tmp_path: Path) -> None:
                 Example:
                     guard = LLMInputFilter(judge=ClaudeJudge())
                 """
-                from aisg import PromptInjectionGuard
+                from aisafe import PromptInjectionGuard
 
                 guard = PromptInjectionGuard()
                 ''',
             "commented.py": """
-                from aisg import PromptInjectionGuard
+                from aisafe import PromptInjectionGuard
                 # judge = ClaudeJudge(model="claude-sonnet-4-5")
                 use_llm_judge = False  # llm_judge: true once credentials land
                 guard = PromptInjectionGuard()
                 """,
             "wired.py": """
-                from aisg import ClaudeJudge, LLMInputFilter
+                from aisafe import ClaudeJudge, LLMInputFilter
                 guard = LLMInputFilter(judge=ClaudeJudge())
                 """,
             "trailing.py": """
-                from aisg import ClaudeJudge  # ClaudeJudge() is wired below
+                from aisafe import ClaudeJudge  # ClaudeJudge() is wired below
                 judge = ClaudeJudge()
                 """,
             "presets/commented.yaml": """
@@ -1456,7 +1470,7 @@ def test_literal_filter_extracts_required_text() -> None:
 # ---------------------------------------------------------------------------
 
 AUDIT_PACKAGE = Path(discover.__file__).resolve().parent
-# discover.py embeds `_AISG_GUARD_RE`, a literal naming every guard registry name;
+# discover.py embeds `_AISAFE_GUARD_RE`, a literal naming every guard registry name;
 # patterns.py and vocab.py are the detection tables themselves. None of the three
 # may be scanned by a self-audit, or the vocabulary reads as a deployment.
 SELF_VOCABULARY_SOURCES = ("discover.py", "patterns.py", "vocab.py")

@@ -48,14 +48,14 @@ input:
   topic_classifier:
     # Disabled because no `topic_classifier` guard is registered -- enabling it
     # made GuardrailPipeline.from_config() raise, so this entire preset could
-    # not be loaded. Found by `aisg measure`. Re-enable once the guard exists.
+    # not be loaded. Found by `aisafe measure`. Re-enable once the guard exists.
     enabled: false
     # Configure allowed_topics per your system's intended purpose (Art. 13)
 
   toxicity_input:
     # NOT IMPLEMENTED: no guard of this name is registered, so enabling it
     # made GuardrailPipeline.from_config() raise and this whole preset
-    # unloadable. Found by `aisg measure`. Re-enable when the guard exists.
+    # unloadable. Found by `aisafe measure`. Re-enable when the guard exists.
     enabled: false
     threshold: 0.5             # Lower threshold = more strict
 
@@ -105,14 +105,14 @@ processing:
   context_control:
     # NOT IMPLEMENTED: no guard of this name is registered, so enabling it
     # made GuardrailPipeline.from_config() raise and this whole preset
-    # unloadable. Found by `aisg measure`. Re-enable when the guard exists.
+    # unloadable. Found by `aisafe measure`. Re-enable when the guard exists.
     enabled: false
     max_rag_results: 3         # Data minimization principle
 
   memory_hygiene:
     # NOT IMPLEMENTED: no guard of this name is registered, so enabling it
     # made GuardrailPipeline.from_config() raise and this whole preset
-    # unloadable. Found by `aisg measure`. Re-enable when the guard exists.
+    # unloadable. Found by `aisafe measure`. Re-enable when the guard exists.
     enabled: false
     ttl_seconds: 1800          # 30 min session memory limit
     max_memory_tokens: 2048
@@ -126,7 +126,7 @@ output:
 
   manipulation_output:
     enabled: true
-    action: flag               # measured before blocking; see aisg measure
+    action: flag               # measured before blocking; see aisafe measure
     min_severity: medium
     use_llm_judge: false
 
@@ -142,7 +142,7 @@ output:
   hallucination:
     # NOT IMPLEMENTED: no guard of this name is registered, so enabling it
     # made GuardrailPipeline.from_config() raise and this whole preset
-    # unloadable. Found by `aisg measure`. Re-enable when the guard exists.
+    # unloadable. Found by `aisafe measure`. Re-enable when the guard exists.
     enabled: false
     threshold: 0.5
     citation_required: true
@@ -150,7 +150,7 @@ output:
   content_policy:
     # NOT IMPLEMENTED: no guard of this name is registered, so enabling it
     # made GuardrailPipeline.from_config() raise and this whole preset
-    # unloadable. Found by `aisg measure`. Re-enable when the guard exists.
+    # unloadable. Found by `aisafe measure`. Re-enable when the guard exists.
     enabled: false
 
 policy:
@@ -173,7 +173,7 @@ policy:
   gdpr:
     # NOT IMPLEMENTED: no guard of this name is registered, so enabling it
     # made GuardrailPipeline.from_config() raise and this whole preset
-    # unloadable. Found by `aisg measure`. Re-enable when the guard exists.
+    # unloadable. Found by `aisafe measure`. Re-enable when the guard exists.
     enabled: false
     data_minimization: true
     purpose_limitation: true

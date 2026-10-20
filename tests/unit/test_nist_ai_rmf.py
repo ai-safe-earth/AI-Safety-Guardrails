@@ -7,8 +7,8 @@ Run: pytest tests/ -v
 
 import pytest
 
-from aisg.core.base import Action, Severity
-from aisg.modules.policy.nist_ai_rmf import ImpactLevel, NISTAIRMFCompliance
+from aisafe.core.base import Action, Severity
+from aisafe.modules.policy.nist_ai_rmf import ImpactLevel, NISTAIRMFCompliance
 
 # ---------------------------------------------------------------------------
 # Helpers

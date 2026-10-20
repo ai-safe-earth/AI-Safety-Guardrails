@@ -1,6 +1,6 @@
 """tests/unit/test_audit_only.py
 ------------------------------
-`aisg audit --only PATH`: the file-scoped run the agent hook uses after an edit. The
+`aisafe audit --only PATH`: the file-scoped run the agent hook uses after an edit. The
 tree is walked as usual (excludes, gitignore, marker, size limit), only the records are
 filtered, and the rule set is `FILE_LOCAL_RULES` unless `--rules` is given. The one
 invariant that matters: a finding a partial run reports carries the fingerprint the full
@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools._config import find_pyproject
-from aisg.devtools.audit import discover, report, walk
-from aisg.devtools.audit.main import FILE_LOCAL_RULES, NOT_CONFIGURABLE, AuditOptions, main
+from aisafe.devtools._config import find_pyproject
+from aisafe.devtools.audit import discover, report, walk
+from aisafe.devtools.audit.main import FILE_LOCAL_RULES, NOT_CONFIGURABLE, AuditOptions, main
 
 REPO = Path(__file__).resolve().parents[2]
 PY_AGENT = REPO / "tests" / "fixtures" / "audit" / "py_agent"
@@ -169,7 +169,7 @@ class TestRuleSelection:
     def test_only_is_never_a_pyproject_default(self, tmp_path, neutral_cwd):
         assert "only" in NOT_CONFIGURABLE
         (neutral_cwd / "pyproject.toml").write_text(
-            '[tool.aisg-audit]\nonly = ["app.py"]\n', encoding="utf-8"
+            '[tool.aisafe-audit]\nonly = ["app.py"]\n', encoding="utf-8"
         )
         _rc, doc = _run(tmp_path)
         assert doc["target"]["only"] == []

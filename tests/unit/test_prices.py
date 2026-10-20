@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from aisg.config import PRICES_FILE, preset_path
-from aisg.devtools import prices as prices_module
-from aisg.devtools.prices import (
+from aisafe.config import PRICES_FILE, preset_path
+from aisafe.devtools import prices as prices_module
+from aisafe.devtools.prices import (
     Price,
     PricesError,
     load_prices,
@@ -50,11 +50,11 @@ class TestShippedTable:
     def test_the_shipped_default_judge_models_are_covered_or_named_as_missing(self):
         """Every model id a shipped guard or judge defaults to is either in the table
         or explicitly discussed in the file: nothing silently unpriced."""
-        from aisg.modules.input.prompt_injection import PromptInjectionGuard
-        from aisg.modules.llm_judges.claude_judge import ClaudeJudge
-        from aisg.modules.llm_judges.llamaguard import _DEFAULT_MODELS
-        from aisg.modules.llm_judges.openai_mod import OpenAIModerationJudge
-        from aisg.modules.output.toxicity import ToxicityFilter
+        from aisafe.modules.input.prompt_injection import PromptInjectionGuard
+        from aisafe.modules.llm_judges.claude_judge import ClaudeJudge
+        from aisafe.modules.llm_judges.llamaguard import _DEFAULT_MODELS
+        from aisafe.modules.llm_judges.openai_mod import OpenAIModerationJudge
+        from aisafe.modules.output.toxicity import ToxicityFilter
 
         defaults = {
             PromptInjectionGuard().llm_judge_model,
@@ -114,14 +114,22 @@ class TestParsing:
 class TestResolution:
     def test_order_is_flag_env_pyproject_packaged(self, tmp_path, monkeypatch):
         monkeypatch.delenv(prices_module.PRICES_ENV, raising=False)
+        monkeypatch.delenv(prices_module.LEGACY_PRICES_ENV, raising=False)
         packaged = resolve_prices_path(start=tmp_path)
         assert packaged.name == PRICES_FILE
         project = tmp_path / "pyproject.toml"
-        project.write_text('[tool.aisg-decide]\nprices = "my-prices.yaml"\n', encoding="utf-8")
+        project.write_text('[tool.aisafe-decide]\nprices = "my-prices.yaml"\n', encoding="utf-8")
         assert resolve_prices_path(start=tmp_path) == Path("my-prices.yaml")
         monkeypatch.setenv(prices_module.PRICES_ENV, "env-prices.yaml")
         assert resolve_prices_path(start=tmp_path) == Path("env-prices.yaml")
         assert resolve_prices_path("flag.yaml", start=tmp_path) == Path("flag.yaml")
+
+    def test_pre_rename_variable_is_read_when_the_new_one_is_unset(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(prices_module.PRICES_ENV, raising=False)
+        monkeypatch.setenv(prices_module.LEGACY_PRICES_ENV, "old-prices.yaml")
+        assert resolve_prices_path(start=tmp_path) == Path("old-prices.yaml")
+        monkeypatch.setenv(prices_module.PRICES_ENV, "env-prices.yaml")
+        assert resolve_prices_path(start=tmp_path) == Path("env-prices.yaml")
 
     def test_missing_file_is_a_prices_error(self, tmp_path):
         with pytest.raises(PricesError, match="not readable"):
@@ -130,7 +138,7 @@ class TestResolution:
     def test_module_never_imports_a_network_library(self):
         import re
 
-        source = (REPO / "src/aisg/devtools/prices.py").read_text(encoding="utf-8")
+        source = (REPO / "src/aisafe/devtools/prices.py").read_text(encoding="utf-8")
         pattern = re.compile(
             r"^\s*(?:import|from)\s+(socket|urllib|requests|aiohttp|httpx)\b", re.M
         )

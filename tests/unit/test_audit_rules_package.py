@@ -8,7 +8,7 @@ tree with that symbol wired the way the rule's `alternatives` describe. Wiring
 the symbol must silence the rule, through the real walk -> discover -> pydeep
 output (`audit_context` from conftest), on the AST tier and on the grep tier.
 
-Where the wiring is a document the package writes (`aisg init`, `aisg
+Where the wiring is a document the package writes (`aisafe init`, `aisafe
 measure`), the wired tree holds the document the real renderer produces
 (`system_card.main --defaults`, `measure.build_report`), not a hand-typed
 imitation of it.
@@ -27,17 +27,17 @@ from pathlib import Path
 
 import pytest
 
-from aisg.core.measurement import Thresholds
-from aisg.devtools import system_card
-from aisg.devtools.audit.rules import ALL_RULES, rule_by_id
-from aisg.devtools.audit.rules.irreversible import InertGate
-from aisg.devtools.measure import DEFAULT_REPORT, GuardMeasurement, build_report
+from aisafe.core.measurement import Thresholds
+from aisafe.devtools import system_card
+from aisafe.devtools.audit.rules import ALL_RULES, rule_by_id
+from aisafe.devtools.audit.rules.irreversible import InertGate
+from aisafe.devtools.measure import DEFAULT_REPORT, GuardMeasurement, build_report
 
 # ---------------------------------------------------------------------------
 # The shared tree: one Anthropic call (the AI surface), optionally three tools
 # ---------------------------------------------------------------------------
 
-PYPROJECT = '[project]\nname = "loop"\ndependencies = ["anthropic", "anyaisafe"]\n'
+PYPROJECT = '[project]\nname = "loop"\ndependencies = ["anthropic", "aisafe"]\n'
 
 AGENT_PY = '''"""agent.py
 --------
@@ -197,7 +197,7 @@ TOOLS = {
 TOOLS_PY = TOOLS_HEAD + SEND_EMAIL_UNGATED + TOOLS_TAIL
 TOOLS_GATED_PY = (
     TOOLS_HEAD.replace("import smtplib\n", "import asyncio\nimport smtplib\n").replace(
-        "import requests\n", "import requests\n\nfrom aisg import ToolPolicyGuard\n"
+        "import requests\n", "import requests\n\nfrom aisafe import ToolPolicyGuard\n"
     )
     + SEND_EMAIL_GATED
     + TOOLS_TAIL
@@ -206,7 +206,7 @@ TOOLS_GATED_PY = (
 # AUD-103: ToolPolicy(argument_rules=...) is the package's allowlist on a tool's arguments.
 POLICY_ARGUMENT_RULES_PY = """from __future__ import annotations
 
-from aisg import ToolPolicy, ToolPolicyGuard
+from aisafe import ToolPolicy, ToolPolicyGuard
 
 FETCH_POLICY = ToolPolicy(
     allow=["fetch_url"],
@@ -218,7 +218,7 @@ guard = ToolPolicyGuard(policies={"user": FETCH_POLICY})
 # AUD-105: the per-session budget the guard keeps in the shared context dict.
 POLICY_BUDGET_PY = """from __future__ import annotations
 
-from aisg import ToolPolicyGuard
+from aisafe import ToolPolicyGuard
 
 guard = ToolPolicyGuard(max_tool_calls_per_session=20, max_calls_per_tool=5)
 """
@@ -226,13 +226,13 @@ guard = ToolPolicyGuard(max_tool_calls_per_session=20, max_calls_per_tool=5)
 # AUD-202: the shape pydeep marks inert, and the same guard with a real callback.
 GATE_INERT_PY = """from __future__ import annotations
 
-from aisg import ToolPolicyGuard
+from aisafe import ToolPolicyGuard
 
 guard = ToolPolicyGuard(require_approval=True)
 """
 GATE_LIVE_PY = """from __future__ import annotations
 
-from aisg import ToolPolicyGuard
+from aisafe import ToolPolicyGuard
 
 
 async def ask_operator(tool: str, args: dict, context: dict) -> bool:
@@ -246,7 +246,7 @@ guard = ToolPolicyGuard(require_approval=["send_email"], approval_callback=ask_o
 # callback is missing.
 GATE_INERT_LIST_PY = """from __future__ import annotations
 
-from aisg import ToolPolicyGuard
+from aisafe import ToolPolicyGuard
 
 guard = ToolPolicyGuard(require_approval=["send_email"])
 """
@@ -254,8 +254,8 @@ guard = ToolPolicyGuard(require_approval=["send_email"])
 # AUD-701: the package's tracer, constructed once and handed to the pipeline.
 TELEMETRY_PY = """from __future__ import annotations
 
-from aisg import GuardrailPipeline
-from aisg.modules.observability.otel import TelemetryProvider
+from aisafe import GuardrailPipeline
+from aisafe.modules.observability.otel import TelemetryProvider
 
 telemetry = TelemetryProvider(service_name="loop", exporter="otlp")
 pipeline = GuardrailPipeline(telemetry_provider=telemetry)
@@ -264,7 +264,7 @@ pipeline = GuardrailPipeline(telemetry_provider=telemetry)
 # AUD-801 / AUD-802 / AUD-903: a preset and the pipeline built from it.
 PIPELINE_PY = """from __future__ import annotations
 
-from aisg import GuardrailPipeline
+from aisafe import GuardrailPipeline
 
 pipeline = GuardrailPipeline.from_config("guardrails.yaml")
 """
@@ -278,7 +278,7 @@ PRESET_JUDGE_MODEL_YAML = (
 # AUD-804: an LLMJudgeBase subclass constructed with the defaults, then bounded.
 JUDGE_HEAD = """from __future__ import annotations
 
-from aisg.modules.llm_judges.base import LLMJudgeBase
+from aisafe.modules.llm_judges.base import LLMJudgeBase
 
 
 class LLMJudgeVerdict(LLMJudgeBase):
@@ -303,8 +303,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install "anyaisafe[devtools]"
-      - run: aisg measure --config guardrails.yaml --output measure-report.json
+      - run: pip install "aisafe[devtools]"
+      - run: aisafe measure --config guardrails.yaml --output measure-report.json
 """
 
 # AUD-903: a report from before the model changed. The date is fixed in the past so
@@ -340,7 +340,7 @@ def _overlay(files: dict[str, str]) -> Callable[[Path], None]:
 
 
 def _wire_measure_report(root: Path) -> None:
-    """The document `aisg measure` writes, for the preset in the tree, dated now."""
+    """The document `aisafe measure` writes, for the preset in the tree, dated now."""
     measured = GuardMeasurement(
         guard_name="prompt_injection",
         stage="input",
@@ -355,7 +355,7 @@ def _wire_measure_report(root: Path) -> None:
 
 
 def _wire_system_card(root: Path) -> None:
-    """`aisg init --defaults`, through the real renderer."""
+    """`aisafe init --defaults`, through the real renderer."""
     assert system_card.main(["--defaults", "--output", str(root / "ai-system-card.yaml")]) == 0
 
 
@@ -399,14 +399,14 @@ COMPANION_PROMPT_MD = "# Companion\n\nYour goal is to maximize engagement and da
 
 DISCLOSURE_GUARD_PY = """from __future__ import annotations
 
-from aisg import AIDisclosureGuard
+from aisafe import AIDisclosureGuard
 
 disclosure = AIDisclosureGuard(action="redact", disclosure="I am an AI assistant.")
 """
 
 MANIPULATION_GUARD_PY = """from __future__ import annotations
 
-from aisg import AIDisclosureGuard, ManipulationGuard
+from aisafe import AIDisclosureGuard, ManipulationGuard
 
 output_guards = [ManipulationGuard(action="flag"), AIDisclosureGuard(action="flag")]
 """
@@ -445,7 +445,7 @@ CASES = [
     ),
     Case(
         "AUD-801",
-        "aisg measure",
+        "aisafe measure",
         {
             "pyproject.toml": PYPROJECT,
             "agent.py": AGENT_PY,
@@ -473,13 +473,13 @@ CASES = [
     ),
     Case(
         "AUD-901",
-        "aisg measure",
+        "aisafe measure",
         {"pyproject.toml": PYPROJECT, "agent.py": AGENT_PY, "guardrails.yaml": PRESET_YAML},
         _overlay({".github/workflows/evals.yml": EVALS_WORKFLOW_YAML}),
     ),
     Case(
         "AUD-903",
-        "aisg measure",
+        "aisafe measure",
         {
             "pyproject.toml": PYPROJECT,
             "agent.py": AGENT_PY,
@@ -491,7 +491,7 @@ CASES = [
     ),
     Case(
         "AUD-1001",
-        "aisg init",
+        "aisafe init",
         {"pyproject.toml": PYPROJECT, "agent.py": AGENT_PY},
         _wire_system_card,
     ),
@@ -516,7 +516,7 @@ CASE_IDS = [case.rule_id for case in CASES]
 
 # What a verb leaves in the tree: the wired tree must hold it, as a class symbol must
 # appear in the wired source, so the pair is pinned to the symbol it claims to wire.
-VERB_OUTPUT = {"aisg measure": DEFAULT_REPORT, "aisg init": "ai-system-card.yaml"}
+VERB_OUTPUT = {"aisafe measure": DEFAULT_REPORT, "aisafe init": "ai-system-card.yaml"}
 
 
 def _tree_text(root: Path) -> str:

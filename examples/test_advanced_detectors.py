@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 import asyncio
 import base64
 
-from aisg.modules.input.advanced_injection_detectors import AdvancedInjectionDetectors
+from aisafe.modules.input.advanced_injection_detectors import AdvancedInjectionDetectors
 
 
 async def main():

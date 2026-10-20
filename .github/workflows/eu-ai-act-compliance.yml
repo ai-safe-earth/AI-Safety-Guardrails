@@ -1,6 +1,6 @@
 # .github/workflows/eu-ai-act-compliance.yml
 # ---------------------------------------------------------------------------
-# EU AI Act compliance linter (`aisg lint`) as a CI gate.
+# EU AI Act compliance linter (`aisafe lint`) as a CI gate.
 #
 # What it gates: ERRORS in src/ and examples/. Warnings are reported, uploaded
 # and commented on, but do not fail the build unless the `fail_on_warnings`
@@ -19,7 +19,7 @@
 #   - JSON report as an artifact (kept 90 days -- Art. 12 record keeping)
 #   - Markdown in the job summary, and as a sticky PR comment on pull requests
 #
-# `aisg lint` exits 0 clean, 1 with findings at the gate level, 2 fatal. The
+# `aisafe lint` exits 0 clean, 1 with findings at the gate level, 2 fatal. The
 # report steps accept 1 so every format is produced before the verdict; the
 # verdict is one step, reading the JSON summary.
 # ---------------------------------------------------------------------------
@@ -93,22 +93,22 @@ jobs:
       - name: Scan (terminal)
         run: |
           # shellcheck disable=SC2086  # SCAN_PATHS is a word list on purpose
-          aisg lint $SCAN_PATHS --format terminal --no-color || [ $? -eq 1 ]
+          aisafe lint $SCAN_PATHS --format terminal --no-color || [ $? -eq 1 ]
 
       - name: Report (JSON)
         run: |
           # shellcheck disable=SC2086
-          aisg lint $SCAN_PATHS --format json --output eu-ai-act-report.json || [ $? -eq 1 ]
+          aisafe lint $SCAN_PATHS --format json --output eu-ai-act-report.json || [ $? -eq 1 ]
 
       - name: Report (SARIF)
         run: |
           # shellcheck disable=SC2086
-          aisg lint $SCAN_PATHS --format sarif --output eu-ai-act-results.sarif || [ $? -eq 1 ]
+          aisafe lint $SCAN_PATHS --format sarif --output eu-ai-act-results.sarif || [ $? -eq 1 ]
 
       - name: Report (Markdown)
         run: |
           # shellcheck disable=SC2086
-          aisg lint $SCAN_PATHS --format markdown --output eu-ai-act-summary.md || [ $? -eq 1 ]
+          aisafe lint $SCAN_PATHS --format markdown --output eu-ai-act-summary.md || [ $? -eq 1 ]
           cat eu-ai-act-summary.md >> "$GITHUB_STEP_SUMMARY"
 
       # ── Publish ──────────────────────────────────────────────────────────
@@ -198,4 +198,4 @@ jobs:
         if: steps.changed.outputs.count != '0'
         run: |
           mapfile -t FILES < changed_files.txt
-          aisg lint "${FILES[@]}" --errors-only --no-color
+          aisafe lint "${FILES[@]}" --errors-only --no-color

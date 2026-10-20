@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from aisg.core.base import (
+from aisafe.core.base import (
     Action,
     CheckResult,
     Finding,
@@ -27,8 +27,8 @@ from aisg.core.base import (
     PipelineResult,
     Severity,
 )
-from aisg.core.pipeline import GuardrailPipeline
-from aisg.modules.observability.otel import TelemetryProvider, _blocked_by
+from aisafe.core.pipeline import GuardrailPipeline
+from aisafe.modules.observability.otel import TelemetryProvider, _blocked_by
 
 # ---------------------------------------------------------------------------
 # Shared helpers

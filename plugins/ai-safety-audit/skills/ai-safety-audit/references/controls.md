@@ -31,7 +31,7 @@ How to read this file:
   for; "no" means the package adds a different mechanism, offered in addition to, not
   instead of, the control. "Leaves open" is quoted every time the symbol is offered. A
   detector is never the control for a P1-P4 finding, whatever the column says about
-  symbols. aisg symbols are Python-only; the control applies in every language.
+  symbols. aisafe symbols are Python-only; the control applies in every language.
 - Every rule is `[UNMEASURED]`. Say so.
 
 ## Package column
@@ -45,7 +45,7 @@ How to read this file:
 | AUD-105 | budget | yes | `ToolPolicyGuard` |
 | AUD-106 | none | no | -- |
 | AUD-107 | none | no | -- |
-| AUD-108 | detector | no | `aisg audit` |
+| AUD-108 | detector | no | `aisafe audit` |
 | AUD-201 | gate | yes | `ToolPolicyGuard` |
 | AUD-202 | gate | yes | `ToolPolicyGuard` |
 | AUD-203 | gate | no | `ToolPolicyGuard` |
@@ -58,40 +58,40 @@ How to read this file:
 | AUD-404 | none | no | -- |
 | AUD-405 | gate | no | `ToolPolicyGuard`, `ToolPolicy` |
 | AUD-406 | gate | no | `ToolPolicyGuard` |
-| AUD-501 | detector | no | `aisg audit` |
-| AUD-502 | detector | no | `aisg audit` |
+| AUD-501 | detector | no | `aisafe audit` |
+| AUD-502 | detector | no | `aisafe audit` |
 | AUD-503 | detector | no | `PIIDetector`, `PIIRestorer` |
 | AUD-504 | detector | no | `PIIDetector`, `AuditLogger` |
 | AUD-505 | detector | no | `PIIDetector` |
-| AUD-601 | measurement | no | `aisg measure` |
-| AUD-602 | detector | no | `aisg audit` |
+| AUD-601 | measurement | no | `aisafe measure` |
+| AUD-602 | detector | no | `aisafe audit` |
 | AUD-603 | none | no | -- |
 | AUD-604 | detector | no | `PromptInjectionGuard` |
-| AUD-605 | detector | no | `aisg audit` |
-| AUD-606 | detector | no | `aisg audit` |
+| AUD-605 | detector | no | `aisafe audit` |
+| AUD-606 | detector | no | `aisafe audit` |
 | AUD-701 | record | yes | `TelemetryProvider` |
 | AUD-702 | record | no | `AuditLogger` |
-| AUD-703 | document | no | `aisg init` |
-| AUD-801 | measurement | yes | `aisg measure` |
+| AUD-703 | document | no | `aisafe init` |
+| AUD-801 | measurement | yes | `aisafe measure` |
 | AUD-802 | gate | yes | `GuardrailPipeline`, `LLMToolFilter` |
-| AUD-803 | measurement | no | `PromptInjectionGuard`, `aisg measure` |
+| AUD-803 | measurement | no | `PromptInjectionGuard`, `aisafe measure` |
 | AUD-804 | gate | yes | `LLMJudgeBase` |
-| AUD-805 | detector | no | `LLMOutputFilter`, `aisg measure` |
-| AUD-806 | measurement | no | `aisg decide`, `aisg measure` |
-| AUD-901 | measurement | yes | `aisg measure`, `aisg probe` |
-| AUD-902 | measurement | no | `aisg probe`, `aisg measure` |
-| AUD-903 | measurement | yes | `aisg measure`, `aisg probe` |
-| AUD-904 | measurement | no | `aisg measure` |
-| AUD-1001 | document | yes | `aisg init` |
-| AUD-1002 | document | no | `aisg init` |
-| AUD-1003 | document | no | `aisg init` |
+| AUD-805 | detector | no | `LLMOutputFilter`, `aisafe measure` |
+| AUD-806 | measurement | no | `aisafe decide`, `aisafe measure` |
+| AUD-901 | measurement | yes | `aisafe measure`, `aisafe probe` |
+| AUD-902 | measurement | no | `aisafe probe`, `aisafe measure` |
+| AUD-903 | measurement | yes | `aisafe measure`, `aisafe probe` |
+| AUD-904 | measurement | no | `aisafe measure` |
+| AUD-1001 | document | yes | `aisafe init` |
+| AUD-1002 | document | no | `aisafe init` |
+| AUD-1003 | document | no | `aisafe init` |
 | AUD-1101 | detector | no | `PIIDetector`, `ManipulationGuard` |
 | AUD-1102 | none | no | -- |
 | AUD-1103 | gate | no | `ToolPolicyGuard` |
 | AUD-1104 | detector | no | `ManipulationGuard` |
 | AUD-1105 | detector | yes | `AIDisclosureGuard` |
 | AUD-1106 | detector | yes | `ManipulationGuard`, `AIDisclosureGuard` |
-| AUD-1107 | document | no | `aisg init` |
+| AUD-1107 | document | no | `aisafe init` |
 
 Thirteen rules have `same control: yes`. Those are the only rows the plan table can assign to
 "package", and only when the finding's language is Python (by the file's extension; else
@@ -108,7 +108,7 @@ one of them fits the codebase better than this package.
 
 | project | what it gives you | what it does not cover |
 |---|---|---|
-| this package (`aisg`) | `ToolPolicyGuard` (per-role allow/deny, argument globs, approval callback, session budget), `PIIDetector` (redact / block / flag / tokenize with restore), `PromptInjectionGuard` (mention-vs-use aware), `RateLimiter`, `LLMToolFilter` (judge with a fail-closed high-risk list), `AuditLogger`, `TelemetryProvider`, YAML presets, `aisg measure` to score a pipeline against attack and benign corpora | sandboxing, host permission files, dependency vulnerabilities, package pinning, evals of the model itself |
+| this package (`aisafe`) | `ToolPolicyGuard` (per-role allow/deny, argument globs, approval callback, session budget), `PIIDetector` (redact / block / flag / tokenize with restore), `PromptInjectionGuard` (mention-vs-use aware), `RateLimiter`, `LLMToolFilter` (judge with a fail-closed high-risk list), `AuditLogger`, `TelemetryProvider`, YAML presets, `aisafe measure` to score a pipeline against attack and benign corpora | sandboxing, host permission files, dependency vulnerabilities, package pinning, evals of the model itself |
 | NeMo Guardrails | Colang flows for input, output, dialog and tool-call rails; a config directory the app loads; good when the conversation shape itself needs control | not a process sandbox, not a permission system; detectors and flows run in-process with the app |
 | Guardrails AI | validators from a hub applied to inputs and outputs, structured-output validation, re-ask on failure | tool gating, budgets, host permissions |
 | LLM Guard | input and output scanners (prompt injection, secrets, PII anonymise and de-anonymise, toxicity, banned topics, relevance) | gates; it is a scanner library and says so |
@@ -195,9 +195,9 @@ one of them fits the codebase better than this package.
 - Control (T1): replace `curl ... | sh`, `npx -y <pkg>`, `pip install` from `http://` and
   `--trusted-host` with pinned, checksummed installs; keep hooks to commands the repo ships.
 - Rule 4 of SKILL.md applies (CI workflows and host hook files).
-- Package: detector, same control: no, `aisg audit`. Leaves open: The audit in CI reports a
-  regression after the fact. Pinning the hook and dropping the network step is the control;
-  the audit changes neither.
+- Package: detector, same control: no, `aisafe audit`. Leaves open: The audit in CI reports
+  a regression after the fact. Pinning the hook and dropping the network step is the
+  control; the audit changes neither.
 - Mapping: ASI04, LLM03, NIST:GOVERN-6.1.
 
 ## P2 Irreversible-action gates
@@ -218,7 +218,7 @@ one of them fits the codebase better than this package.
 
 - Control (T2): supply the missing half: the `approval_callback` for `require_approval`, the
   `checkpointer` for `interrupt_before`; delete `auto_approve=True`,
-  `human_in_the_loop=False`, `confirm=False` on destructive wrappers. `aisg measure` can show
+  `human_in_the_loop=False`, `confirm=False` on destructive wrappers. `aisafe measure` can show
   that the gate returns a decision; the audit cannot.
 - Package: gate, same control: yes, `ToolPolicyGuard`. Leaves open: A bypass flag in code or
   config, and a LangGraph interrupt compiled without a checkpointer, are removed by hand.
@@ -345,7 +345,7 @@ code before proposing a change.
   committed key is compromised regardless of history rewriting), add a pre-commit secret
   scanner. A `bucket: measured` finding was corroborated by gitleaks or detect-secrets.
 - Rule 4 of SKILL.md applies.
-- Package: detector, same control: no, `aisg audit`. Leaves open: Moving the value out,
+- Package: detector, same control: no, `aisafe audit`. Leaves open: Moving the value out,
   rotating it and adding a pre-commit scanner are the control. The audit in CI reports a
   value that is already committed.
 - Mapping: ASI03, LLM02, EU:Art.15, NIST:MEASURE-2.7, NIST:GOVERN-6.1.
@@ -355,8 +355,8 @@ code before proposing a change.
 - Control (T1): reference the variable (`"env": {"API_KEY": "${API_KEY}"}` or the host's
   own env passthrough) instead of the literal; rotate.
 - Rule 4 of SKILL.md applies.
-- Package: detector, same control: no, `aisg audit`. Leaves open: Replacing the value with a
-  `${VAR}` reference and rotating it are the control. The audit in CI reports the literal;
+- Package: detector, same control: no, `aisafe audit`. Leaves open: Replacing the value with
+  a `${VAR}` reference and rotating it are the control. The audit in CI reports the literal;
   it does not move it.
 - Mapping: ASI03, ASI04, LLM02, EU:Art.15, NIST:MEASURE-2.7, NIST:GOVERN-6.1.
 
@@ -395,10 +395,10 @@ code before proposing a change.
 ### AUD-601 Unpinned model id (medium)
 
 - Control (T1): a dated or versioned model id (`-2025-..`, a snapshot name, a digest tag),
-  recorded in one place; `aisg measure` and `aisg probe` reports carry `models[]` so AUD-903
+  recorded in one place; `aisafe measure` and `aisafe probe` reports carry `models[]` so AUD-903
   can see a change.
-- Package: measurement, same control: no, `aisg measure`. Leaves open: Pinning the id is an
-  edit to the call site. `aisg measure` records the id it saw in its report, so a later
+- Package: measurement, same control: no, `aisafe measure`. Leaves open: Pinning the id is
+  an edit to the call site. `aisafe measure` records the id it saw in its report, so a later
   drift is visible; it does not pin anything.
 - Mapping: ASI04, LLM03, EU:Art.9, EU:Art.15, NIST:MANAGE-3.1, NIST:GOVERN-6.1.
 
@@ -406,7 +406,7 @@ code before proposing a change.
 
 - Control (T1): `npx -y pkg@1.2.3`, `uvx --from 'pkg==1.2.3'`, `pip install 'pkg==1.2.3'`,
   `docker run image@sha256:...`; a lockfile for MCP servers where the host supports one.
-- Package: detector, same control: no, `aisg audit`. Leaves open: Pinning the MCP command
+- Package: detector, same control: no, `aisafe audit`. Leaves open: Pinning the MCP command
   and keeping a lockfile is the control. The audit in CI reports an unpinned entry; it does
   not pin it.
 - Mapping: ASI04, LLM03, EU:Art.15, NIST:GOVERN-6.1, NIST:MANAGE-3.1.
@@ -434,7 +434,7 @@ code before proposing a change.
 - Control (T1): `revision=` on `from_pretrained` and `hf_hub_download`; drop
   `trust_remote_code=True` or vendor the code; `torch.load(..., weights_only=True)`; no
   `pickle.load` on model files.
-- Package: detector, same control: no, `aisg audit`. Leaves open: Verified, pinned weights
+- Package: detector, same control: no, `aisafe audit`. Leaves open: Verified, pinned weights
   are the control. The audit in CI reports the unpinned load; it never opens or checks the
   artefact.
 - Mapping: ASI04, ASI05, LLM03, LLM04, EU:Art.15, NIST:GOVERN-6.1.
@@ -444,7 +444,7 @@ code before proposing a change.
 - Control (T1): upgrade or pin as the scanner advises; this is the one rule that is
   `MEASURED` (pip-audit, npm audit, osv-scanner ran now). When it is UNKNOWN, the scanner
   was not on PATH; install it and rerun.
-- Package: detector, same control: no, `aisg audit`. Leaves open: The audit folds in the
+- Package: detector, same control: no, `aisafe audit`. Leaves open: The audit folds in the
   output of a scanner that is already installed; it installs nothing and queries no advisory
   feed itself. Upgrading is the control.
 - Mapping: ASI04, LLM03, EU:Art.15, NIST:GOVERN-6.1, NIST:MANAGE-3.1.
@@ -476,7 +476,7 @@ code before proposing a change.
 
 - Control (T2): a `SECURITY.md` with a contact and a response window, an incident runbook,
   `incident_contact` on the system card.
-- Package: document, same control: no, `aisg init`. Leaves open: `incident_contact` on the
+- Package: document, same control: no, `aisafe init`. Leaves open: `incident_contact` on the
   card is a place to write the contact down. The runbook -- who is paged, how harm is
   reported, how the system is stopped -- is the control and is written by you.
 - Mapping: ASI08, ASI10, EU:Art.26, EU:Art.73, NIST:GOVERN-4.3, NIST:MANAGE-4.3.
@@ -485,10 +485,10 @@ code before proposing a change.
 
 ### AUD-801 Guard present but unmeasured (medium)
 
-- Control (T2): run `aisg measure --config <pipeline.yaml>` (offline in phase 3, with provider calls in phase 6, each with approval) or an
+- Control (T2): run `aisafe measure --config <pipeline.yaml>` (offline in phase 3, with provider calls in phase 6, each with approval) or an
   equivalent eval, commit the report, and keep it newer than the guard config. A guard with
   no measurement is a claim.
-- Package: measurement, same control: yes, `aisg measure`. Leaves open: Only guards
+- Package: measurement, same control: yes, `aisafe measure`. Leaves open: Only guards
   registered with this package can be measured in-process; a third-party guard needs its own
   harness. The numbers go into a Profile from the measure output and are never typed in by
   hand.
@@ -508,7 +508,7 @@ code before proposing a change.
 
 - Control (T1): retune or replace the guard named in `threshold_failures`, re-measure, or
   disable it and say what replaces it. The finding is as old as the report it came from.
-- Package: measurement, same control: no, `PromptInjectionGuard`, `aisg measure`. Leaves
+- Package: measurement, same control: no, `PromptInjectionGuard`, `aisafe measure`. Leaves
   open: Re-tuning is a judgement made from the measure output: `sensitivity` exists only on
   PromptInjectionGuard, and every other guard is re-tuned by editing its patterns or
   switching it off. The new report has to be generated again.
@@ -528,7 +528,7 @@ code before proposing a change.
 
 - Control (T2): keep the list if it is cheap, but put a measured guard beside it
   (`PromptInjectionGuard`, a toxicity classifier, LLM Guard) and measure both.
-- Package: detector, same control: no, `LLMOutputFilter`, `aisg measure`. Leaves open:
+- Package: detector, same control: no, `LLMOutputFilter`, `aisafe measure`. Leaves open:
   LLMOutputFilter is a judge: it needs credentials, a timeout and a fail-closed setting
   (AUD-804) before it adds anything. toxicity_output is a pattern list like the one reported
   here, not a classifier.
@@ -536,26 +536,26 @@ code before proposing a change.
 
 ### AUD-806 Reported guard over the declared budget (high, `REPORTED <age>`)
 
-- Control (T1): apply the configuration change the `aisg decide` document names for the
+- Control (T1): apply the configuration change the `aisafe decide` document names for the
   guard (judge off, a cache, stage order, flag instead of block), or raise the budget in
-  the system card with a reason; then re-run `aisg measure` and `aisg decide` so the
+  the system card with a reason; then re-run `aisafe measure` and `aisafe decide` so the
   figures describe the new configuration. The finding is as old as the decision it came
   from, and the budgets it compares against are the operator's own declarations.
-- Package: measurement, same control: no, `aisg decide`, `aisg measure`. Leaves open: The
-  budgets come from the operator's card and traffic profile; the tool compares, it does not
-  set them. A changed configuration needs a new measure run and a new decide run before the
-  figures describe it.
+- Package: measurement, same control: no, `aisafe decide`, `aisafe measure`. Leaves open:
+  The budgets come from the operator's card and traffic profile; the tool compares, it does
+  not set them. A changed configuration needs a new measure run and a new decide run before
+  the figures describe it.
 - Mapping: ASI01, LLM10, EU:Art.15, NIST:MEASURE-2.7, NIST:MANAGE-1.3.
 
 ## P9 Evaluation loop
 
 ### AUD-901 No evals in CI (high)
 
-- Control (T2): a CI step that runs `aisg measure`, promptfoo, deepeval, inspect_ai, garak,
+- Control (T2): a CI step that runs `aisafe measure`, promptfoo, deepeval, inspect_ai, garak,
   pyrit or an equivalent against a committed corpus, with a threshold that fails the build.
-- Package: measurement, same control: yes, `aisg measure`, `aisg probe`. Leaves open: The CI
-  workflow edit is yours to make, and `aisg probe` needs an endpoint that is being served. A
-  run on every change is the control; what the run reports is a separate question.
+- Package: measurement, same control: yes, `aisafe measure`, `aisafe probe`. Leaves open:
+  The CI workflow edit is yours to make, and `aisafe probe` needs an endpoint that is being
+  served. A run on every change is the control; what the run reports is a separate question.
 - Mapping: ASI01, LLM01, EU:Art.9, EU:Art.15, NIST:MEASURE-2.5, NIST:MEASURE-2.7.
 
 ### AUD-902 Probe report shows failed / inconclusive / errored / skipped cases (high / medium / low, `REPORTED <age>`)
@@ -563,16 +563,16 @@ code before proposing a change.
 - Control (T2): fix the guard for `failed`; rerun with a working endpoint for `errors`;
   add `--system-canary` for `skipped`; read the `inconclusive` cases by hand (the endpoint
   reflected the payload). Only `passed` means passed.
-- Package: measurement, same control: no, `aisg probe`, `aisg measure`. Leaves open: A new
-  run shows what still gets through. Fixing the guard or the endpoint behind each case that
-  got through is the work, and it is done by hand.
+- Package: measurement, same control: no, `aisafe probe`, `aisafe measure`. Leaves open: A
+  new run shows what still gets through. Fixing the guard or the endpoint behind each case
+  that got through is the work, and it is done by hand.
 - Mapping: ASI01, ASI02, LLM01, LLM07, EU:Art.15, NIST:MEASURE-2.7, NIST:MANAGE-2.2.
 
 ### AUD-903 Model changed since last report (medium, `REPORTED <age>`)
 
 - Control (T2): re-measure after every model id change; keep `models[]` in the report in
   step with the code. An undated report yields "report age unknown" under UNKNOWN.
-- Package: measurement, same control: yes, `aisg measure`, `aisg probe`. Leaves open:
+- Package: measurement, same control: yes, `aisafe measure`, `aisafe probe`. Leaves open:
   Regenerating the report against the current model id and config is the control. The report
   goes stale again on the next model or config change.
 - Mapping: EU:Art.9, EU:Art.15, NIST:MEASURE-2.5, NIST:MANAGE-4.1.
@@ -582,23 +582,23 @@ code before proposing a change.
 - Control (T2): add benign cases that a naive guard would flag (security questions, test
   code quoting an attack, docs with `### System:` headings) and assert they survive.
   Attacks alone make "block everything" the optimal guard.
-- Package: measurement, same control: no, `aisg measure`. Leaves open: aisg measure scores
-  the package guards against its own benign corpus. Benign cases in your own eval config are
-  the control this rule looks for, and adding them is by hand.
+- Package: measurement, same control: no, `aisafe measure`. Leaves open: aisafe measure
+  scores the package guards against its own benign corpus. Benign cases in your own eval
+  config are the control this rule looks for, and adding them is by hand.
 - Mapping: LLM01, EU:Art.15, NIST:MEASURE-2.5, NIST:MEASURE-2.6.
 
 ## P10 Governance
 
 ### AUD-1001 No system card (low)
 
-- Control (T2): `aisg init --defaults` writes `ai-system-card.yaml`; fill in the fields it
+- Control (T2): `aisafe init --defaults` writes `ai-system-card.yaml`; fill in the fields it
   has: system id, name and purpose, role, `risk_tier` (with its caveat),
   `annex_iii_category`, `affected_persons`, deployment, `incident_contact`. There is no
   model or data field; a blank or `TODO`-prefixed `incident_contact` still counts as absent
   for AUD-703, whose snippet then says the card `has an unfilled incident_contact`.
-- Package: document, same control: yes, `aisg init`. Leaves open: Every field in the card is
-  the operator's own assertion; aisg init writes the file and the risk-tier caveat, nothing
-  more. Whether the entries are true is not something the tool can check.
+- Package: document, same control: yes, `aisafe init`. Leaves open: Every field in the card
+  is the operator's own assertion; aisafe init writes the file and the risk-tier caveat,
+  nothing more. Whether the entries are true is not something the tool can check.
 - Mapping: EU:Art.11, EU:Art.13, NIST:GOVERN-1.2, NIST:MAP-1.1.
 
 ### AUD-1002 Risk tier undetermined (info)
@@ -606,8 +606,8 @@ code before proposing a change.
 - Control (T2): the operator records their determination on the system card. Classification
   under Art. 6 / Annex III is a legal determination made by the operator, not a tool output;
   the audit does not infer a tier and you must not either.
-- Package: document, same control: no, `aisg init`. Leaves open: Classification is a legal
-  determination the operator makes; aisg init only records the answer. The determination
+- Package: document, same control: no, `aisafe init`. Leaves open: Classification is a legal
+  determination the operator makes; aisafe init only records the answer. The determination
   itself is outside the package.
 - Mapping: EU:Art.6, EU:Art.9, NIST:MAP-1.1, NIST:MAP-5.1.
 
@@ -616,8 +616,8 @@ code before proposing a change.
 - Control (T2): if the prompts really do cover such a domain, record the category on the
   system card so the operator's determination is visible; if they do not, say so on the
   card. This never fires on README or CHANGELOG text.
-- Package: document, same control: no, `aisg init`. Leaves open: Whether the prompts serve
-  an Annex III domain is a legal determination the operator makes; aisg init only records
+- Package: document, same control: no, `aisafe init`. Leaves open: Whether the prompts serve
+  an Annex III domain is a legal determination the operator makes; aisafe init only records
   the category or a reason for none.
 - Mapping: EU:Art.6, EU:Art.11, NIST:MAP-1.1, NIST:MAP-5.1.
 
@@ -710,11 +710,11 @@ keeps a regex vocabulary in code from reading as an instruction to a model.
 ### AUD-1107 Prompt and algorithm audit not recorded (info)
 
 - Control (T2): record on the system card who reviewed the prompts, the ranking and the
-  personalisation logic for manipulation and profiling, and when. `aisg init` writes the
+  personalisation logic for manipulation and profiling, and when. `aisafe init` writes the
   `prompt_audit` block with placeholders; a reviewer still starting with TODO counts as no
   review. Silent without a card (AUD-1001 owns that) and when the tree carries no person
   signal and the card names no affected persons.
-- Package: document, same control: no, `aisg init`. Leaves open: aisg init writes the
+- Package: document, same control: no, `aisafe init`. Leaves open: aisafe init writes the
   prompt_audit block with placeholders; the review it records is done by a person, and
   whether it was thorough is not something the tool can check.
 - Mapping: EU:Art.9, EU:Art.11, EU:Art.26, NIST:GOVERN-1.1, NIST:GOVERN-1.2, NIST:MAP-1.1.

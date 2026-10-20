@@ -11,14 +11,14 @@ only channel, and it is where you will hear back.
 
 ## Scope
 
-- The `anyaisafe` distribution, imported as `aisg` (`aisg.core`, `aisg.modules`,
-  `aisg.integrations`, `aisg.config`).
-- The `aisg` command line: `lint`, `misalign`, `measure`, `probe`, `init`,
+- The `aisafe` distribution, imported as `aisafe` (`aisafe.core`, `aisafe.modules`,
+  `aisafe.integrations`, `aisafe.config`).
+- The `aisafe` command line: `lint`, `misalign`, `measure`, `probe`, `init`,
   `audit`, `skill`, `decide`, `hook`, `attest`, `fleet`.
 - The `ai-safety-audit` skill and its bootstrap scripts
-  (`src/aisg/skills/ai-safety-audit/scripts/` and the mirrors under
+  (`src/aisafe/skills/ai-safety-audit/scripts/` and the mirrors under
   `.claude/skills/`, `.agents/skills/` and `plugins/ai-safety-audit/skills/`).
-- The agent-host hooks (`aisg hook`, the bootstrap `hook.sh` / `hook.ps1`) and
+- The agent-host hooks (`aisafe hook`, the bootstrap `hook.sh` / `hook.ps1`) and
   the Claude Code plugin (`.claude-plugin/`, `plugins/ai-safety-audit/`).
 - The CI surface: `action.yml`, `.pre-commit-hooks.yaml` and the GitLab job
   template `.gitlab-ci-euaiact.yml`.
@@ -28,10 +28,10 @@ those as ordinary issues with the payload, or add a case to the probe corpus.
 
 ## What to include
 
-- The affected version (`pip show anyaisafe`) or commit.
+- The affected version (`pip show aisafe`) or commit.
 - The command, config or input that triggers the problem, minimised.
 - What happens and what you expected; a stack trace or report excerpt if any.
-- Which external scanners were on `PATH`, if `aisg audit` is involved.
+- Which external scanners were on `PATH`, if `aisafe audit` is involved.
 
 ## How releases are published
 
@@ -44,13 +44,13 @@ and that approval is not one of ours.
 
 ## What the tooling sends
 
-`aisg audit`, `aisg lint`, `aisg misalign`, `aisg decide`, `aisg attest` and
-`aisg hook` never send anything anywhere: no model calls, no telemetry, no
+`aisafe audit`, `aisafe lint`, `aisafe misalign`, `aisafe decide`, `aisafe attest` and
+`aisafe hook` never send anything anywhere: no model calls, no telemetry, no
 network sockets from their processes; the hook's only child process is `git`,
-and it writes only under `.aisg-audit/`. `aisg fleet` clones only the URLs you
+and it writes only under `.aisafe-audit/`. `aisafe fleet` clones only the URLs you
 list (through `git`), audits each with `--no-external`, and never searches for
 targets, pushes or opens a pull request. The only network use is
 by external scanners you already installed, and each one is listed with its
-`network` flag in every report. `aisg probe` sends its fixed payload corpus to
+`network` flag in every report. `aisafe probe` sends its fixed payload corpus to
 the URL you name and nothing else; non-loopback targets need
 `--i-have-authorization`.

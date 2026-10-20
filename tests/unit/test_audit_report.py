@@ -22,9 +22,9 @@ from typing import Any
 
 import pytest
 
-from aisg.devtools.audit.baseline import BaselineDiff
-from aisg.devtools.audit.html import TEMPLATES as HTML_TEMPLATES
-from aisg.devtools.audit.model import (
+from aisafe.devtools.audit.baseline import BaselineDiff
+from aisafe.devtools.audit.html import TEMPLATES as HTML_TEMPLATES
+from aisafe.devtools.audit.model import (
     DISCLAIMER,
     AuditContext,
     Basis,
@@ -45,7 +45,7 @@ from aisg.devtools.audit.model import (
     Tier,
     UnknownItem,
 )
-from aisg.devtools.audit.report import (
+from aisafe.devtools.audit.report import (
     _T_ACCEPTED_REASON,
     _TEMPLATES,
     BANNED_PHRASES,
@@ -61,7 +61,7 @@ from aisg.devtools.audit.report import (
     to_terminal,
     tool_version,
 )
-from aisg.devtools.audit.rules import ALL_RULES, AuditRule
+from aisafe.devtools.audit.rules import ALL_RULES, AuditRule
 
 FORMATS = ("json", "sarif", "markdown", "terminal", "html")
 
@@ -134,7 +134,7 @@ def make_finding(
         recommendation=Recommendation(
             tier=Tier.T1,
             summary=f"fix for {rule_id}",
-            alternatives=("aisg ToolPolicyGuard", "NeMo Guardrails", "LLM Guard"),
+            alternatives=("aisafe ToolPolicyGuard", "NeMo Guardrails", "LLM Guard"),
         ),
         related_lint_rules=("EU-AIA-012a",),
         known_failure_modes=("scope over-approximates in monorepos", "grep tier"),
@@ -353,8 +353,8 @@ def test_templates_carry_no_banned_phrase_and_no_clean():
 
 
 def test_tool_version_comes_from_package_metadata():
-    # DISTRIBUTION, not a literal: the wheel publishes as `anyaisafe` while the
-    # importable name stays `aisg`, and the two must not drift apart again.
+    # DISTRIBUTION, not a literal: tool_version() reads the installed distribution's
+    # metadata through report.DISTRIBUTION, so this test follows the constant if the name moves.
     try:
         expected = metadata.version(DISTRIBUTION)
     except metadata.PackageNotFoundError:
@@ -491,7 +491,7 @@ def test_summarise_with_baseline_reports_new_count():
 def test_build_report_pins_trifecta_first_and_fills_blocks():
     report = build()
     assert report.findings[0].id == "AUD-301"
-    assert report.tool == {"name": "aisg-audit", "version": tool_version()}
+    assert report.tool == {"name": "aisafe-audit", "version": tool_version()}
     assert report.target == {
         "path": "C:/work/target",
         "git_sha": "abc123",
@@ -641,10 +641,10 @@ def test_sarif_run_property_bag_is_the_first_key_of_the_run():
 def test_sarif_written_into_the_tree_is_skipped_by_the_walker(tmp_path: Path):
     """Both ends together: the renderer's SARIF, written to disk, is recognised by the
     walker as the audit's own output, under either extension."""
-    from aisg.devtools.audit.walk import walk
+    from aisafe.devtools.audit.walk import walk
 
     text = render(build(), "sarif")
-    for name in (".aisg-audit/audit.sarif", "out/audit.json"):
+    for name in (".aisafe-audit/audit.sarif", "out/audit.json"):
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
@@ -654,7 +654,7 @@ def test_sarif_written_into_the_tree_is_skipped_by_the_walker(tmp_path: Path):
     records, _, unknown = walk(tmp_path, own_output_skipped=skipped)
 
     assert [r.relpath for r in records] == ["app.py"]
-    assert sorted(skipped) == [".aisg-audit/audit.sarif", "out/audit.json"]
+    assert sorted(skipped) == [".aisafe-audit/audit.sarif", "out/audit.json"]
     assert unknown == []
 
 
@@ -708,7 +708,7 @@ def test_disclaimer_present_in_every_format():
     assert sarif["runs"][0]["properties"]["disclaimer"] == DISCLAIMER
     assert sentence in out["markdown"]
     assert sentence in out["terminal"]
-    assert out["markdown"].splitlines()[0] == "# aisg audit"
+    assert out["markdown"].splitlines()[0] == "# aisafe audit"
     assert out["markdown"].splitlines()[2].startswith("> ")
 
 
@@ -744,7 +744,7 @@ def test_render_rejects_unknown_format():
 
 def test_render_dispatches_html():
     page = render(build(), "html")
-    assert page.splitlines()[0] == "<!-- # aisg-audit: ignore-file -->"
+    assert page.splitlines()[0] == "<!-- # aisafe-audit: ignore-file -->"
     assert page.isascii()
 
 
@@ -765,7 +765,7 @@ def test_sarif_shape_levels_and_properties():
     run = doc["runs"][0]
     assert run["properties"]["aisg_schema"] == "aisg/1"
     driver = run["tool"]["driver"]
-    assert driver["name"] == "aisg-audit"
+    assert driver["name"] == "aisafe-audit"
     assert driver["version"] == tool_version()
     by_id = {r["id"]: r for r in driver["rules"]}
     assert by_id["AUD-101"]["properties"]["measured_precision"] is None
@@ -889,7 +889,7 @@ def test_reported_tag_without_age():
 def test_markdown_order_and_finding_detail_lines():
     text = render(build(), "markdown")
     order = [
-        "# aisg audit",
+        "# aisafe audit",
         "> ",
         "7 findings (",
         "| MEASURED | 1 |",
@@ -921,7 +921,7 @@ def test_markdown_order_and_finding_detail_lines():
         position = found
     assert "services/agent/app.py:52: rows = db.execute" in text
     assert "fix (T1): fix for AUD-301" in text
-    assert "alternatives: aisg ToolPolicyGuard; NeMo Guardrails; LLM Guard" in text
+    assert "alternatives: aisafe ToolPolicyGuard; NeMo Guardrails; LLM Guard" in text
     assert "controls: ASI01, EU:Art.9" in text
     assert "known failure modes: scope over-approximates in monorepos; grep tier" in text
     assert "[tools] secret scanning corroboration: gitleaks not on PATH" in text
@@ -996,7 +996,7 @@ def test_terminal_quiet_keeps_severity_and_bucket_lines_without_finding_detail()
 # rule-level blocks once per rule id
 # ---------------------------------------------------------------------------
 
-ALTERNATIVES_LINE = "alternatives: aisg ToolPolicyGuard; NeMo Guardrails; LLM Guard"
+ALTERNATIVES_LINE = "alternatives: aisafe ToolPolicyGuard; NeMo Guardrails; LLM Guard"
 FAILURE_MODES_LINE = "known failure modes: scope over-approximates in monorepos; grep tier"
 CONTROLS_LINE = "controls: ASI01, EU:Art.9"
 SEE_FIRST = "alternatives / controls / known failure modes: see the first AUD-101 above"

@@ -14,10 +14,10 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.audit.model import Basis, Bucket, Severity
-from aisg.devtools.audit.report import BANNED_PHRASES
-from aisg.devtools.audit.rules import SUBSYSTEM_OF_RULE, persons, run_rules
-from aisg.devtools.audit.rules.persons import RULES
+from aisafe.devtools.audit.model import Basis, Bucket, Severity
+from aisafe.devtools.audit.report import BANNED_PHRASES
+from aisafe.devtools.audit.rules import SUBSYSTEM_OF_RULE, persons, run_rules
+from aisafe.devtools.audit.rules.persons import RULES
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "audit"
 IDS = [rule.id for rule in RULES]
@@ -438,9 +438,9 @@ class TestControl1106:
     @pytest.mark.parametrize(
         "control",
         [
-            ("guards.py", "from aisg import ManipulationGuard\nguard = ManipulationGuard()\n"),
+            ("guards.py", "from aisafe import ManipulationGuard\nguard = ManipulationGuard()\n"),
             ("guardrails.yaml", "output:\n  manipulation_output:\n    enabled: true\n"),
-            ("rails.py", "from aisg.integrations.nemo_rails import NemoRailsGuard\n"),
+            ("rails.py", "from aisafe.integrations.nemo_rails import NemoRailsGuard\n"),
         ],
     )
     def test_each_control_symbol_silences_it(self, tmp_path, audit_context, control):

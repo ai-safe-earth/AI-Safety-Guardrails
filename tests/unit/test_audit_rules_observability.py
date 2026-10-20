@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.audit.model import (
+from aisafe.devtools.audit.model import (
     AuditContext,
     Basis,
     Bucket,
@@ -26,9 +26,9 @@ from aisg.devtools.audit.model import (
     Severity,
     Unit,
 )
-from aisg.devtools.audit.report import BANNED_PHRASES
-from aisg.devtools.audit.rules import run_rules
-from aisg.devtools.audit.rules.observability import (
+from aisafe.devtools.audit.report import BANNED_PHRASES
+from aisafe.devtools.audit.rules import run_rules
+from aisafe.devtools.audit.rules.observability import (
     RULES,
     NoIncidentPath,
     NoLLMObservability,
@@ -75,7 +75,7 @@ def test_rule_metadata(rule):
     for token in rule.controls:
         assert CONTROL_TOKEN.match(token), token
     assert len(rule.recommendation.alternatives) >= 3
-    assert any("aisg" not in alt for alt in rule.recommendation.alternatives)
+    assert any("aisafe" not in alt for alt in rule.recommendation.alternatives)
     assert rule.measured_precision is None
     assert set(rule.related_lint_rules) <= ALLOWED_LINT_RULES
     assert rule.basis is Basis.ABSENCE
@@ -270,7 +270,7 @@ def test_703_silent_when_card_names_a_contact(tmp_path: Path):
 
 @pytest.mark.parametrize("value", ["", "   ", "\t\n", "TODO: who is paged", "todo", "ToDo"])
 def test_703_fires_when_the_card_contact_is_a_placeholder(tmp_path: Path, value):
-    # `aisg init` writes the key with a placeholder; the key being present proves nothing.
+    # `aisafe init` writes the key with a placeholder; the key being present proves nothing.
     inventory = Inventory(
         units=[_ai_unit()],
         system_card={"file": "ai-system-card.yaml", "incident_contact": value},
@@ -321,8 +321,8 @@ def test_contact_named_predicate(value, named):
 def test_contact_named_shares_the_governance_reading():
     # Governance's `_unset` and `contact_named` are the same predicate over strings, so
     # a card value cannot be "unset" for AUD-1002 and "a contact" for AUD-703.
-    from aisg.devtools.audit import vocab
-    from aisg.devtools.audit.rules.governance import _unset
+    from aisafe.devtools.audit import vocab
+    from aisafe.devtools.audit.rules.governance import _unset
 
     for word in sorted(vocab.UNSET_VALUES) + ["TODO", "todo x", "Unknown", " N/A "]:
         assert _unset(word) is True and contact_named(word) is False, word
@@ -330,10 +330,10 @@ def test_contact_named_shares_the_governance_reading():
         assert _unset(word) is False and contact_named(word) is True, word
 
 
-def test_703_unfilled_wording_on_the_aisg_init_default_line(py_agent, audit_context):
-    # `aisg init --defaults` writes the key with its placeholder. Discovery records the
+def test_703_unfilled_wording_on_the_aisafe_init_default_line(py_agent, audit_context):
+    # `aisafe init --defaults` writes the key with its placeholder. Discovery records the
     # placeholder as written, so the finding says the key is unfilled, not missing.
-    from aisg.devtools.system_card import DEFAULT_CARD, _yaml_scalar
+    from aisafe.devtools.system_card import DEFAULT_CARD, _yaml_scalar
 
     card = py_agent / "ai-system-card.yaml"
     line = f"incident_contact: {_yaml_scalar(DEFAULT_CARD['incident_contact'])}\n"

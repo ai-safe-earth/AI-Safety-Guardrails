@@ -1,7 +1,7 @@
 """
 tests/unit/test_audit_rules_registry.py
 ---------------------------------------
-Registry-level pins for `aisg audit` rules: every module present, ids and
+Registry-level pins for `aisafe audit` rules: every module present, ids and
 priorities consistent, metadata complete, precision UNMEASURED (never guessed),
 every rule safe on an empty context, every rule classified (package and
 subsystem), and every package symbol a real name in this distribution.
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.audit.model import (
+from aisafe.devtools.audit.model import (
     NO_PACKAGE,
     PACKAGE_MECHANISMS,
     TRIFECTA_RULE_ID,
@@ -24,8 +24,8 @@ from aisg.devtools.audit.model import (
     UnknownCategory,
     UnknownItem,
 )
-from aisg.devtools.audit.report import BANNED_PHRASES
-from aisg.devtools.audit.rules import (
+from aisafe.devtools.audit.report import BANNED_PHRASES
+from aisafe.devtools.audit.rules import (
     ALL_RULES,
     MISSING_RULE_MODULES,
     NOT_ATTRIBUTED,
@@ -47,11 +47,11 @@ RULE_ID = re.compile(r"^AUD-\d{3,4}$")
 # carry it as a contiguous literal (the self-audit scans tests too).
 BANNED_WORD_RE = re.compile(r"\bcl" + r"ean\b", re.IGNORECASE)
 
-# Package symbols are either a console verb ("aisg measure") or a class name. A verb must
-# be a subcommand of the single console script; a class must be reachable from `aisg`.
-VERB_RE = re.compile(r"^aisg [a-z]+$")
+# Package symbols are either a console verb ("aisafe measure") or a class name. A verb must
+# be a subcommand of the single console script; a class must be reachable from `aisafe`.
+VERB_RE = re.compile(r"^aisafe [a-z]+$")
 
-# The closed set of class names a rule may name: each is exported from `aisg/__init__.py`
+# The closed set of class names a rule may name: each is exported from `aisafe/__init__.py`
 # (the plan table and the skill print them as the thing to wire, so they are one import
 # away). A new symbol is exported and added here before a rule names it.
 CLASS_SYMBOLS = frozenset(
@@ -93,8 +93,8 @@ EXPECTED_IDS = {
 
 def _lint_rule_ids() -> set[str]:
     """Real ids from the two existing linters; `related_lint_rules` must point at these."""
-    from aisg.devtools.misalignment.rules import MISALIGNMENT_RULES
-    from aisg.modules.policy.code_analyzer.rules import ALL_RULES as LINT_RULES
+    from aisafe.devtools.misalignment.rules import MISALIGNMENT_RULES
+    from aisafe.modules.policy.code_analyzer.rules import ALL_RULES as LINT_RULES
 
     ids = {rule.rule_id for rule in LINT_RULES}
     ids |= {rule.rule_id for rule in MISALIGNMENT_RULES}
@@ -105,7 +105,7 @@ def _empty_context(tmp_path: Path) -> AuditContext:
     return AuditContext(root=tmp_path, inventory=Inventory())
 
 
-AUDIT_PACKAGE = Path(__file__).resolve().parents[2] / "src" / "aisg" / "devtools" / "audit"
+AUDIT_PACKAGE = Path(__file__).resolve().parents[2] / "src" / "aisafe" / "devtools" / "audit"
 SELF_VOCABULARY_MODULES = sorted(
     p.relative_to(AUDIT_PACKAGE).as_posix() for p in (AUDIT_PACKAGE / "rules").glob("*.py")
 ) + ["adapters.py"]
@@ -121,14 +121,14 @@ def test_rule_and_adapter_modules_carry_the_ignore_marker(relpath: str) -> None:
     # Rule modules quote the vocabulary they detect (gate bypass keys, fail-open
     # flags, guard names); the marker keeps them out of a self-audit. It must sit
     # in the first five lines, where walk() looks for it.
-    from aisg.devtools.audit.patterns import IGNORE_MARKER
+    from aisafe.devtools.audit.patterns import IGNORE_MARKER
 
     head = (AUDIT_PACKAGE / relpath).read_text(encoding="utf-8").splitlines()[:5]
     assert IGNORE_MARKER in head, f"{relpath} lacks the ignore-file marker in its first five lines"
 
 
 def test_walk_skips_every_marked_audit_module() -> None:
-    from aisg.devtools.audit.walk import walk
+    from aisafe.devtools.audit.walk import walk
 
     files, _units, _unknown = walk(AUDIT_PACKAGE)
     seen = {record.relpath for record in files}
@@ -172,8 +172,8 @@ def test_rule_metadata_is_complete(rule: type[AuditRule]) -> None:
     assert rule.recommendation.summary.strip()
     alternatives = rule.recommendation.alternatives
     assert len(alternatives) >= 3, f"{rule.id} needs at least three alternatives"
-    assert any("aisg" not in alt.lower() for alt in alternatives), (
-        f"{rule.id}: at least one alternative must not point at aisg"
+    assert any("aisafe" not in alt.lower() for alt in alternatives), (
+        f"{rule.id}: at least one alternative must not point at aisafe"
     )
     assert rule.recommendation.tier in tuple(Tier)
 
@@ -285,10 +285,10 @@ def test_every_rule_sets_its_package_explicitly(rule: type[AuditRule]) -> None:
         assert package.symbols == ()
         assert not package.same_control
         assert package.leaves_open == ""
-        # A rule the package cannot help with still names the alternative in aisg terms,
+        # A rule the package cannot help with still names the alternative in aisafe terms,
         # so the reader learns that nothing here applies rather than inferring it.
-        assert any("aisg" in alt.lower() for alt in rule.recommendation.alternatives), (
-            f"{rule.id}: a 'none' package needs an alternative saying nothing in aisg applies"
+        assert any("aisafe" in alt.lower() for alt in rule.recommendation.alternatives), (
+            f"{rule.id}: a 'none' package needs an alternative saying nothing in aisafe applies"
         )
     else:
         assert package.symbols, f"{rule.id} offers {package.mechanism} but names no symbol"
@@ -360,23 +360,23 @@ def test_sub_findings_inherit_the_parent_package(rule: type[AuditRule]) -> None:
 def test_package_symbols_are_only_verbs_or_class_names() -> None:
     for symbol in _package_symbols():
         assert VERB_RE.match(symbol) or symbol.isidentifier(), symbol
-    # Every 'aisg <verb>' is a subcommand of the one console script.
-    from aisg.cli import COMMANDS
+    # Every 'aisafe <verb>' is a subcommand of the one console script.
+    from aisafe.cli import COMMANDS
 
     verbs = [s for s in _package_symbols() if VERB_RE.match(s)]
     assert verbs, "no rule names a console verb"
     for verb in verbs:
-        assert verb.split()[1] in COMMANDS, f"{verb!r} is not an aisg subcommand"
+        assert verb.split()[1] in COMMANDS, f"{verb!r} is not an aisafe subcommand"
 
 
 @pytest.mark.parametrize("symbol", sorted(CLASS_SYMBOLS))
-def test_class_symbols_are_exported_from_aisg(symbol: str) -> None:
-    import aisg
+def test_class_symbols_are_exported_from_aisafe(symbol: str) -> None:
+    import aisafe
 
-    obj = getattr(aisg, symbol, None)
-    assert obj is not None, f"aisg.{symbol} is not exported"
-    assert isinstance(obj, type), f"aisg.{symbol} is not a class"
-    assert symbol in aisg.__all__
+    obj = getattr(aisafe, symbol, None)
+    assert obj is not None, f"aisafe.{symbol} is not exported"
+    assert isinstance(obj, type), f"aisafe.{symbol} is not a class"
+    assert symbol in aisafe.__all__
 
 
 def test_every_class_symbol_is_in_the_closed_set() -> None:

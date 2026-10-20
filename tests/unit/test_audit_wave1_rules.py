@@ -3,7 +3,7 @@
 Two corrections the decision tool forced on the audit. AUD-801 counts an eval file's
 mention of a guard as "the guard is exercised" only when the file is an eval config, a
 data file or a test module: prose and a tool's own source measure nothing, and this
-repository's `aisg decide` (which names every guard) was the first file to show the
+repository's `aisafe decide` (which names every guard) was the first file to show the
 hole. And an `aisg/1` price table lists model ids in order to price them, so AUD-601
 does not read them as unpinned deployments.
 """
@@ -14,13 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.audit import discover
-from aisg.devtools.audit.rules import run_rules
-from aisg.devtools.audit.rules.guards import GuardUnmeasured, _eval_evidence_file
+from aisafe.devtools.audit import discover
+from aisafe.devtools.audit.rules import run_rules
+from aisafe.devtools.audit.rules.guards import GuardUnmeasured, _eval_evidence_file
 
 PYPROJECT = '[project]\nname = "demo"\nversion = "0.0.1"\n'
 AGENT_PY = """import anthropic
-from aisg import GuardrailPipeline
+from aisafe import GuardrailPipeline
 
 client = anthropic.Anthropic()
 pipeline = GuardrailPipeline.from_config("guardrails.yaml")
@@ -67,8 +67,8 @@ class TestEvalEvidenceFiles:
             ("README.md", False),
             ("docs/explain/measurement.html", False),
             ("notes.txt", False),
-            ("src/aisg/devtools/decide.py", False),
-            ("src/aisg/devtools/measure.py", False),
+            ("src/aisafe/devtools/decide.py", False),
+            ("src/aisafe/devtools/measure.py", False),
             ("app/cli.py", False),
         ],
     )
@@ -76,12 +76,12 @@ class TestEvalEvidenceFiles:
         assert _eval_evidence_file(relpath) is counts
 
     def test_a_readme_naming_the_guard_does_not_silence_801(self, tmp_path, audit_context):
-        readme = "# Demo\n\nRun `aisg measure` and `promptfoo eval`; pii_detector is on.\n"
+        readme = "# Demo\n\nRun `aisafe measure` and `promptfoo eval`; pii_detector is on.\n"
         root = _tree(tmp_path, {"README.md": readme})
         assert _801_guard_findings(audit_context, root), "the README is prose, not an eval"
 
     def test_a_tool_module_naming_the_guard_does_not_silence_801(self, tmp_path, audit_context):
-        module = 'TOOLS = ["aisg measure", "promptfoo"]\nGUARDS = ["pii_detector"]\n'
+        module = 'TOOLS = ["aisafe measure", "promptfoo"]\nGUARDS = ["pii_detector"]\n'
         root = _tree(tmp_path, {"app/report.py": module})
         assert _801_guard_findings(audit_context, root)
 
@@ -89,7 +89,7 @@ class TestEvalEvidenceFiles:
         # The tool mention sits in code, not a comment: discover drops a commented
         # mention, so the file would not be an eval entry at all.
         test = (
-            "from aisg import PIIDetector\n\nHARNESS = 'aisg measure'\n\n\n"
+            "from aisafe import PIIDetector\n\nHARNESS = 'aisafe measure'\n\n\n"
             "def test_pii_detector_redacts():\n"
             "    assert PIIDetector().name == 'pii_detector'\n"
         )

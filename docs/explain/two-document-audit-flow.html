@@ -108,7 +108,7 @@
   <h1>Before, apply, after — an audit that draws the user's system, and a baseline that remembers why</h1>
   <p class="sub">AnyAISafe · branch <code>main</code> · commit <code>c06d810</code> (plus <code>f96086c</code>) · written 2026-09-21</p>
   <p class="sub">Legend: <span class="badge b0">D</span> the document (package block, map, plan) &nbsp;·&nbsp; <span class="badge b1">B</span> the baseline as a record &nbsp;·&nbsp; <span class="badge b2">S</span> the five-phase skill &nbsp;·&nbsp; grey = pre-existing audit engine</p>
-  <p class="sub">Continues <a href="aisg-audit-and-the-portable-skill.html">aisg audit and the portable skill</a>, which explains the engine (walk → rules → report), the three evidence buckets and the fingerprint. This document does not repeat them.</p>
+  <p class="sub">Continues <a href="aisafe-audit-and-the-portable-skill.html">aisafe audit and the portable skill</a>, which explains the engine (walk → rules → report), the three evidence buckets and the fingerprint. This document does not repeat them.</p>
   <nav class="toc">
     <b>Contents</b>
     <ol>
@@ -126,7 +126,7 @@
 
 <h2 id="context">1 · Why this exists</h2>
 
-<p>Before this work, <code>aisg audit</code> could produce a list. A list of findings, ordered by
+<p>Before this work, <code>aisafe audit</code> could produce a list. A list of findings, ordered by
 blast radius, in four formats. What it could not do was answer the three questions an owner asks
 after the list:</p>
 
@@ -134,7 +134,7 @@ after the list:</p>
   <li><strong>Where in my system is this?</strong> A finding named a file and a line. Nothing placed
     it on a picture of the system, so twenty findings read as twenty unrelated problems.</li>
   <li><strong>Can this package fix it, and fully?</strong> Each rule had a recommendation in prose.
-    Nothing said, in a form an agent could act on, whether wiring an <code>aisg</code> class
+    Nothing said, in a form an agent could act on, whether wiring an <code>aisafe</code> class
     <em>is</em> the control or only a partial one — and what it leaves open.</li>
   <li><strong>What changed since last time, and why is this one still here?</strong> The baseline
     was a list of fingerprints (16-character ids for a finding). A fingerprint in it silenced the
@@ -170,13 +170,13 @@ flow"); this document explains the mechanism.</p>
   <!-- skill band -->
   <rect x="20" y="16" width="920" height="54" rx="9" fill="var(--p2-bg)" stroke="var(--p2-line)"/>
   <text x="34" y="38" class="svgt" font-weight="600">ai-safety-audit skill (the agent)</text>
-  <text x="34" y="58" class="svgmd">1 survey → 2 document 1 → 3 apply, one row per approval → 4 document 2 → 5 verify     every artefact under .aisg-audit/</text>
+  <text x="34" y="58" class="svgmd">1 survey → 2 document 1 → 3 apply, one row per approval → 4 document 2 → 5 verify     every artefact under .aisafe-audit/</text>
 
   <!-- repo -->
   <rect x="20" y="110" width="150" height="120" rx="9" fill="var(--panel)" stroke="var(--infra)"/>
   <text x="34" y="134" class="svgt" font-weight="600">user's repository</text>
   <text x="34" y="154" class="svgmd">source, configs</text>
-  <text x="34" y="172" class="svgmd">.aisg-audit/</text>
+  <text x="34" y="172" class="svgmd">.aisafe-audit/</text>
   <text x="34" y="190" class="svgs">own reports, measure,</text>
   <text x="34" y="206" class="svgs">probe reports</text>
 
@@ -186,7 +186,7 @@ flow"); this document explains the mechanism.</p>
   <rect x="228" y="146" width="154" height="74" rx="6" fill="var(--p1-bg)"/>
   <text x="236" y="164" class="svgmd">own output: skip by</text>
   <text x="236" y="180" class="svgmd">content, list it ⓔ</text>
-  <text x="236" y="198" class="svgmd">.aisg-audit/ never</text>
+  <text x="236" y="198" class="svgmd">.aisafe-audit/ never</text>
   <text x="236" y="213" class="svgmd">gitignore-pruned</text>
   <path d="M170 170 L220 170" stroke="var(--infra)" stroke-width="2" fill="none" marker-end="url(#ar)"/>
   <text x="172" y="162" class="svgs">files</text>
@@ -214,7 +214,7 @@ flow"); this document explains the mechanism.</p>
 
   <!-- baseline file -->
   <rect x="690" y="270" width="250" height="110" rx="9" fill="var(--panel)" stroke="var(--p1-line)"/>
-  <text x="704" y="294" class="svgt" font-weight="600">.aisg-audit/audit-baseline.json</text>
+  <text x="704" y="294" class="svgt" font-weight="600">.aisafe-audit/audit-baseline.json</text>
   <text x="704" y="314" class="svgmd">fingerprints (sorted)</text>
   <text x="704" y="330" class="svgmd">accepted: fp, rule, file, reason</text>
   <text x="704" y="346" class="svgmd">index: fp → rule, file, title</text>
@@ -241,7 +241,7 @@ flow"); this document explains the mechanism.</p>
   <path d="M640 432 L760 432 L760 380" stroke="var(--p1-line)" stroke-width="2" fill="none" marker-end="url(#ar1)"/>
   <text x="664" y="448" class="svgs">edits in place</text>
 
-  <!-- outputs to .aisg-audit -->
+  <!-- outputs to .aisafe-audit -->
   <path d="M440 330 L130 330 L130 230" stroke="var(--p0-line)" stroke-width="2" fill="none" marker-end="url(#ar0)"/>
   <text x="140" y="348" class="svgs">before/after html, marker on line 1</text>
 
@@ -249,10 +249,10 @@ flow"); this document explains the mechanism.</p>
   <path d="M95 70 L95 110" stroke="var(--p2-line)" stroke-width="2" fill="none" marker-end="url(#ar2)"/>
   <text x="102" y="94" class="svgs">diffs, one per approval</text>
   <path d="M540 70 L540 110" stroke="var(--p2-line)" stroke-width="2" fill="none" marker-end="url(#ar2)"/>
-  <text x="548" y="94" class="svgs">runs aisg audit from the repo root</text>
+  <text x="548" y="94" class="svgs">runs aisafe audit from the repo root</text>
 </svg>
 </div>
-<p class="figcap">Fig. 1 — Grey boxes are the engine the <a href="aisg-audit-and-the-portable-skill.html">previous document</a> explains; coloured rows are what this work added. The output loops back: the html lands in the repository the next audit walks, which is why the walker has to recognise it. Omitted: adapters, the inventory and <code>--inventory-only</code>, which this work touched only at the edges.</p>
+<p class="figcap">Fig. 1 — Grey boxes are the engine the <a href="aisafe-audit-and-the-portable-skill.html">previous document</a> explains; coloured rows are what this work added. The output loops back: the html lands in the repository the next audit walks, which is why the walker has to recognise it. Omitted: adapters, the inventory and <code>--inventory-only</code>, which this work touched only at the edges.</p>
 
 <div class="take">
   <h4>Key takeaways</h4>
@@ -316,7 +316,7 @@ interpreting prose.</p>
   <rect x="600" y="130" width="340" height="176" rx="9" fill="var(--panel)" stroke="var(--p0-line)"/>
   <text x="614" y="154" class="svgt" font-weight="600">Plan table (blast-radius order)</text>
   <text x="614" y="174" class="svgmd"># id severity subsystem control tier</text>
-  <text x="614" y="190" class="svgmd">  aisg who status</text>
+  <text x="614" y="190" class="svgmd">  aisafe who status</text>
   <text x="614" y="212" class="svgs">status = "accepted" when a reason exists,</text>
   <text x="614" y="228" class="svgs">else new / unchanged</text>
   <text x="614" y="252" class="svgmd">"Rows the package can implement"</text>
@@ -332,7 +332,7 @@ interpreting prose.</p>
 <p>It starts on the rule. Each rule declares what the package can do about it, and the constructor
 refuses a block that offers something without saying what it leaves open:</p>
 
-<div class="file"><span><b>src/aisg/devtools/audit/model.py</b>:441–468 — the package block, validated at import</span><span class="badge b0">D</span></div>
+<div class="file"><span><b>src/aisafe/devtools/audit/model.py</b>:441–468 — the package block, validated at import</span><span class="badge b0">D</span></div>
 <pre><code>@dataclass(frozen=True)
 class Package:
     """
@@ -362,7 +362,7 @@ class Package:
 is <code>True</code> because an approval gate is exactly what AUD-201 asks for — and the text still
 names three ways it can fail to apply:</p>
 
-<div class="file"><span><b>src/aisg/devtools/audit/rules/irreversible.py</b>:128–137 — AUD-201's package block</span><span class="badge b0">D</span></div>
+<div class="file"><span><b>src/aisafe/devtools/audit/rules/irreversible.py</b>:128–137 — AUD-201's package block</span><span class="badge b0">D</span></div>
 <pre><code>package=Package(
     mechanism="gate",
     symbols=("ToolPolicyGuard",),
@@ -379,7 +379,7 @@ names three ways it can fail to apply:</p>
 <code>mechanism: none</code>. At render time the plan's <em>who</em> column combines the block with
 two facts about the file:</p>
 
-<div class="file"><span><b>src/aisg/devtools/audit/html.py</b>:690–696 — who does the row</span><span class="badge b0">D</span></div>
+<div class="file"><span><b>src/aisafe/devtools/audit/html.py</b>:690–696 — who does the row</span><span class="badge b0">D</span></div>
 <pre><code>def _who(finding: Finding, language: str, protected: bool) -> str:
     package = finding.recommendation.package
     if protected:
@@ -391,12 +391,12 @@ two facts about the file:</p>
 <p>The language comes from the file extension first (<code>patterns.LANG_BY_EXT</code>, the
 walker's own table), then the unit, then the root unit for a repository-wide finding
 (<code>html.py:660–682</code>). The extension wins because the idiom is offered for a file: a
-<code>.ts</code> file inside a Python project cannot import <code>aisg</code>.</p>
+<code>.ts</code> file inside a Python project cannot import <code>aisafe</code>.</p>
 
 <p>The page is then assembled in a fixed order, and its last step forces ASCII whatever the input
 was:</p>
 
-<div class="file"><span><b>src/aisg/devtools/audit/html.py</b>:1314–1330 — section order, and the last line of defence</span><span class="badge b0">D</span></div>
+<div class="file"><span><b>src/aisafe/devtools/audit/html.py</b>:1314–1330 — section order, and the last line of defence</span><span class="badge b0">D</span></div>
 <pre><code>out.extend(_header(report, doc2, tool_label))
 out.extend(_read_first(report, numbers, ran_any))
 if doc2:
@@ -553,7 +553,7 @@ the file may read as a verdict on the system.</p>
 <p><code>diff()</code> is where a baseline's reasons reach the findings. It sets two fields in place
 on every finding and builds the named list of what disappeared:</p>
 
-<div class="file"><span><b>src/aisg/devtools/audit/baseline.py</b>:563–588 — partition, attach reasons, name the gone</span><span class="badge b1">B</span></div>
+<div class="file"><span><b>src/aisafe/devtools/audit/baseline.py</b>:563–588 — partition, attach reasons, name the gone</span><span class="badge b1">B</span></div>
 <pre><code>for finding in findings:
     seen.add(finding.fingerprint)
     if finding.fingerprint in baseline:
@@ -572,7 +572,7 @@ result.no_longer_reported = [_named(fingerprint, named) for fingerprint in resul
 
 <p>Writing happens after the report is on disk, and keeps the reasons already recorded:</p>
 
-<div class="file"><span><b>src/aisg/devtools/audit/main.py</b>:855–873 — the report first, then the record</span><span class="badge b1">B</span></div>
+<div class="file"><span><b>src/aisafe/devtools/audit/main.py</b>:855–873 — the report first, then the record</span><span class="badge b1">B</span></div>
 <pre><code>if options.write_baseline is not None:
     # After the render: the report and the baseline are the same run, both on disk.
     # A refresh keeps the reasons already recorded, or every acceptance would turn
@@ -589,7 +589,7 @@ return EXIT_OK if options.write_baseline is not None else exit_code</code></pre>
 <p>An acceptance is recorded by a separate command that does not scan. Every reason passes one
 check, the same one <code>read_baseline</code> applies when it loads a file:</p>
 
-<div class="file"><span><b>src/aisg/devtools/audit/baseline.py</b>:385–417 — what a reason may not be</span><span class="badge b1">B</span></div>
+<div class="file"><span><b>src/aisafe/devtools/audit/baseline.py</b>:385–417 — what a reason may not be</span><span class="badge b1">B</span></div>
 <pre><code>def _check_reason(fingerprint: str, reason: str) -> str:
     ...
     text = reason.strip()
@@ -612,7 +612,7 @@ check, the same one <code>read_baseline</code> applies when it loads a file:</p>
 <p>Last, the walker has to tell the audit's own output from the user's files. It decides by
 content, after decoding the head the same way the reader does:</p>
 
-<div class="file"><span><b>src/aisg/devtools/audit/walk.py</b>:585–594 — own output is skipped, and named</span><span class="badge b1">B</span></div>
+<div class="file"><span><b>src/aisafe/devtools/audit/walk.py</b>:585–594 — own output is skipped, and named</span><span class="badge b1">B</span></div>
 <pre><code># `utf-8-sig`: the same text `read_text` returns. A BOM left in place put
 # three bytes before the html marker line and defeated `is_own_html`.
 text_head = head.decode("utf-8-sig", errors="replace")
@@ -656,15 +656,15 @@ SARIF run properties <code>aisg_schema</code> then <code>own_output_skipped</cod
     <code>index</code> block exists so that the gone fingerprint can at least be named by rule, file
     and title, instead of as sixteen hex characters.</li>
   <li><b class="num">ⓔ</b><strong>Own output is recognised by content, not by directory.</strong>
-    Rejected: add <code>.aisg-audit/</code> to <code>SKIP_DIRS</code>. Measure and probe reports
+    Rejected: add <code>.aisafe-audit/</code> to <code>SKIP_DIRS</code>. Measure and probe reports
     written there must be read as evidence (<code>REPORTED &lt;age&gt;</code>). For the same reason
-    <code>.gitignore</code> never prunes <code>.aisg-audit/</code>: ignoring it changes what git
+    <code>.gitignore</code> never prunes <code>.aisafe-audit/</code>: ignoring it changes what git
     tracks, not what the next audit reads. Every skipped file is listed in
     <code>inventory.own_output_skipped</code>, so the skip stays visible.</li>
   <li><b class="num">ⓕ</b><strong>Actions are never defaults.</strong> <code>write_baseline</code>,
     <code>inventory_only</code>, <code>list_rules</code>, <code>amend_baseline</code> and
     <code>accept</code> are in <code>main.NOT_CONFIGURABLE</code> (<code>main.py:72–74</code>). A
-    <code>true</code> in <code>[tool.aisg-audit]</code> would make every run rewrite a baseline or
+    <code>true</code> in <code>[tool.aisafe-audit]</code> would make every run rewrite a baseline or
     run no rule, with no flag to switch it back off.</li>
 </ul>
 
@@ -719,7 +719,7 @@ mirrors, the pinned bootstrap); this section is about the new procedure.</p>
 <h3>5.2 · Data flow</h3>
 
 <div class="fig">
-<svg viewBox="0 0 960 400" role="img" aria-label="The five phases, the artefacts each writes under .aisg-audit, and the three branches of phase 3">
+<svg viewBox="0 0 960 400" role="img" aria-label="The five phases, the artefacts each writes under .aisafe-audit, and the three branches of phase 3">
   <defs>
     <marker id="s2" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L9,4 L0,8 z" fill="var(--p2-line)"/></marker>
   </defs>
@@ -733,7 +733,7 @@ mirrors, the pinned bootstrap); this section is about the new procedure.</p>
   <rect x="230" y="20" width="170" height="92" rx="9" fill="var(--p2-bg)" stroke="var(--p2-line)"/>
   <text x="244" y="44" class="svgt" font-weight="600">2 document 1</text>
   <text x="244" y="64" class="svgmd">audit-before.html</text>
-  <text x="244" y="82" class="svgs">ask: commit .aisg-audit/?</text>
+  <text x="244" y="82" class="svgs">ask: commit .aisafe-audit/?</text>
   <text x="244" y="98" class="svgs">ask: which rows to defer? ⓨ</text>
 
   <path d="M400 66 L440 66" stroke="var(--p2-line)" stroke-width="2" fill="none" marker-end="url(#s2)"/>
@@ -780,18 +780,18 @@ mirrors, the pinned bootstrap); this section is about the new procedure.</p>
 
   <rect x="20" y="310" width="920" height="70" rx="9" fill="var(--p2-bg)" stroke="var(--p2-line)"/>
   <text x="34" y="334" class="svgt" font-weight="600">after every applied diff</text>
-  <text x="34" y="354" class="svgmd">ruff format (Python) → aisg audit . --format json --quiet -o .aisg-audit/audit-recheck.json --baseline .aisg-audit/audit-baseline.json</text>
+  <text x="34" y="354" class="svgmd">ruff format (Python) → aisafe audit . --format json --quiet -o .aisafe-audit/audit-recheck.json --baseline .aisafe-audit/audit-baseline.json</text>
   <text x="34" y="372" class="svgs">still reported? say the rule cannot see the control; do not accept it to make it go away</text>
 </svg>
 </div>
-<p class="figcap">Fig. 4 — Phases and artefacts. Every command runs from the repository root, because <code>[tool.aisg-audit]</code> resolves from the working directory. The recheck file is <code>kind: audit</code>, so the next walk skips it (ⓔ).</p>
+<p class="figcap">Fig. 4 — Phases and artefacts. Every command runs from the repository root, because <code>[tool.aisafe-audit]</code> resolves from the working directory. The recheck file is <code>kind: audit</code>, so the next walk skips it (ⓔ).</p>
 
 <h3>5.3 · How the data moves and transforms</h3>
 
 <p>The skill is prose, but it is prose that points at fields. The three branches of phase 3 map
 one-to-one onto the <em>who</em> values the renderer computes:</p>
 
-<div class="file"><span><b>src/aisg/skills/ai-safety-audit/SKILL.md</b>:119–128 — three branches, decided by fields</span><span class="badge b2">S</span></div>
+<div class="file"><span><b>src/aisafe/skills/ai-safety-audit/SKILL.md</b>:119–128 — three branches, decided by fields</span><span class="badge b2">S</span></div>
 <pre><code>- `same_control: true`, the language is Python and the file is not a rule-4 file (`who:
   package`): offer the idiom from `references/apply/python.md` keyed by the first entry of
   `symbols`, quoting `leaves_open` verbatim from the JSON in the same message. ...
@@ -801,7 +801,7 @@ one-to-one onto the <em>who</em> values the renderer computes:</p>
 - `mechanism: none`, or the language is not Python, or the file is a rule-4 file (`who:
   you` or `you, approval needed`): state the outside-package action. ...</code></pre>
 
-<div class="file"><span><b>src/aisg/skills/ai-safety-audit/SKILL.md</b>:151–153 — the evidence rule</span><span class="badge b2">S</span></div>
+<div class="file"><span><b>src/aisafe/skills/ai-safety-audit/SKILL.md</b>:151–153 — the evidence rule</span><span class="badge b2">S</span></div>
 <pre><code>Applying a diff is not evidence; the re-audit is. A fingerprint that is still reported
 after the diff means the rule cannot see the control you wired -- say so, do not accept it
 to make it go away. Stop after each row and ask whether to continue.</code></pre>
@@ -824,7 +824,7 @@ to make it go away. Stop after each row and ask whether to continue.</code></pre
     standard case; pydeep reports it as UNKNOWN). If the fingerprint is still there, that is a fact
     about the rule or the diff, and it is said out loud rather than accepted away.</li>
   <li><b class="num">ⓨ</b><strong>The skill proposes, it does not edit, the files that govern it.</strong>
-    Whether <code>.aisg-audit/</code> is committed is asked, and the <code>.gitignore</code> line is
+    Whether <code>.aisafe-audit/</code> is committed is asked, and the <code>.gitignore</code> line is
     shown as a diff. Protected paths get a restated, specific approval. The documents are the
     record; nothing the agent says in the conversation goes into them.</li>
 </ul>
@@ -844,8 +844,8 @@ reason in one approval — <code>--accept</code> repeats, but the skill forbids 
     rule (hard rule 4) and one change per approval (hard rule 5). The plan marks protected rows
     <code>you, approval needed</code>, so the constraint is visible in the document, not only in
     the skill text.</li>
-  <li><strong>Phase 5 can spend money.</strong> Tests, <code>aisg measure</code> and
-    <code>aisg probe</code> may call model providers, so they wait for a separate approval; a
+  <li><strong>Phase 5 can spend money.</strong> Tests, <code>aisafe measure</code> and
+    <code>aisafe probe</code> may call model providers, so they wait for a separate approval; a
     non-loopback probe needs <code>--i-have-authorization</code>, which the user must add.</li>
 </ul>
 
@@ -873,7 +873,7 @@ one filter over the after-report:</p>
 <div class="file"><span><b>shell</b> — open rows from document 2's JSON, with what the package leaves open</span><span class="badge b1">B</span></div>
 <pre><code>python -c "
 import json
-r = json.load(open('.aisg-audit/audit-report-after.json'))
+r = json.load(open('.aisafe-audit/audit-report-after.json'))
 for f in r['findings']:
     if f['accepted_reason'] is None:
         p = f['recommendation']['package']
@@ -909,7 +909,7 @@ profile), which is the package telling itself what to do next.</p>
   <tr><td>Unknown-option refusal in the other guards</td><td class="warntag">open — only <code>ToolPolicyGuard.setup</code> refuses (STATUS.md)</td></tr>
 </table>
 
-<p>None of the <a href="aisg-audit-and-the-portable-skill.html#next">previous document's recommendations</a>
+<p>None of the <a href="aisafe-audit-and-the-portable-skill.html#next">previous document's recommendations</a>
 was resolved by this work, so none was flipped there. Discovered while writing this one:</p>
 
 <ol>
@@ -957,15 +957,15 @@ was resolved by this work, so none was flipped there. Discovered while writing t
   </ul>
 </div>
 
-<p class="sub" style="margin-top:48px">Sources: <code>src/aisg/devtools/audit/</code>
+<p class="sub" style="margin-top:48px">Sources: <code>src/aisafe/devtools/audit/</code>
 (<code>model.py</code>, <code>html.py</code>, <code>baseline.py</code>, <code>main.py</code>,
 <code>walk.py</code>, <code>rules/__init__.py</code>, <code>rules/irreversible.py</code>),
-<code>src/aisg/skills/ai-safety-audit/SKILL.md</code>, <code>docs/STATUS.md</code>,
+<code>src/aisafe/skills/ai-safety-audit/SKILL.md</code>, <code>docs/STATUS.md</code>,
 <code>docs/handoff.md</code>, <code>tests/unit/test_audit_baseline.py</code>. Counts are from
-<code>aisg audit . --no-external --fail-on high --baseline audit-baseline.json</code> (exit 0) and the
+<code>aisafe audit . --no-external --fail-on high --baseline audit-baseline.json</code> (exit 0) and the
 same run with <code>--format json</code> and <code>--format html</code>, on this machine,
 2026-09-21. Line numbers as of <code>main</code> @ <code>ac9baa9</code>; working tree clean for
-every file quoted. Prior context: <a href="aisg-audit-and-the-portable-skill.html">aisg audit and
+every file quoted. Prior context: <a href="aisafe-audit-and-the-portable-skill.html">aisafe audit and
 the portable skill</a>, <a href="measurement-first-guardrails.html">Measurement-first guardrails</a>.</p>
 
 </main>

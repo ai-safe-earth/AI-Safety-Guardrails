@@ -1,7 +1,7 @@
-# Reading an `aisg audit` report
+# Reading an `aisafe audit` report
 
 Read this before phase 2. It condenses the finding and report schema so you can present
-`.aisg-audit/audit-report.json` without guessing what a field means. The JSON is
+`.aisafe-audit/audit-report.json` without guessing what a field means. The JSON is
 authoritative in every phase; the html documents are rendered from the same `Report` and
 carry no information the JSON lacks.
 
@@ -46,7 +46,7 @@ Their findings carry `evidence_kind: "report"` and a `report` block:
                "generated_at": null, "age_source": "mtime", "age_days": 41}
 
 Say how old the report is and where the age came from. A 41-day-old measurement of a guard
-that has since been reconfigured measures the old configuration. `aisg measure` never emits a
+that has since been reconfigured measures the old configuration. `aisafe measure` never emits a
 precision figure, so no audit rule compares one; AUD-803 reads `threshold_failures` and
 `false_positive_rate` only.
 
@@ -64,7 +64,7 @@ precision figure, so no audit rule compares one; AUD-803 reads `threshold_failur
       "scope": {"kind": "function", "unit": "u1", "name": "services/agent/app.py::handle_ticket"},
       "evidence": [{"role": "private", "file": "...", "line": 52, "snippet": "..."}, ...],
       "controls": ["ASI01", "ASI02", "ASI06", "LLM01", "LLM02", "LLM06", "EU:Art.9", "EU:Art.15", "NIST:MAP-5.1", "NIST:MANAGE-2.2"],
-      "recommendation": {"tier": "T3", "summary": "...", "alternatives": ["aisg ToolPolicyGuard + PIIDetector", "NeMo Guardrails flows", "Guardrails AI validators", "LLM Guard scanners"],
+      "recommendation": {"tier": "T3", "summary": "...", "alternatives": ["aisafe ToolPolicyGuard + PIIDetector", "NeMo Guardrails flows", "Guardrails AI validators", "LLM Guard scanners"],
                          "package": {"mechanism": "gate", "symbols": ["ToolPolicyGuard", "PIIDetector"], "same_control": false,
                                      "leaves_open": "the control is the structural split of trusted and untrusted scopes; a gate plus a detector never closes this"}},
       "related_lint_rules": ["EU-AIA-012a", "ALIGN-003"],
@@ -112,7 +112,7 @@ present, in this order:
 | key | values | meaning |
 |---|---|---|
 | `mechanism` | `gate`, `budget`, `detector`, `record`, `measurement`, `document`, `none` | the kind of thing the package can add. `gate` lowers impact; `detector` lowers probability; `record` writes evidence; `measurement` and `document` produce reports and cards, not runtime behaviour |
-| `symbols` | list of aisg class names (`ToolPolicyGuard`) or verbs (`aisg measure`); empty when `mechanism` is `none` | what to wire, in preference order; the first entry keys `apply/python.md` |
+| `symbols` | list of aisafe class names (`ToolPolicyGuard`) or verbs (`aisafe measure`); empty when `mechanism` is `none` | what to wire, in preference order; the first entry keys `apply/python.md` |
 | `same_control` | `true` / `false` | `true` only when wiring `symbols` IS the control the rule asks for. `false` means the package offers a different, additional mechanism |
 | `leaves_open` | text; non-empty whenever `mechanism` is not `none` | what wiring the symbols still does not do, in the rule author's words. Quote it every time you offer the symbol |
 
@@ -122,7 +122,7 @@ dispatched through `run_processing`; a `TelemetryProvider` only traces calls thr
 `run_full`), and `leaves_open` says what is outside it even then. It also does not mean the
 rule will stop firing: only the re-audit in phase 4 shows that. `same_control: false` with
 symbols means "in addition to, not instead of" the control in `controls.md`; a detector is
-never the control for a P1-P4 finding. aisg symbols are Python-only; on a non-Python unit
+never the control for a P1-P4 finding. aisafe symbols are Python-only; on a non-Python unit
 the mechanism is still named, the control still applies, and the symbol does not.
 
 Every row's `who` in the html plan table derives from this block and nothing else:
@@ -139,7 +139,7 @@ nor an open row; it sits under the accepted group.
 - `sub` names a sub-finding (`AUD-101/interpreter`, `AUD-107/inert`, `AUD-701/apm-only`);
   the display id is `AUD-101/interpreter`.
 - `gitignored: true` means the evidence file is excluded by `.gitignore` but was walked
-  anyway. `.env*` always is, and so is `.aisg-audit/`, so the reports there count as
+  anyway. `.env*` always is, and so is `.aisafe-audit/`, so the reports there count as
   evidence whether or not they are committed. Say so for a credential: it is a
   developer-machine one, not a committed one.
 - Snippets are masked before they enter a finding, by two different mechanisms with two
@@ -170,7 +170,7 @@ Key order is fixed; `schema` is first.
   `suppressed`, `baseline_new` (null without `--baseline`).
 - `measured`: one row per scanner that ran, with `version`, `duration_ms`, `findings` and
   `network` (whether that scanner uses the network the way it normally does).
-- `reports`: every on-disk aisg report that was read, with its age and the fields the rules
+- `reports`: every on-disk aisafe report that was read, with its age and the fields the rules
   consumed (`guards` for measure, `summary` for probe).
 - `external_tools`: every adapter and its status: `ran`, `not_on_path`, `not_applicable`,
   `failed`, `timeout`, `skipped_by_flag` (`--no-external`), `skipped_needs_flag`
@@ -204,11 +204,11 @@ Key order is fixed; `schema` is first.
 skipped: a JSON whose head carries `"schema": "aisg/1"` and `"kind": "audit"` (the
 report), `"kind": "inventory"` (the `--inventory-only` document) or `"kind":
 "attestation"` (phase 7's document), and an html whose first line is exactly
-`<!-- # aisg-audit: ignore-file -->` (the audit's pages and `attestation.html`). Without this the phase-1
+`<!-- # aisafe-audit: ignore-file -->` (the audit's pages and `attestation.html`). Without this the phase-1
 documents would be scanned as source and their evidence snippets reported as new findings.
 Baseline files are not skipped (they hold no snippets; the reasons are read as text, which
 is why a reason must not quote the literal it accepts), and measure and probe reports are
-not skipped (they are evidence for AUD-803, AUD-902 and AUD-903). `.aisg-audit/` is
+not skipped (they are evidence for AUD-803, AUD-902 and AUD-903). `.aisafe-audit/` is
 deliberately not a skipped directory, for the same reason, and `.gitignore` never prunes
 it. The list is one inventory line in every format; SARIF carries it at
 `runs[0].properties.own_output_skipped`.
@@ -239,7 +239,7 @@ second `--accept` for the same fingerprint replaces the reason. `--accept` witho
 
 ## The decision document (`kind: decision`)
 
-`aisg decide --format json -o .aisg-audit/decision-report.json` (phase 3) writes the trade
+`aisafe decide --format json -o .aisafe-audit/decision-report.json` (phase 3) writes the trade
 table as data. Top-level keys, in order: `schema`, `kind`, `tool`, `generated_at`,
 `disclaimer`, `inputs` (`audit`, `measure` or null, `prices` with `as_of` and `stale`,
 `card` or null), `traffic` (`requests_per_day`, `avg_input_tokens`, `avg_output_tokens`,
@@ -259,26 +259,26 @@ table is past its shelf life), `fail_mode` (`open` | `closed` | `mixed` | `n/a`)
 (any of `p99`, `usd/request`, `usd/month`, `human`, `benign`) and `recommendation`
 (`verdict`, `reasons`, `config_changes`). Read the verdict and the provenance together:
 `apply` is a reading of declared budgets, never a safety statement, and `ESTIMATED`
-means the judge's tokens were computed from its prompt because `aisg measure` ran
+means the judge's tokens were computed from its prompt because `aisafe measure` ran
 offline. `totals` carries `mode`, `p50_ms`, `p99_ms_upper_bound`, `usd_per_request`,
 `usd_per_month`, `human_per_day`, `human_capacity_per_day`, `over_budget`,
 `excluded_unmeasured`.
 
 The document is evidence, not own output: the next audit reads it as `REPORTED <age>`
 and AUD-806 turns each over-budget row into a finding (`AUD-806/latency`, `/cost`,
-`/human`, `/benign`). `aisg audit --format html --decision <file>` adds it to the page
+`/human`, `/benign`). `aisafe audit --format html --decision <file>` adds it to the page
 as the "Trade table" section after the plan.
 
 ## The attestation document (`kind: attestation`)
 
-`aisg attest . --owner "<Name <role>>" --html` (phase 7) writes `.aisg-audit/attestation.json`,
+`aisafe attest . --owner "<Name <role>>" --html` (phase 7) writes `.aisafe-audit/attestation.json`,
 `attestation.md`, `attestation.html` and `badge.json`. Top-level keys, in order: `schema`,
 `kind`, `tool`, `target` (`path`, `git_sha`, `dirty`), `generated_at`, `owner`, `level`,
 `inputs`, `accepted_risks`, `unknown`, `residual`, `next_review_by`, `notes`, `disclaimer`.
 
 - `level`: `reached` (0..3, or null when a level-0 criterion is unmet), `name` (`audited`,
   `triaged`, `measured`, `governed`), `statement` and `criteria`. The statement is literal:
-  `<owner> states that <path> at commit <sha> meets the AISG level <N> (<name>) criteria on
+  `<owner> states that <path> at commit <sha> meets the AnyAISafe level <N> (<name>) criteria on
   <date>.`; with no level it says the tree was checked and reaches no level. Each
   `criteria[]` row is `id`, `level`, `met`, `evidence` (what was read) and `missing` (empty
   when met; otherwise what would have to change). The level reached is the highest N with
@@ -295,11 +295,11 @@ as the "Trade table" section after the plan.
   (90 days). `disclaimer`: the audit's disclaimer plus "An attestation is a statement by
   the named owner; the tool checked the listed criteria and nothing else."
 
-`badge.json` is a shields.io endpoint: `{"schemaVersion": 1, "label": "aisg", "message":
+`badge.json` is a shields.io endpoint: `{"schemaVersion": 1, "label": "aisafe", "message":
 "level N (<date>)", "color": "informational"}`, `lightgrey` at level 0 or no level, never
 green or red. `--check` evaluates and prints without writing anything; `--check
 --require-level N` exits 1 when N is not reached. `--owner` is required to write and can
-never come from `pyproject.toml` (`[tool.aisg-attest]` defaults every other flag). The
+never come from `pyproject.toml` (`[tool.aisafe-attest]` defaults every other flag). The
 attestation is the toolchain's own output: a later walk skips `attestation.json` by its
 kind and `attestation.html` by its first line, and lists both under `own_output_skipped`;
 `attestation.md` and `badge.json` stay walked.
@@ -312,7 +312,7 @@ prose. `--quiet` has no effect on html. `--inventory-only` renders the header, F
 the inventory with a banner saying the rules did not run, and no plan. ASCII throughout, no
 severity colour, no ticks, grades, scores or percentages. Sections, in order:
 
-1. Line 1 is `<!-- # aisg-audit: ignore-file -->`, so a re-audit of a tree that contains the
+1. Line 1 is `<!-- # aisafe-audit: ignore-file -->`, so a re-audit of a tree that contains the
    document skips it instead of reporting its own snippets.
 2. Header: target, commit, `generated_at`, tool version; "Compared against: none -- this
    is the first survey" or "Compared against <path>, written <age> ago" plus the number of
@@ -330,12 +330,12 @@ severity colour, no ticks, grades, scores or percentages. Sections, in order:
    different from "reported 0". The caption says what the figure deliberately omits.
 6. One section per subsystem: inventory facts with file:line, then the findings placed
    there in report order, each with its bucket tag, baseline status, redacted evidence,
-   recommendation and the package line (`aisg: <symbols> -- implements the control this
+   recommendation and the package line (`aisafe: <symbols> -- implements the control this
    rule asks for. Leaves open: ...`, or `... a different control (<mechanism>), in
    addition to, not instead of: ...`, or `outside the package: ...`), the Python-only note
    on non-Python units, the approval note on protected paths, and the operator's recorded
    reason when there is one.
-7. Plan: one table in report order -- #, id, severity, subsystem, control, tier, aisg,
+7. Plan: one table in report order -- #, id, severity, subsystem, control, tier, aisafe,
    who, status -- then "Rows the package can implement (walk the table top-down; do not
    skip a row above)" and the sentence "Wiring a control is not evidence the finding is
    gone: re-run the audit and read document 2."
@@ -345,7 +345,7 @@ severity colour, no ticks, grades, scores or percentages. Sections, in order:
 9. UNKNOWN, every item with `how_to_resolve` and the install hint as text.
 10. External tools that ran, with version and network flag, and the reports read.
 11. Footer: the terminal's summary sentence, the absence sentence again, "generated by
-    anyaisafe <version>; the JSON report is authoritative".
+    aisafe <version>; the JSON report is authoritative".
 
 Read the JSON to answer questions; point the user at the html to keep.
 

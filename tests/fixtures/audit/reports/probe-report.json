@@ -1,7 +1,7 @@
 {
   "schema": "aisg/1",
   "tool": {
-    "name": "aisg probe",
+    "name": "aisafe probe",
     "corpus_families": [
       "encoding_bypass",
       "prompt_injection",

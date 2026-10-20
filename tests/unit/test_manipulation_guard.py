@@ -12,16 +12,16 @@ from pathlib import Path
 
 import pytest
 
-from aisg import GuardrailPipeline, ManipulationGuard
-from aisg.config import PRESETS, preset_path
-from aisg.core.base import Action, Severity
-from aisg.core.exceptions import GuardrailConfigError
-from aisg.core.measurement import Profile
-from aisg.core.registry import REGISTRY
-from aisg.devtools.audit import persons_patterns
-from aisg.modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
-from aisg.modules.output import manipulation
-from aisg.modules.output.manipulation import CATEGORIES, MANIPULATION_PATTERNS, is_mention
+from aisafe import GuardrailPipeline, ManipulationGuard
+from aisafe.config import PRESETS, preset_path
+from aisafe.core.base import Action, Severity
+from aisafe.core.exceptions import GuardrailConfigError
+from aisafe.core.measurement import Profile
+from aisafe.core.registry import REGISTRY
+from aisafe.devtools.audit import persons_patterns
+from aisafe.modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
+from aisafe.modules.output import manipulation
+from aisafe.modules.output.manipulation import CATEGORIES, MANIPULATION_PATTERNS, is_mention
 
 SAMPLES = {
     "false_urgency": "Act now, only 3 spots left; this offer ends tonight.",

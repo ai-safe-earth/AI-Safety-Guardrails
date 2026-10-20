@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.audit.model import (
+from aisafe.devtools.audit.model import (
     AuditContext,
     Basis,
     Bucket,
@@ -27,8 +27,8 @@ from aisg.devtools.audit.model import (
     MatchKind,
     Severity,
 )
-from aisg.devtools.audit.rules import run_rules
-from aisg.devtools.audit.rules.secrets_pii import (
+from aisafe.devtools.audit.rules import run_rules
+from aisafe.devtools.audit.rules.secrets_pii import (
     RULES,
     LiteralPii,
     SecretInConfig,
@@ -132,7 +132,7 @@ def test_rule_metadata(rule):
     for token in rule.controls:
         assert CONTROL_TOKEN.match(token), token
     assert len(rule.recommendation.alternatives) >= 3
-    assert any("aisg" not in alt for alt in rule.recommendation.alternatives)
+    assert any("aisafe" not in alt for alt in rule.recommendation.alternatives)
     assert rule.measured_precision is None
     assert set(rule.related_lint_rules) <= ALLOWED_LINT_RULES
     assert rule.basis is Basis.PRESENCE

@@ -1,7 +1,7 @@
 """
 tests/unit/test_skill_cmd.py
 ----------------------------
-Tests for `aisg skill install|path|list|diff`.
+Tests for `aisafe skill install|path|list|diff`.
 
 Every test but the last runs against a fake packaged tree built in tmp_path,
 with `skill_root` / `iter_skill_files` / `home_dir` monkeypatched on the
@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools import skill as skillcmd
-from aisg.devtools.skill import (
+from aisafe.devtools import skill as skillcmd
+from aisafe.devtools.skill import (
     ALWAYS_HOSTS,
     HOSTS,
     Host,
@@ -418,7 +418,7 @@ class TestMainOther:
 
     def test_no_verb_prints_help_and_exits_2(self, capsys):
         assert main([]) == 2
-        assert "aisg skill" in capsys.readouterr().out
+        assert "aisafe skill" in capsys.readouterr().out
 
     def test_help_text_states_the_all_rule(self):
         text = skillcmd.build_parser().format_help()
@@ -432,7 +432,7 @@ class TestMainOther:
 
 
 def test_real_package_installs_to_tmp(tmp_path: Path):
-    from aisg.skills import skill_root as real_skill_root
+    from aisafe.skills import skill_root as real_skill_root
 
     try:
         real_skill_root()

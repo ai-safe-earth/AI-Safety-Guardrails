@@ -2,13 +2,13 @@
 ---------------------
 Pin the skill's bootstrap scripts and the plugin manifest to the package version and refresh the three mirrors.
 
-The canonical skill lives in `src/aisg/skills/ai-safety-audit/` (shipped in the wheel);
+The canonical skill lives in `src/aisafe/skills/ai-safety-audit/` (shipped in the wheel);
 `.claude/skills/ai-safety-audit/`, `.agents/skills/ai-safety-audit/` and
 `plugins/ai-safety-audit/skills/ai-safety-audit/` are byte-identical copies pinned by
 `tests/unit/test_skill_package.py`. This dev tool:
 
 1. reads `[project].version` from `pyproject.toml`;
-2. rewrites the `AISG_VERSION="..."` / `$AISG_VERSION = "..."` line in the six canonical
+2. rewrites the `AISAFE_VERSION="..."` / `$AISAFE_VERSION = "..."` line in the six canonical
    scripts so the bootstrap stays pinned to the release (an unpinned bootstrap is exactly
    what AUD-602 flags in targets);
 3. pins `"version"` in `plugins/ai-safety-audit/.claude-plugin/plugin.json`;
@@ -36,7 +36,7 @@ except ModuleNotFoundError:  # Python 3.10
         tomllib = None  # type: ignore[assignment]
 
 REPO = Path(__file__).resolve().parents[1]
-CANONICAL = REPO / "src" / "aisg" / "skills" / "ai-safety-audit"
+CANONICAL = REPO / "src" / "aisafe" / "skills" / "ai-safety-audit"
 MIRRORS = (
     REPO / ".claude" / "skills" / "ai-safety-audit",
     REPO / ".agents" / "skills" / "ai-safety-audit",
@@ -56,9 +56,9 @@ SCRIPTS = (
 )
 SKIP_DIRS = frozenset({"__pycache__"})
 
-# `AISG_VERSION="0.1.0"` in sh, `$AISG_VERSION = "0.1.0"` in PowerShell; the quoted value is
+# `AISAFE_VERSION="0.1.0"` in sh, `$AISAFE_VERSION = "0.1.0"` in PowerShell; the quoted value is
 # the only thing rewritten, so the trailing comment survives.
-VERSION_LINE = re.compile(r'^(\$?AISG_VERSION\s*=\s*")([^"\n]*)(")', re.MULTILINE)
+VERSION_LINE = re.compile(r'^(\$?AISAFE_VERSION\s*=\s*")([^"\n]*)(")', re.MULTILINE)
 
 
 def project_version(pyproject: Path = REPO / "pyproject.toml") -> str:
@@ -100,11 +100,11 @@ def pin_scripts(version: str, write: bool) -> list[str]:
         text = path.read_text(encoding="utf-8")
         matches = VERSION_LINE.findall(text)
         if not matches:
-            diffs.append(f"no AISG_VERSION line in {rel}")
+            diffs.append(f"no AISAFE_VERSION line in {rel}")
             continue
         if any(current != version for _, current, _ in matches):
             found = ", ".join(sorted({current for _, current, _ in matches}))
-            diffs.append(f"{rel}: AISG_VERSION is {found}, pyproject says {version}")
+            diffs.append(f"{rel}: AISAFE_VERSION is {found}, pyproject says {version}")
             if write:
                 new = VERSION_LINE.sub(lambda m: f"{m.group(1)}{version}{m.group(3)}", text)
                 path.write_bytes(new.encode("utf-8"))  # bytes: keep LF on Windows

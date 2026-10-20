@@ -2,7 +2,7 @@
 
 Measures what fraction of each `euaiact-lint` rule's findings are real. The
 answer decides whether a rule fires by default or is demoted behind
-`aisg lint --experimental`.
+`aisafe lint --experimental`.
 
 Nothing here estimates, extrapolates or defaults a verdict. Every number in
 `precision.md` traces back to a row a human labelled in `findings.csv`.
@@ -93,7 +93,7 @@ class Rule_014a_FullyAutomatedHighRiskDecision(BaseRule):
 ```
 
 Anything below `MIN_PRECISION` (0.80, in
-`aisg/modules/policy/code_analyzer/analyzer.py`) stops firing unless the user
+`aisafe/modules/policy/code_analyzer/analyzer.py`) stops firing unless the user
 passes `--experimental`.
 
 ## What `measured_precision = None` means
@@ -110,7 +110,7 @@ Two distinct cases both read as unmeasured, and `precision.md` separates them:
 
 Neither is evidence of quality. Do not fill in a number for either.
 
-## `aisg audit` rules: `--tool audit`
+## `aisafe audit` rules: `--tool audit`
 
 The same corpus, label loop and scorer serve the `AUD-*` rules:
 
@@ -128,12 +128,12 @@ is a class attribute, and the paste block names the class
 (`# AUD-501 SecretLiteral: 31/40 judged were true positives`). Sampling is the same
 deterministic, nested, round-robin draw; it keys on `rule_id`, `repo`, `file` and
 `line` only. `score.py` refuses a partly labelled CSV exactly as for lint, and
-`--experimental` on `aisg audit` is the gate a demoted rule moves behind.
+`--experimental` on `aisafe audit` is the gate a demoted rule moves behind.
 
-Each audit runs `aisg audit . --format json --no-external --fail-on never` with the
-clone as the working directory, so a target's own `[tool.aisg-audit]` applies and
-no external scanner is launched. The fetch is `aisg.devtools._git.fetch_pinned`,
-shared with `aisg fleet`; the bench corpus is a valid fleet list.
+Each audit runs `aisafe audit . --format json --no-external --fail-on never` with the
+clone as the working directory, so a target's own `[tool.aisafe-audit]` applies and
+no external scanner is launched. The fetch is `aisafe.devtools._git.fetch_pinned`,
+shared with `aisafe fleet`; the bench corpus is a valid fleet list.
 
 No audit row has been labelled yet. Until one has, every audit rule stays
 `measured_precision = None`, renders as `[UNMEASURED]`, and keeps firing. Do not

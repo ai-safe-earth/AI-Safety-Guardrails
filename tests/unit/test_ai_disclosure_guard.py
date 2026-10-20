@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import pytest
 
-from aisg import AIDisclosureGuard, GuardrailPipeline
-from aisg.core.base import Action, Severity
-from aisg.core.exceptions import GuardrailConfigError
-from aisg.core.registry import REGISTRY
-from aisg.modules.output.ai_disclosure import AI_IDENTITY_CLAIMS, DEFAULT_DISCLOSURE
-from aisg.modules.policy.eu_ai_act import EUAIActCompliance
-from aisg.modules.policy.nist_ai_rmf import NISTAIRMFCompliance
+from aisafe import AIDisclosureGuard, GuardrailPipeline
+from aisafe.core.base import Action, Severity
+from aisafe.core.exceptions import GuardrailConfigError
+from aisafe.core.registry import REGISTRY
+from aisafe.modules.output.ai_disclosure import AI_IDENTITY_CLAIMS, DEFAULT_DISCLOSURE
+from aisafe.modules.policy.eu_ai_act import EUAIActCompliance
+from aisafe.modules.policy.nist_ai_rmf import NISTAIRMFCompliance
 
 ASKED = {"conversation_history": [{"role": "user", "content": "Wait, are you a human?"}]}
 CLAIMS = [

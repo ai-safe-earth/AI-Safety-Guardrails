@@ -46,20 +46,20 @@ loudly on an unregistered name. Missing any step below produces a runtime failur
    decorator. There is no `conftest.py` — copy the `sys.path.insert` bootstrap from a neighbouring
    test file. Mock any LLM call; the suite must stay keyless.
 
-7. **Add a probe case per detection pattern** in `src/aisg/probes/` with its `seed_pattern`,
+7. **Add a probe case per detection pattern** in `src/aisafe/probes/` with its `seed_pattern`,
    and a benign case in `benign_traffic.yaml` when the pattern can misfire (mention vs use).
    An OUTPUT guard gets its cases in `manipulation_responses.yaml` (`kind: output`, with a
-   `verdict`) or a sibling output corpus; `aisg measure` is what scores it.
+   `verdict`) or a sibling output corpus; `aisafe measure` is what scores it.
 
-8. **Teach the audit the name**: `discover._AISG_GUARD_RE` and `rules/guards._GUARD_CLASSES`
-   (registry name -> class name), so `aisg audit` sees the guard wired in a preset or in code.
+8. **Teach the audit the name**: `discover._AISAFE_GUARD_RE` and `rules/guards._GUARD_CLASSES`
+   (registry name -> class name), so `aisafe audit` sees the guard wired in a preset or in code.
 
 9. **If an audit rule names the class** in its `recommendation.package`, export it from
-   `aisg.__all__`, add it to `CLASS_SYMBOLS` in `tests/unit/test_audit_rules_registry.py`, and
+   `aisafe.__all__`, add it to `CLASS_SYMBOLS` in `tests/unit/test_audit_rules_registry.py`, and
    give `references/apply/python.md` a `## \`Name\`` heading; `same_control: True` needs a pair
    in `tests/unit/test_audit_rules_package.py`.
 
-10. **Run the self-audit** (`aisg audit . --no-external --fail-on high --baseline
+10. **Run the self-audit** (`aisafe audit . --no-external --fail-on high --baseline
     audit-baseline.json`): the new guard is an AUD-801 group (unmeasured) and needs an
     accepted reason in `audit-baseline.json`.
 

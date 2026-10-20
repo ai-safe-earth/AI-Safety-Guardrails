@@ -122,7 +122,7 @@ detection, and nothing measured what a guard costs. Under that framing the optim
 that blocks everything: 48 of 48 attacks caught, nothing got through, a clean report and a green
 build.</p>
 
-<p>That is not a hypothetical failure mode. <code>aisg probe</code> shipped with 48 cases, all of
+<p>That is not a hypothetical failure mode. <code>aisafe probe</code> shipped with 48 cases, all of
 them attacks. A guard returning <code>BLOCK</code> unconditionally scored perfectly against it.
 Nothing in the repository could distinguish a good guard from a broken one, because the only
 question being asked was <em>did anything get through</em>.</p>
@@ -161,7 +161,7 @@ mechanism.</p>
 
   <!-- corpus -->
   <rect x="18" y="120" width="196" height="150" rx="10" fill="var(--panel)" stroke="var(--fg)"/>
-  <text x="34" y="146" class="svgt" font-weight="600">src/aisg/probes/</text>
+  <text x="34" y="146" class="svgt" font-weight="600">src/aisafe/probes/</text>
   <rect x="34" y="158" width="164" height="34" rx="6" fill="var(--infra)" opacity="0.18"/>
   <text x="44" y="173" class="svgm">6 attack families</text>
   <text x="44" y="186" class="svgmd">48 cases · pre-existing</text>
@@ -172,14 +172,14 @@ mechanism.</p>
 
   <!-- probe -->
   <rect x="300" y="34" width="230" height="96" rx="10" fill="var(--panel)" stroke="var(--infra)"/>
-  <text x="316" y="60" class="svgt" font-weight="600">aisg probe</text>
+  <text x="316" y="60" class="svgt" font-weight="600">aisafe probe</text>
   <text x="316" y="78" class="svgs">black box · over HTTP</text>
   <text x="316" y="95" class="svgs">sees only the reply body</text>
   <text x="316" y="112" class="svgs">attacks only</text>
 
   <!-- measure -->
   <rect x="300" y="188" width="230" height="126" rx="10" fill="var(--panel)" stroke="var(--fg)"/>
-  <text x="316" y="214" class="svgt" font-weight="600">aisg measure</text>
+  <text x="316" y="214" class="svgt" font-weight="600">aisafe measure</text>
   <text x="316" y="232" class="svgs">white box · in-process</text>
   <rect x="316" y="242" width="198" height="58" rx="6" fill="var(--p0-bg)"/>
   <text x="326" y="259" class="svgmd">blocked / passed / sanitized</text>
@@ -212,7 +212,7 @@ mechanism.</p>
   <!-- CI -->
   <rect x="300" y="360" width="230" height="86" rx="10" fill="var(--p1-bg)" stroke="var(--p1-line)"/>
   <text x="316" y="386" class="svgt" font-weight="600">CI: measure job</text>
-  <text x="316" y="404" class="svgs">aisg measure --max-p99-ms 25</text>
+  <text x="316" y="404" class="svgs">aisafe measure --max-p99-ms 25</text>
   <text x="316" y="422" class="svgs">non-zero exit fails the build</text>
   <text x="316" y="438" class="svgs">the ratchet ⑤</text>
 
@@ -232,8 +232,8 @@ mechanism.</p>
   <text x="423" y="340" class="svgs">exit code</text>
 </svg>
 </div>
-<p class="figcap">Fig. 1 — One corpus, two harnesses. <code>aisg probe</code> (grey, pre-existing) tests somebody's
-running service and can only read the reply; <code>aisg measure</code> runs the guards in-process where the
+<p class="figcap">Fig. 1 — One corpus, two harnesses. <code>aisafe probe</code> (grey, pre-existing) tests somebody's
+running service and can only read the reply; <code>aisafe measure</code> runs the guards in-process where the
 verdict is exact. The lint rules and their <code>bench/</code> harness share the <code>Profile</code> contract but
 are omitted here — they measure static analysis, not the request path.</p>
 
@@ -333,7 +333,7 @@ assembly is omitted: guards are measured alone, never through the chain.</p>
 genuinely needs, what must survive. There is no detector — a benign case has no “attack succeeded”
 marker to look for.</p>
 
-<div class="file"><span><b>src/aisg/probes/benign_traffic.yaml</b>:25–30 — a benign case that tempts the passport pattern</span><span class="badge b0">M</span></div>
+<div class="file"><span><b>src/aisafe/probes/benign_traffic.yaml</b>:25–30 — a benign case that tempts the passport pattern</span><span class="badge b0">M</span></div>
 <pre><code>cases:
   - id: ben-001
     payload: "My order number is AB1234567, when will it ship?"
@@ -343,7 +343,7 @@ marker to look for.</p>
 <p>The classification is a single branch. Everything hinges on <code>kind</code>, and the benign
 side judges two exact conditions rather than one inferred one.</p>
 
-<div class="file"><span><b>src/aisg/devtools/measure.py</b>:128–155 — attack and benign are scored on different questions</span><span class="badge b0">M</span></div>
+<div class="file"><span><b>src/aisafe/devtools/measure.py</b>:128–155 — attack and benign are scored on different questions</span><span class="badge b0">M</span></div>
 <pre><code>if case.kind == "attack":
     m.attacks_seen += 1
     fam = m.per_family.setdefault(case.family, {"seen": 0, "caught": 0})
@@ -367,7 +367,7 @@ else:
 <p>The thresholds judge only what has been measured. An unmeasured field cannot fail, which is what
 keeps “we have not looked at this yet” from reading as “this is broken”.</p>
 
-<div class="file"><span><b>src/aisg/core/measurement.py</b>:121–147 — absence of evidence is not evidence of a problem</span><span class="badge b0">M</span></div>
+<div class="file"><span><b>src/aisafe/core/measurement.py</b>:121–147 — absence of evidence is not evidence of a problem</span><span class="badge b0">M</span></div>
 <pre><code>def failures(self, profile: Profile) -&gt; list[str]:
     reasons = []
     if profile.precision is not None and profile.precision &lt; self.min_precision:
@@ -429,7 +429,7 @@ enter the mix, where each case becomes a network call.</p>
 
 <h3>3.6 · Security</h3>
 <p>This layer has no trust boundary of its own — it runs locally, holds no credentials, and reaches
-no network. That is the point of separating it from <code>aisg probe</code>, which does cross a
+no network. That is the point of separating it from <code>aisafe probe</code>, which does cross a
 boundary and therefore refuses any non-loopback target without
 <code>--i-have-authorization</code>.</p>
 <p>The one hostile input is the corpus itself: <code>load_corpus()</code> parses YAML shipped inside
@@ -538,7 +538,7 @@ clarity — it follows the same pattern in reverse.</p>
 corrects <code>content-length</code> to match — omit that and the server truncates the body at the
 old length.</p>
 
-<div class="file"><span><b>src/aisg/integrations/fastapi_middleware.py</b>:155–177 — the rewrite the application actually reads</span><span class="badge b1">C</span></div>
+<div class="file"><span><b>src/aisafe/integrations/fastapi_middleware.py</b>:155–177 — the rewrite the application actually reads</span><span class="badge b1">C</span></div>
 <pre><code>body[self.input_body_key] = input_result.sanitized_output
 rewritten = json.dumps(body).encode()
 
@@ -565,7 +565,7 @@ def _replay(body: bytes) -&gt; Callable:
 <em>used</em> from one being <em>discussed</em>. Two cheap signals separate them — and one signal
 vetoes both, because indirect injection arrives precisely as quoted content.</p>
 
-<div class="file"><span><b>src/aisg/modules/input/prompt_injection.py</b>:169–189 — mention, use, and the veto that outranks both</span><span class="badge b1">C</span></div>
+<div class="file"><span><b>src/aisafe/modules/input/prompt_injection.py</b>:169–189 — mention, use, and the veto that outranks both</span><span class="badge b1">C</span></div>
 <pre><code>def is_mention(content: str, span: tuple[int, int] | None) -&gt; bool:
     if not span:
         return False
@@ -660,7 +660,7 @@ they share one vocabulary. <code>GuardrailBase.profile</code> and <code>BaseRule
 <code>Profile</code>, and both consult the same <code>Thresholds</code>, so “should this run by
 default?” has one answer shape regardless of what is being judged.</p>
 
-<div class="file"><span><b>src/aisg/core/base.py</b>:190–204 — the same gate for every guard</span><span class="badge b0">M</span></div>
+<div class="file"><span><b>src/aisafe/core/base.py</b>:190–204 — the same gate for every guard</span><span class="badge b0">M</span></div>
 <pre><code>profile: Profile = Profile()
 
 def fires_by_default(self, thresholds: Thresholds | None = None) -&gt; bool:
@@ -678,7 +678,7 @@ def demotion_reasons(self, thresholds: Thresholds | None = None) -&gt; list[str]
   <span class="cm"># exits non-zero when any guard breaches a threshold, so a guard that</span>
   <span class="cm"># starts over-blocking or slows down fails the build instead of</span>
   <span class="cm"># quietly degrading.</span>
-  run: aisg measure --max-p99-ms 25</code></pre>
+  run: aisafe measure --max-p99-ms 25</code></pre>
 
 <div class="take">
   <h4>Key takeaways — the contract</h4>
@@ -693,7 +693,7 @@ def demotion_reasons(self, thresholds: Thresholds | None = None) -&gt; list[str]
 
 <table>
   <tr><th>Item</th><th>State</th></tr>
-  <tr><td>Benign corpus and <code>aisg measure</code></td><td class="goodtag">done — 42 cases, per-family attribution</td></tr>
+  <tr><td>Benign corpus and <code>aisafe measure</code></td><td class="goodtag">done — 42 cases, per-family attribution</td></tr>
   <tr><td><code>Profile</code> gate on guards and rules</td><td class="goodtag">done — precision, FPR, latency</td></tr>
   <tr><td>CI ratchet on the default pipeline</td><td class="goodtag">done — <code>--max-p99-ms 25</code></td></tr>
   <tr><td>Runtime guard profiles populated</td><td class="warntag">open — measured, not yet pasted onto the classes</td></tr>
@@ -705,7 +705,7 @@ def demotion_reasons(self, thresholds: Thresholds | None = None) -&gt; list[str]
 <p>Discovered while writing this document:</p>
 
 <ol>
-  <li><strong>The measured profiles are not written down.</strong> <code>aisg measure</code> prints a
+  <li><strong>The measured profiles are not written down.</strong> <code>aisafe measure</code> prints a
     paste-ready <code>Profile(...)</code> block and no guard class carries one, so every guard still
     reports as unmeasured at the gate. The numbers exist and the mechanism exists; they are not yet
     connected. Paste them, and re-run to confirm the gate agrees.</li>
@@ -741,12 +741,12 @@ def demotion_reasons(self, thresholds: Thresholds | None = None) -&gt; list[str]
   </ul>
 </div>
 
-<p class="sub" style="margin-top:48px">Sources: <code>src/aisg/devtools/measure.py</code>,
-<code>src/aisg/core/measurement.py</code>, <code>src/aisg/core/base.py</code>,
-<code>src/aisg/modules/input/prompt_injection.py</code>,
-<code>src/aisg/integrations/fastapi_middleware.py</code>,
-<code>src/aisg/probes/benign_traffic.yaml</code>, <code>.github/workflows/tests.yml</code>.
-Measurements are from <code>aisg measure</code> against the packaged <code>default.yaml</code> preset
+<p class="sub" style="margin-top:48px">Sources: <code>src/aisafe/devtools/measure.py</code>,
+<code>src/aisafe/core/measurement.py</code>, <code>src/aisafe/core/base.py</code>,
+<code>src/aisafe/modules/input/prompt_injection.py</code>,
+<code>src/aisafe/integrations/fastapi_middleware.py</code>,
+<code>src/aisafe/probes/benign_traffic.yaml</code>, <code>.github/workflows/tests.yml</code>.
+Measurements are from <code>aisafe measure</code> against the packaged <code>default.yaml</code> preset
 on this machine. Line numbers as of <code>main</code> @ <code>0a743b8</code>, working tree clean at
 time of writing.</p>
 

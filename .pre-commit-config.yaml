@@ -24,7 +24,7 @@ repos:
       - id: euaiact-lint
         name: EU AI Act Compliance Check
         language: python
-        entry: aisg lint
+        entry: aisafe lint
         args:
           - --staged             # Only scan staged files
           - --errors-only        # Block commit only on ERROR severity
@@ -37,7 +37,7 @@ repos:
       - id: misalignment-check
         name: AI Misalignment Control
         language: python
-        entry: aisg misalign
+        entry: aisafe misalign
         args:
           - --staged             # Only scan staged files
           - --errors-only        # Block commit on ALIGN-001/005/006/008 (ERROR rules)
@@ -50,11 +50,11 @@ repos:
       # The AI-surface audit against the committed baseline, at push time (a full
       # run takes seconds here, ~30 s on a 300-file repo; too slow for every commit).
       # Exit 1 means a NEW finding at high or above; accept it with a reason via
-      # `aisg audit --amend-baseline audit-baseline.json --accept <fp>="<reason>"`.
-      - id: aisg-audit
-        name: aisg audit (AI-surface audit against the baseline)
+      # `aisafe audit --amend-baseline audit-baseline.json --accept <fp>="<reason>"`.
+      - id: aisafe-audit
+        name: aisafe audit (AI-surface audit against the baseline)
         language: python
-        entry: aisg audit
+        entry: aisafe audit
         args:
           - "."
           - --no-external

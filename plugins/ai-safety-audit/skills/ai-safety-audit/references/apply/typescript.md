@@ -110,5 +110,5 @@ sidecar) or a provider-side moderation endpoint are the usual detectors here.
 ## Verify (phase 6, with approval)
 
 `npm test` if `package.json` defines it (`verify.sh` detects and prints it). If the app
-serves an HTTP chat endpoint, `aisg probe http://127.0.0.1:<port>/chat -o probe-report.json`
+serves an HTTP chat endpoint, `aisafe probe http://127.0.0.1:<port>/chat -o probe-report.json`
 (through the bootstrap chain); only `passed` means passed.

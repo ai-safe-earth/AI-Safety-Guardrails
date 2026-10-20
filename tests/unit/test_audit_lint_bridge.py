@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aisg.devtools.audit import lint_bridge, walk
-from aisg.devtools.audit.lint_bridge import EU_RULE_IDS, MISALIGN_RULE_IDS, LintFacts, run_lint
-from aisg.modules.policy.code_analyzer.analyzer import EUAIActCodeAnalyzer, ScanReport
-from aisg.modules.policy.code_analyzer.rules import ALL_RULES
+from aisafe.devtools.audit import lint_bridge, walk
+from aisafe.devtools.audit.lint_bridge import EU_RULE_IDS, MISALIGN_RULE_IDS, LintFacts, run_lint
+from aisafe.modules.policy.code_analyzer.analyzer import EUAIActCodeAnalyzer, ScanReport
+from aisafe.modules.policy.code_analyzer.rules import ALL_RULES
 
 PERSONA_PY = (
     "import anthropic\n\n"

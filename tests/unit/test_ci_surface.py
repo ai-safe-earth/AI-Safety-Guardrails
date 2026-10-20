@@ -52,7 +52,7 @@ class TestReleaseWorkflow:
         assert "scripts/controls_md.py --check" in text
         assert "scripts/levels_md.py --check" in text
         assert "pytest -q" in text
-        assert "aisg audit . --no-external --fail-on high --baseline audit-baseline.json" in text
+        assert "aisafe audit . --no-external --fail-on high --baseline audit-baseline.json" in text
 
     def test_publish_uses_trusted_publishing_behind_the_pypi_environment(self) -> None:
         publish = _load(RELEASE)["jobs"]["publish"]
@@ -81,16 +81,16 @@ class TestReleaseWorkflow:
     def test_smoke_runs_the_published_package_through_uvx_with_exact_exit_codes(self) -> None:
         smoke = _load(RELEASE)["jobs"]["smoke"]
         text = _steps_text(smoke)
-        assert 'uvx --from "anyaisafe==${V}" aisg --version' in text
+        assert 'uvx --from "aisafe==${V}" aisafe --version' in text
         assert "clean_py" in text and "py_agent" in text
         assert '[ "$rc" -eq 0 ]' in text and '[ "$rc" -eq 1 ]' in text
-        assert "mktemp -d" in text  # never from this repo's root: [tool.aisg-audit] would leak
+        assert "mktemp -d" in text  # never from this repo's root: [tool.aisafe-audit] would leak
 
     def test_build_pins_the_build_tool_and_checks_the_top_level_name(self) -> None:
         build = _load(RELEASE)["jobs"]["build"]
         text = _steps_text(build)
         assert "pip install build==" in text
-        assert 'if pkgs != {"aisg"}' in text
+        assert 'if pkgs != {"aisafe"}' in text
 
     def test_every_third_party_action_is_pinned_to_a_tag(self) -> None:
         doc = _load(RELEASE)
@@ -143,17 +143,17 @@ class TestCompositeAction:
     def test_version_default_is_pinned_to_pyproject(self) -> None:
         assert _load(ACTION)["inputs"]["version"]["default"] == _project_version()
 
-    def test_install_pins_the_distribution_and_never_the_import_name(self) -> None:
+    def test_install_pins_the_distribution_to_the_version(self) -> None:
         text = _steps_text(_load(ACTION)["runs"])
-        assert 'pip install --quiet "anyaisafe[devtools]==${AISG_VERSION}"' in text
-        assert not re.search(r"pip install[^\n]*\baisg(?:\[|==|\s|\")", text), (
-            "aisg on PyPI is unrelated"
-        )
+        assert 'pip install --quiet "aisafe[devtools]==${AISAFE_VERSION}"' in text
+        for line in re.findall(r"pip install[^\n]*", text):
+            if re.search(r"\baisafe(?:\[|==|\s|\"|$)", line):
+                assert "==${AISAFE_VERSION}" in line, line
         assert '"${ACTION_PATH}[devtools]"' in text
 
     def test_every_audit_call_tolerates_only_exit_1_and_the_verdict_is_the_json(self) -> None:
         text = _steps_text(_load(ACTION)["runs"])
-        calls = re.findall(r'^\s*(aisg audit "[^\n]*)', text, re.M)
+        calls = re.findall(r'^\s*(aisafe audit "[^\n]*)', text, re.M)
         assert len(calls) == 3
         for call in calls:
             assert call.rstrip().endswith("|| [ $? -eq 1 ]"), call
@@ -185,20 +185,20 @@ class TestCompositeAction:
 class TestPreCommitHooks:
     def test_hook_ids_and_shapes(self) -> None:
         hooks = {h["id"]: h for h in _load(PRE_COMMIT_HOOKS)}
-        assert set(hooks) == {"aisg-audit", "aisg-lint", "aisg-misalign"}
-        audit = hooks["aisg-audit"]
-        assert audit["entry"] == "aisg audit" and audit["language"] == "python"
+        assert set(hooks) == {"aisafe-audit", "aisafe-lint", "aisafe-misalign"}
+        audit = hooks["aisafe-audit"]
+        assert audit["entry"] == "aisafe audit" and audit["language"] == "python"
         assert audit["pass_filenames"] is False and audit["always_run"] is True
         assert audit["stages"] == ["pre-push"]
         assert audit["args"] == ["--no-external", "--fail-on", "high"]
-        for name in ("aisg-lint", "aisg-misalign"):
+        for name in ("aisafe-lint", "aisafe-misalign"):
             assert hooks[name]["types"] == ["python"] and hooks[name]["pass_filenames"] is True
             assert hooks[name]["args"] == ["--errors-only"]
 
     def test_our_own_config_runs_the_audit_at_push_time_against_the_baseline(self) -> None:
         doc = _load(PRE_COMMIT_CONFIG)
         local = next(r for r in doc["repos"] if r["repo"] == "local")
-        audit = next(h for h in local["hooks"] if h["id"] == "aisg-audit")
+        audit = next(h for h in local["hooks"] if h["id"] == "aisafe-audit")
         assert audit["stages"] == ["pre-push"]
         assert audit["args"][-2:] == ["--baseline", "audit-baseline.json"]
         assert "--no-external" in audit["args"]
@@ -207,16 +207,16 @@ class TestPreCommitHooks:
 class TestGitLabAuditJob:
     def test_job_present_with_variables_and_exit_1_tolerance(self) -> None:
         doc = _load(GITLAB)
-        job = doc["aisg-audit"]
+        job = doc["aisafe-audit"]
         assert job["extends"] == ".eu-ai-act-base"
         for key in ("AUDIT_PATH", "AUDIT_FAIL_ON", "AUDIT_BASELINE"):
             assert key in doc["variables"], key
         scripts = job["script"]
         assert all(isinstance(entry, str) for entry in scripts)
-        audit_calls = [s for s in scripts if s.startswith("aisg audit")]
+        audit_calls = [s for s in scripts if s.startswith("aisafe audit")]
         assert len(audit_calls) == 2 and all(s.endswith("|| [ $? -eq 1 ]") for s in audit_calls)
         assert any("--format sarif" in s for s in audit_calls)
-        assert job["artifacts"]["reports"]["sast"] == "aisg-audit-results.sarif"
+        assert job["artifacts"]["reports"]["sast"] == "aisafe-audit-results.sarif"
         assert job["allow_failure"] is False
 
 

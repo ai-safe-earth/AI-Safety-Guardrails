@@ -1,6 +1,6 @@
 """tests/unit/test_audit_decision_integration.py
 ----------------------------------------------
-The `aisg decide` document inside the audit: it is read as a REPORT (evidence about
+The `aisafe decide` document inside the audit: it is read as a REPORT (evidence about
 the declared budgets, `REPORTED <age>`), never as the audit's own output; AUD-806 turns
 each over-budget row into one finding per budget kind; AUD-801 adds a `cost` sub-finding
 for a judge the measure report never exercised; and `--format html --decision FILE`
@@ -16,22 +16,22 @@ from pathlib import Path
 
 import pytest
 
-from aisg.core.measurement import Budget
-from aisg.devtools.audit import discover
-from aisg.devtools.audit.main import EXIT_FATAL, main
-from aisg.devtools.audit.model import Bucket, EvidenceKind, Inventory
-from aisg.devtools.audit.report import _report_entry
-from aisg.devtools.audit.rules import run_rules
-from aisg.devtools.audit.rules.guards import GuardReportedOverBudget, GuardUnmeasured
-from aisg.devtools.decide import Inputs, decide
-from aisg.devtools.prices import load_prices
+from aisafe.core.measurement import Budget
+from aisafe.devtools.audit import discover
+from aisafe.devtools.audit.main import EXIT_FATAL, main
+from aisafe.devtools.audit.model import Bucket, EvidenceKind, Inventory
+from aisafe.devtools.audit.report import _report_entry
+from aisafe.devtools.audit.rules import run_rules
+from aisafe.devtools.audit.rules.guards import GuardReportedOverBudget, GuardUnmeasured
+from aisafe.devtools.decide import Inputs, decide
+from aisafe.devtools.prices import load_prices
 
 REPO = Path(__file__).resolve().parents[2]
 DECIDE_FIXTURES = REPO / "tests" / "fixtures" / "decide"
 
 PYPROJECT = '[project]\nname = "demo"\nversion = "0.0.1"\n'
 AGENT_PY = """import anthropic
-from aisg import GuardrailPipeline
+from aisafe import GuardrailPipeline
 
 client = anthropic.Anthropic()
 pipeline = GuardrailPipeline.from_config("guardrails.yaml")
@@ -84,17 +84,17 @@ def _tree(
     measure: bool = False,
 ) -> Path:
     root = tmp_path / "tree"
-    (root / ".aisg-audit").mkdir(parents=True)
+    (root / ".aisafe-audit").mkdir(parents=True)
     (root / "pyproject.toml").write_text(PYPROJECT, encoding="utf-8")
     (root / "agent.py").write_text(AGENT_PY, encoding="utf-8")
     (root / "guardrails.yaml").write_text(preset, encoding="utf-8")
     if decision is not None:
-        (root / ".aisg-audit" / "decision-report.json").write_text(
+        (root / ".aisafe-audit" / "decision-report.json").write_text(
             json.dumps(decision, indent=1), encoding="utf-8"
         )
     if measure:
         shutil.copy(
-            DECIDE_FIXTURES / "measure-report.json", root / ".aisg-audit" / "measure-report.json"
+            DECIDE_FIXTURES / "measure-report.json", root / ".aisafe-audit" / "measure-report.json"
         )
     return root
 
@@ -127,7 +127,7 @@ class TestDecisionIsAReport:
     def test_decision_document_raises_no_models_unknown(self, tmp_path, monkeypatch):
         # AUD-903 asks every on-disk report for its models list; a decision document
         # has none by design, so it used to add `report models unknown` on every run.
-        from aisg.devtools.audit.main import main as audit_main
+        from aisafe.devtools.audit.main import main as audit_main
 
         doc = _decision_doc(requests_per_day=20000, avg_input_tokens=400, monthly_usd=50)
         root = _tree(tmp_path, decision=doc)
@@ -153,7 +153,7 @@ class TestDecisionIsAReport:
         assert controls["prompt_injection"]["verdict"].startswith("apply with")
         assert "rate_limiter" not in controls  # inside every budget: not repeated here
 
-    def test_walk_discovers_a_decision_report_under_aisg_audit(self, tmp_path, audit_context):
+    def test_walk_discovers_a_decision_report_under_aisafe_audit(self, tmp_path, audit_context):
         doc = _decision_doc(requests_per_day=20000, avg_input_tokens=400, monthly_usd=50)
         ctx = audit_context(_tree(tmp_path, decision=doc))
         kinds = {r.kind for r in ctx.reports}
@@ -182,7 +182,7 @@ class TestAUD806:
             assert finding.report is not None and finding.report["schema"] == "aisg/1"
             assert finding.report["age_days"] is not None
             assert finding.evidence[0].role == "report"
-            assert finding.evidence[0].file == ".aisg-audit/decision-report.json"
+            assert finding.evidence[0].file == ".aisafe-audit/decision-report.json"
             if finding.evidence[0].snippet.startswith("prompt_injection"):
                 assert "ESTIMATED" in finding.evidence[0].snippet  # the judge was never run
             else:
@@ -215,7 +215,7 @@ class TestAUD806:
         assert not [f for f in findings if f.evidence[0].snippet.startswith("prompt_injection")]
 
     def test_empty_context_is_silent(self, tmp_path):
-        from aisg.devtools.audit.model import AuditContext
+        from aisafe.devtools.audit.model import AuditContext
 
         rule = GuardReportedOverBudget()
         assert rule.evaluate(AuditContext(root=tmp_path, inventory=Inventory())) == []
@@ -243,7 +243,7 @@ class TestAUD801Cost:
 
     def test_silent_when_the_report_exercised_the_judge(self, tmp_path, audit_context):
         root = _tree(tmp_path, measure=True)
-        path = root / ".aisg-audit" / "measure-report.json"
+        path = root / ".aisafe-audit" / "measure-report.json"
         measure = json.loads(path.read_text(encoding="utf-8"))
         for g in measure["guards"]:
             g["llm_exercised"] = True
@@ -257,7 +257,7 @@ class TestAUD801Cost:
         root = _tree(tmp_path)
         shutil.copy(
             audit_fixture("reports") / "measure-report.json",
-            root / ".aisg-audit" / "measure-report.json",
+            root / ".aisafe-audit" / "measure-report.json",
         )
         findings, _ = run_rules([GuardUnmeasured], audit_context(root))
         assert not [f for f in findings if f.display_id == "AUD-801/cost"]

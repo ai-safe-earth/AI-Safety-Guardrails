@@ -40,15 +40,15 @@ _fake_nemo.RailsConfig = _fake_rails_config_cls
 sys.modules.setdefault("nemoguardrails", _fake_nemo)
 
 # Now we can safely import the module under test
-import aisg.integrations.nemo_rails as nemo_mod
+import aisafe.integrations.nemo_rails as nemo_mod
 
 # Force _NEMO_AVAILABLE = True so the guards don't raise ImportError
 nemo_mod._NEMO_AVAILABLE = True
 nemo_mod.LLMRails = _fake_llm_rails_cls
 nemo_mod.RailsConfig = _fake_rails_config_cls
 
-from aisg.core.base import Action, GuardrailStage, PipelineResult
-from aisg.integrations.nemo_rails import (
+from aisafe.core.base import Action, GuardrailStage, PipelineResult
+from aisafe.integrations.nemo_rails import (
     NemoRailsGuard,
     NemoRailsMiddleware,
     _is_nemo_block,
@@ -78,7 +78,7 @@ def _make_pipeline(input_blocked=False, output_blocked=False, sanitized="clean i
     pipeline = MagicMock()
 
     if input_blocked:
-        from aisg.core.base import GuardrailStage
+        from aisafe.core.base import GuardrailStage
 
         input_result = PipelineResult(
             stage=GuardrailStage.INPUT,
@@ -89,7 +89,7 @@ def _make_pipeline(input_blocked=False, output_blocked=False, sanitized="clean i
             rejection_message="Blocked by input guard.",
         )
     else:
-        from aisg.core.base import GuardrailStage
+        from aisafe.core.base import GuardrailStage
 
         input_result = PipelineResult(
             stage=GuardrailStage.INPUT,

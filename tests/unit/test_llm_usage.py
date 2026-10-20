@@ -4,7 +4,7 @@ Tokens are part of the trade. Every judge call records what it cost and how that
 known (`LLMUsage`, `COST_BASIS`); a guard that could have called a judge but did not
 records `calls: 0`; the pipeline sums per stage; the audit logger and the telemetry
 read the same key; and `Budget` turns a declared traffic profile into thresholds.
-None of this ever produces a dollar: pricing is `aisg decide`'s offline join.
+None of this ever produces a dollar: pricing is `aisafe decide`'s offline join.
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from aisg.core.base import Action, CheckResult, GuardrailStage, PipelineResult
-from aisg.core.measurement import (
+from aisafe.core.base import Action, CheckResult, GuardrailStage, PipelineResult
+from aisafe.core.measurement import (
     COST_BASIS,
     DAYS_PER_MONTH,
     Budget,
@@ -23,7 +23,7 @@ from aisg.core.measurement import (
     Thresholds,
     weakest_basis,
 )
-from aisg.modules.llm_judges.base import (
+from aisafe.modules.llm_judges.base import (
     JudgeVerdict,
     LLMJudgeBase,
     usage_from_anthropic,
@@ -226,7 +226,7 @@ def _anthropic_response(text: str, tokens_in: int | None = 100, tokens_out: int 
 class TestJudgesRecordUsage:
     @pytest.mark.asyncio
     async def test_claude_judge_records_measured_usage_and_passes_its_timeout(self):
-        from aisg.modules.llm_judges.claude_judge import ClaudeJudge
+        from aisafe.modules.llm_judges.claude_judge import ClaudeJudge
 
         client = AsyncMock()
         client.messages.create = AsyncMock(
@@ -240,7 +240,7 @@ class TestJudgesRecordUsage:
 
     @pytest.mark.asyncio
     async def test_claude_judge_without_usage_field_is_unavailable(self):
-        from aisg.modules.llm_judges.claude_judge import ClaudeJudge
+        from aisafe.modules.llm_judges.claude_judge import ClaudeJudge
 
         client = AsyncMock()
         client.messages.create = AsyncMock(
@@ -266,7 +266,7 @@ class TestJudgesRecordUsage:
 
     @pytest.mark.asyncio
     async def test_cached_judge_hit_is_a_zero_token_cache_hit_and_keeps_the_reason(self):
-        from aisg.modules.llm_judges.cache import CachedJudge
+        from aisafe.modules.llm_judges.cache import CachedJudge
 
         class Inner(LLMJudgeBase):
             name = "inner"
@@ -331,7 +331,7 @@ class TestGuardsRecordUsage:
         ],
     )
     async def test_llm_input_filter_every_path(self, verdict, expected_basis):
-        from aisg.modules.input.llm_input_filter import LLMInputFilter
+        from aisafe.modules.input.llm_input_filter import LLMInputFilter
 
         guard = LLMInputFilter(judge=_FixedJudge(verdict))
         result = await guard("hello", {})
@@ -344,7 +344,7 @@ class TestGuardsRecordUsage:
         "verdict", [_measured(True), _measured(False, ["S10"]), RuntimeError("x")]
     )
     async def test_llm_output_filter_every_path(self, verdict):
-        from aisg.modules.output.llm_output_filter import LLMOutputFilter
+        from aisafe.modules.output.llm_output_filter import LLMOutputFilter
 
         result = await LLMOutputFilter(judge=_FixedJudge(verdict))("a reply", {})
         assert "llm_usage" in result.metadata
@@ -354,7 +354,7 @@ class TestGuardsRecordUsage:
         "verdict", [_measured(True), _measured(False, ["S2"]), RuntimeError("x")]
     )
     async def test_llm_tool_filter_arguments_and_results_paths(self, verdict):
-        from aisg.modules.processing.llm_tool_filter import LLMToolFilter
+        from aisafe.modules.processing.llm_tool_filter import LLMToolFilter
 
         guard = LLMToolFilter(judge=_FixedJudge(verdict))
         args = await guard("x", {"tool_call": {"name": "web_search", "arguments": {"q": "hi"}}})
@@ -368,7 +368,7 @@ class TestGuardsRecordUsage:
 
     @pytest.mark.asyncio
     async def test_llm_tool_filter_without_a_tool_call_makes_no_call(self):
-        from aisg.modules.processing.llm_tool_filter import LLMToolFilter
+        from aisafe.modules.processing.llm_tool_filter import LLMToolFilter
 
         result = await LLMToolFilter(judge=_FixedJudge(_measured(True)))("x", {})
         assert "llm_usage" not in result.metadata
@@ -376,7 +376,7 @@ class TestGuardsRecordUsage:
 
     @pytest.mark.asyncio
     async def test_prompt_injection_regex_hit_means_zero_judge_calls(self):
-        from aisg.modules.input.prompt_injection import PromptInjectionGuard
+        from aisafe.modules.input.prompt_injection import PromptInjectionGuard
 
         guard = PromptInjectionGuard(llm_judge=True)
         with patch("anthropic.AsyncAnthropic") as ctor:
@@ -390,7 +390,7 @@ class TestGuardsRecordUsage:
 
     @pytest.mark.asyncio
     async def test_prompt_injection_judge_call_is_measured_and_a_failure_is_recorded(self):
-        from aisg.modules.input.prompt_injection import PromptInjectionGuard
+        from aisafe.modules.input.prompt_injection import PromptInjectionGuard
 
         guard = PromptInjectionGuard(llm_judge=True)
         client = AsyncMock()
@@ -410,14 +410,14 @@ class TestGuardsRecordUsage:
 
     @pytest.mark.asyncio
     async def test_prompt_injection_without_judge_records_nothing(self):
-        from aisg.modules.input.prompt_injection import PromptInjectionGuard
+        from aisafe.modules.input.prompt_injection import PromptInjectionGuard
 
         result = await PromptInjectionGuard()("hello", {})
         assert "llm_usage" not in result.metadata
 
     @pytest.mark.asyncio
     async def test_toxicity_judge_model_is_configurable_and_usage_recorded(self):
-        from aisg.modules.output.toxicity import ToxicityFilter
+        from aisafe.modules.output.toxicity import ToxicityFilter
 
         guard = ToxicityFilter(use_llm_judge=True, llm_judge_model="claude-haiku-4-5-20251001")
         client = AsyncMock()
@@ -434,7 +434,7 @@ class TestGuardsRecordUsage:
 
     @pytest.mark.asyncio
     async def test_toxicity_regex_hit_skips_the_judge(self):
-        from aisg.modules.output.toxicity import TOXICITY_PATTERNS, ToxicityFilter
+        from aisafe.modules.output.toxicity import TOXICITY_PATTERNS, ToxicityFilter
 
         pattern = TOXICITY_PATTERNS["self_harm_promotion"][0]
         sample = (
@@ -458,7 +458,7 @@ class TestGuardsRecordUsage:
 
     @pytest.mark.asyncio
     async def test_call_wrapper_stamps_the_guard_name_but_keeps_a_guard_set_value(self):
-        from aisg.modules.input.pii_detector import PIIDetector
+        from aisafe.modules.input.pii_detector import PIIDetector
 
         result = await PIIDetector()("no pii here", {})
         assert result.metadata["guard_name"] == "pii_detector"
@@ -530,7 +530,7 @@ class TestPipelineResultUsage:
 
 class TestObservabilityReadsUsage:
     def test_audit_record_names_the_guard_and_carries_tokens(self):
-        from aisg.modules.observability.audit_logger import AuditLogger
+        from aisafe.modules.observability.audit_logger import AuditLogger
 
         checks = [
             CheckResult(
@@ -568,7 +568,7 @@ class TestObservabilityReadsUsage:
         )
 
     def test_audit_record_guard_name_never_falls_back_to_a_check_id_prefix(self):
-        from aisg.modules.observability.audit_logger import AuditLogger
+        from aisafe.modules.observability.audit_logger import AuditLogger
 
         check = CheckResult(passed=True)  # built outside the pipeline: no stamp, no finding
         result = PipelineResult(

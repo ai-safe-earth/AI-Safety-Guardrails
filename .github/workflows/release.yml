@@ -4,7 +4,7 @@
 #
 # Nothing here holds a PyPI credential. Publishing uses OpenID Connect
 # (`id-token: write`) and a pending publisher configured once on pypi.org for the
-# project `anyaisafe`: owner ai-safe-earth, repository AnyAISafe,
+# project `aisafe`: owner ai-safe-earth, repository AnyAISafe,
 # workflow release.yml, environment pypi. A `workflow_dispatch` run with dry-run
 # set runs the gate and the build only.
 name: release
@@ -45,7 +45,7 @@ jobs:
       - run: python scripts/levels_md.py --check
       - run: pytest -q
       - name: Self-audit against the committed baseline
-        run: aisg audit . --no-external --fail-on high --baseline audit-baseline.json
+        run: aisafe audit . --no-external --fail-on high --baseline audit-baseline.json
 
   build:
     name: sdist and wheel
@@ -58,7 +58,7 @@ jobs:
           python-version: "3.13"
       - run: pip install build==1.2.2.post1
       - run: python -m build
-      - name: The wheel exposes only `aisg`
+      - name: The wheel exposes only `aisafe`
         run: |
           python - <<'PY'
           import glob, sys, zipfile
@@ -66,8 +66,8 @@ jobs:
           top = {n.split("/")[0] for n in zipfile.ZipFile(whl).namelist()}
           pkgs = {t for t in top if not t.endswith(".dist-info")}
           print("top-level in wheel:", sorted(pkgs))
-          if pkgs != {"aisg"}:
-              sys.exit(f"wheel exposes more than `aisg`: {sorted(pkgs)}")
+          if pkgs != {"aisafe"}:
+              sys.exit(f"wheel exposes more than `aisafe`: {sorted(pkgs)}")
           PY
       - uses: actions/upload-artifact@v4
         with:
@@ -133,19 +133,19 @@ jobs:
         run: |
           set -u
           V="${VERSION#v}"
-          # Run from an empty directory so this repo's [tool.aisg-audit] never leaks in.
+          # Run from an empty directory so this repo's [tool.aisafe-audit] never leaks in.
           cd "$(mktemp -d)"
           for attempt in $(seq 1 10); do
-            if uvx --from "anyaisafe==${V}" aisg --version > version.txt 2>/dev/null; then
+            if uvx --from "aisafe==${V}" aisafe --version > version.txt 2>/dev/null; then
               break
             fi
-            echo "attempt ${attempt}: anyaisafe==${V} not resolvable yet; waiting 60 s"
+            echo "attempt ${attempt}: aisafe==${V} not resolvable yet; waiting 60 s"
             sleep 60
           done
           cat version.txt
-          grep -qx "aisg ${V}" version.txt
-          rc=0; uvx --from "anyaisafe==${V}" aisg audit "${FIXTURES}/clean_py" --no-external || rc=$?
+          grep -qx "aisafe ${V}" version.txt
+          rc=0; uvx --from "aisafe==${V}" aisafe audit "${FIXTURES}/clean_py" --no-external || rc=$?
           [ "$rc" -eq 0 ] || { echo "clean_py: expected exit 0, got $rc"; exit 1; }
-          rc=0; uvx --from "anyaisafe==${V}" aisg audit "${FIXTURES}/py_agent" --no-external || rc=$?
+          rc=0; uvx --from "aisafe==${V}" aisafe audit "${FIXTURES}/py_agent" --no-external || rc=$?
           [ "$rc" -eq 1 ] || { echo "py_agent: expected exit 1, got $rc"; exit 1; }
-          echo "smoke: anyaisafe==${V} audits as expected"
+          echo "smoke: aisafe==${V} audits as expected"

@@ -1,10 +1,10 @@
 {
   "schema": "aisg/1",
   "generated_at": "2026-10-18T23:09:44Z",
-  "measured_on": "aisg probe corpus (48 attack + 42 benign), latency = per-case median of 3 calls; offline (judge calls estimated, not made)",
+  "measured_on": "aisafe probe corpus (48 attack + 42 benign), latency = per-case median of 3 calls; offline (judge calls estimated, not made)",
   "models": [],
   "config_digest": "a666ffec2f638d9bd45373a9c37b89ac3426953f30961362edf595f53b683877",
-  "config": "src/aisg/config/eu_high_risk.yaml",
+  "config": "src/aisafe/config/eu_high_risk.yaml",
   "pipeline": {
     "parallel_checks": false,
     "fail_open": false,

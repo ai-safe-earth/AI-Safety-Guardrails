@@ -11,10 +11,10 @@ import asyncio
 
 import pytest
 
-from aisg.core.base import Action, CheckResult, GuardrailBase, GuardrailStage
-from aisg.core.exceptions import GuardrailConfigError
-from aisg.core.measurement import Profile, Thresholds
-from aisg.core.pipeline import GuardrailPipeline
+from aisafe.core.base import Action, CheckResult, GuardrailBase, GuardrailStage
+from aisafe.core.exceptions import GuardrailConfigError
+from aisafe.core.measurement import Profile, Thresholds
+from aisafe.core.pipeline import GuardrailPipeline
 
 
 class _Blocker(GuardrailBase):

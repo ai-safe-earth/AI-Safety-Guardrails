@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.audit.model import (
+from aisafe.devtools.audit.model import (
     DEFAULT_REPORT,
     DISCLAIMER,
     FINDING_KEYS,
@@ -85,7 +85,7 @@ def make_finding(
         scope=Scope("unit", "u1", "services/agent"),
         evidence=evidence,
         controls=("ASI01",),
-        recommendation=Recommendation(Tier.T1, "do the thing", ("aisg", "nemo", "manual")),
+        recommendation=Recommendation(Tier.T1, "do the thing", ("aisafe", "nemo", "manual")),
         related_lint_rules=("EU-AIA-012a",),
         known_failure_modes=("grep depth",),
         sub=sub,
@@ -337,14 +337,14 @@ def test_scope_rejects_unknown_kind():
 def test_hit_and_recommendation_shapes():
     h = Hit(file="a.py", line=1, col=0, snippet="x", table="SINK", key="shell")
     assert h.unit is None and h.lang is None
-    r = Recommendation("T2", "gate it", ["aisg", "other"])
+    r = Recommendation("T2", "gate it", ["aisafe", "other"])
     assert r.tier is Tier.T2
-    assert r.alternatives == ("aisg", "other")
+    assert r.alternatives == ("aisafe", "other")
     assert r.package is NO_PACKAGE
     assert roundtrip(r) == {
         "tier": "T2",
         "summary": "gate it",
-        "alternatives": ["aisg", "other"],
+        "alternatives": ["aisafe", "other"],
         "package": {"mechanism": "none", "symbols": [], "same_control": False, "leaves_open": ""},
     }
 
@@ -500,14 +500,14 @@ def test_unknown_item_category_and_dict():
         UnknownCategory.REPORTS,
         "report age unknown",
         "no generated_at",
-        how_to_resolve="re-run aisg measure",
+        how_to_resolve="re-run aisafe measure",
         file="old\\probe-report.json",
         rule_ids=["AUD-903"],
     )
     d = roundtrip(full)
     assert d["file"] == "old/probe-report.json"
     assert d["rule_ids"] == ["AUD-903"]
-    assert d["how_to_resolve"] == "re-run aisg measure"
+    assert d["how_to_resolve"] == "re-run aisafe measure"
     with pytest.raises(ValueError):
         UnknownItem("other", "x", "y")
 
@@ -587,7 +587,7 @@ def test_inventory_to_dict_schema_first_and_section_2_order():
 
 def test_report_to_dict_key_order_matches_section_3_2():
     report = Report(
-        tool={"name": "aisg-audit", "version": "unknown"},
+        tool={"name": "aisafe-audit", "version": "unknown"},
         target={"path": "/abs/repo", "git_sha": "abc", "dirty": False},
         summary={"findings": 1},
         findings=[make_finding("AUD-301", priority=3, severity="critical")],
@@ -642,9 +642,9 @@ def test_now_iso_format():
 def test_model_text_has_no_compliance_claims():
     # The ban list lives in report.py, assembled from fragments; importing it keeps this
     # file free of the phrases too.
-    from aisg.devtools.audit.report import BANNED_PHRASES
+    from aisafe.devtools.audit.report import BANNED_PHRASES
 
-    src = Path(__file__).resolve().parents[2] / "src" / "aisg" / "devtools" / "audit" / "model.py"
+    src = Path(__file__).resolve().parents[2] / "src" / "aisafe" / "devtools" / "audit" / "model.py"
     text = src.read_text(encoding="utf-8").lower()
     assert len(BANNED_PHRASES) == 7
     for phrase in BANNED_PHRASES:

@@ -27,7 +27,7 @@
 
 AnyAISafe has two parts.
 
-The developer tools are the `aisg` command and the `ai-safety-audit` agent skill. They audit a repository that calls a model or runs an agent, and list its AI-safety gaps in order of blast radius. They measure what each runtime guard catches, breaks and costs, and price each proposed control in latency, tokens and dollars against the budgets you declare. The skill applies the plan one change at a time, each with a person's approval. `aisg attest` checks the documents the other commands wrote against a level's criteria, and a named owner signs the result. The same audit runs from coding-agent hooks, in CI and over a fleet of repositories. See [Audit](#audit) and [System card & live probing](#system-card--live-probing).
+The developer tools are the `aisafe` command and the `ai-safety-audit` agent skill. They audit a repository that calls a model or runs an agent, and list its AI-safety gaps in order of blast radius. They measure what each runtime guard catches, breaks and costs, and price each proposed control in latency, tokens and dollars against the budgets you declare. The skill applies the plan one change at a time, each with a person's approval. `aisafe attest` checks the documents the other commands wrote against a level's criteria, and a named owner signs the result. The same audit runs from coding-agent hooks, in CI and over a fleet of repositories. See [Audit](#audit) and [System card & live probing](#system-card--live-probing).
 
 The runtime library is the other part: a layered, async-first set of guards that slots into any LLM pipeline. Every check runs at the right moment:
 
@@ -81,15 +81,15 @@ Safe Response to User
 
 ## Repository Structure
 
-The package lives under `src/aisg/`, so nothing is importable as a bare
-top-level name — everything is `aisg.*`.
+The package lives under `src/aisafe/`, so nothing is importable as a bare
+top-level name — everything is `aisafe.*`.
 
 ```
 AnyAISafe/
 │
-├── src/aisg/
+├── src/aisafe/
 │   ├── __init__.py              # Public API surface
-│   ├── cli.py                   # `aisg` entry point: lint, misalign, init, probe, measure, audit, skill, decide, hook, attest, fleet
+│   ├── cli.py                   # `aisafe` entry point: lint, misalign, init, probe, measure, audit, skill, decide, hook, attest, fleet
 │   │
 │   ├── core/
 │   │   ├── base.py              # GuardrailBase, CheckResult, PipelineResult, Severity, Action
@@ -148,17 +148,17 @@ AnyAISafe/
 │   │       └── rails.co         # Colang dialog flows
 │   │
 │   ├── devtools/
-│   │   ├── euaiact_lint.py      # EU AI Act compliance linter  (aisg lint)
-│   │   ├── misalignment_check.py# AI alignment static analysis (aisg misalign)
-│   │   ├── system_card.py       # ai-system-card.yaml writer    (aisg init)
-│   │   ├── probe.py             # Attack corpus against a live endpoint (aisg probe)
-│   │   ├── measure.py           # What each guard catches, breaks and costs (aisg measure)
-│   │   ├── skill.py             # Install the agent skill into host dirs (aisg skill)
-│   │   ├── audit/               # The AI-surface audit, 54 rules (aisg audit)
-│   │   ├── decide.py            # Price each control against declared budgets (aisg decide)
-│   │   ├── hook.py, hosts.py    # Agent-host hooks and the shared host table (aisg hook)
-│   │   ├── attest.py            # Levels, criteria, a named owner (aisg attest)
-│   │   ├── fleet.py, _git.py    # The audit over many repositories (aisg fleet); pinned fetch
+│   │   ├── euaiact_lint.py      # EU AI Act compliance linter  (aisafe lint)
+│   │   ├── misalignment_check.py# AI alignment static analysis (aisafe misalign)
+│   │   ├── system_card.py       # ai-system-card.yaml writer    (aisafe init)
+│   │   ├── probe.py             # Attack corpus against a live endpoint (aisafe probe)
+│   │   ├── measure.py           # What each guard catches, breaks and costs (aisafe measure)
+│   │   ├── skill.py             # Install the agent skill into host dirs (aisafe skill)
+│   │   ├── audit/               # The AI-surface audit, 54 rules (aisafe audit)
+│   │   ├── decide.py            # Price each control against declared budgets (aisafe decide)
+│   │   ├── hook.py, hosts.py    # Agent-host hooks and the shared host table (aisafe hook)
+│   │   ├── attest.py            # Levels, criteria, a named owner (aisafe attest)
+│   │   ├── fleet.py, _git.py    # The audit over many repositories (aisafe fleet); pinned fetch
 │   │   └── _config.py           # Reads [tool.*] defaults from pyproject.toml
 │   ├── probes/                  # Attack and benign corpora (YAML, ship in the wheel)
 │   └── skills/ai-safety-audit/  # The agent skill (canonical copy; mirrored below)
@@ -185,8 +185,8 @@ AnyAISafe/
 Configuration presets are readable from an installed wheel, not just a checkout:
 
 ```python
-from aisg.config import preset_path, load_preset
-from aisg.core.pipeline import GuardrailPipeline
+from aisafe.config import preset_path, load_preset
+from aisafe.core.pipeline import GuardrailPipeline
 
 pipeline = GuardrailPipeline.from_config(preset_path("default.yaml"))
 text = load_preset("eu_high_risk.yaml")
@@ -198,46 +198,50 @@ text = load_preset("eu_high_risk.yaml")
 
 **Minimum (runtime guards + YAML presets; `pyyaml` and `aiohttp` come with it):**
 ```bash
-pip install anyaisafe
+pip install aisafe
 ```
 
-**With the developer tools (`aisg lint|misalign|init|probe|measure|audit|skill|decide|hook|attest|fleet`):**
+**With the developer tools (`aisafe lint|misalign|init|probe|measure|audit|skill|decide|hook|attest|fleet`):**
 ```bash
-pip install "anyaisafe[devtools]"
+pip install "aisafe[devtools]"
 ```
 
 **Install optional extras as needed:**
 ```bash
 # Settings and judges
-pip install "anyaisafe[settings]"          # .env file support (pydantic-settings)
-pip install "anyaisafe[anthropic]"         # Claude judge (anthropic SDK)
-pip install "anyaisafe[llamaguard-local]"  # LlamaGuard through transformers + torch (~2 GB)
+pip install "aisafe[settings]"          # .env file support (pydantic-settings)
+pip install "aisafe[anthropic]"         # Claude judge (anthropic SDK)
+pip install "aisafe[llamaguard-local]"  # LlamaGuard through transformers + torch (~2 GB)
 
 # Integrations
-pip install "anyaisafe[fastapi]"           # FastAPI middleware
-pip install "anyaisafe[langchain]"         # LangChain callback
-pip install "anyaisafe[nemo]"              # NVIDIA NeMo Guardrails
+pip install "aisafe[fastapi]"           # FastAPI middleware
+pip install "aisafe[langchain]"         # LangChain callback
+pip install "aisafe[nemo]"              # NVIDIA NeMo Guardrails
 
 # Observability
-pip install "anyaisafe[otel]"              # OpenTelemetry
-pip install "anyaisafe[metrics]"           # Prometheus
+pip install "aisafe[otel]"              # OpenTelemetry
+pip install "aisafe[metrics]"           # Prometheus
 
 # Pre-commit companions (pre-commit, detect-secrets)
-pip install "anyaisafe[precommit]"
+pip install "aisafe[precommit]"
 
 # Everything except the local LlamaGuard weights
-pip install "anyaisafe[all]"
+pip install "aisafe[all]"
 ```
 
-> **Name:** the distribution is `anyaisafe`; the import and the CLI are `aisg`
-> (`pip install anyaisafe`, then `from aisg import GuardrailPipeline` and
-> `aisg audit .`). `aisg` on PyPI is an unrelated project — do not install it
-> expecting this one.
+> **Name:** the project is AnyAISafe; the package, the import and the command are
+> all `aisafe` (`pip install aisafe`, then `from aisafe import GuardrailPipeline` and
+> `aisafe audit .`). Another PyPI package, `aisafeguard`, also installs a command
+> called `aisafe`. Installed in one environment, the two overwrite each other's command;
+> installed as separate tools, whichever comes first on PATH answers. If you use both,
+> run this one as `uvx aisafe ...` (or `python -m aisafe.cli ...` with the Python it is
+> installed in); `which aisafe` (`where aisafe` on Windows) shows which one a bare
+> `aisafe` runs.
 
 > **Releases** are published to PyPI from `v*` tags by `.github/workflows/release.yml`
 > (trusted publishing; a maintainer approves each release). Until the first tag is
 > on PyPI, install from the repository instead:
-> `pip install "anyaisafe[devtools] @ git+https://github.com/ai-safe-earth/AnyAISafe"`.
+> `pip install "aisafe[devtools] @ git+https://github.com/ai-safe-earth/AnyAISafe"`.
 
 > **Note:** LlamaGuard via Groq, Together, Ollama or OpenAI needs nothing beyond the core
 > `aiohttp` dependency (the `llamaguard` extra is empty and exists for discoverability).
@@ -251,12 +255,12 @@ pip install "anyaisafe[all]"
 
 ```python
 import asyncio
-from aisg.core.pipeline import GuardrailPipeline
-from aisg.modules.input.pii_detector import PIIDetector
-from aisg.modules.input.prompt_injection import PromptInjectionGuard
-from aisg.modules.input.rate_limiter import RateLimiter
-from aisg.modules.output.toxicity import ToxicityFilter
-from aisg.modules.policy.eu_ai_act import EUAIActCompliance
+from aisafe.core.pipeline import GuardrailPipeline
+from aisafe.modules.input.pii_detector import PIIDetector
+from aisafe.modules.input.prompt_injection import PromptInjectionGuard
+from aisafe.modules.input.rate_limiter import RateLimiter
+from aisafe.modules.output.toxicity import ToxicityFilter
+from aisafe.modules.policy.eu_ai_act import EUAIActCompliance
 
 pipeline = GuardrailPipeline(
     input_guards=[
@@ -290,7 +294,7 @@ async def handle_request(user_message: str) -> str:
 ### 2. Load pipeline from YAML config
 
 ```python
-from aisg.core.pipeline import GuardrailPipeline
+from aisafe.core.pipeline import GuardrailPipeline
 
 pipeline = GuardrailPipeline.from_config("config/default.yaml")
 ```
@@ -319,8 +323,8 @@ print(result.sanitized_output)
 Use `action="tokenize"` to send de-identified content to the LLM and restore the original values in the response:
 
 ```python
-from aisg.modules.input.pii_detector import PIIDetector
-from aisg.modules.input.pii_detector import PIIRestorer   # same file, separate class
+from aisafe.modules.input.pii_detector import PIIDetector
+from aisafe.modules.input.pii_detector import PIIRestorer   # same file, separate class
 
 pipeline = GuardrailPipeline(
     input_guards=[PIIDetector(action="tokenize")],
@@ -356,7 +360,7 @@ LLM judges add a second layer of semantic safety on top of pattern-based checks.
 ### Using a judge directly
 
 ```python
-from aisg.modules.llm_judges import build_judge
+from aisafe.modules.llm_judges import build_judge
 
 # LlamaGuard 3 via Groq (fastest, ~100 ms)
 judge = build_judge(
@@ -390,9 +394,9 @@ judge = build_judge(
 ### Injecting a judge into a pipeline guard
 
 ```python
-from aisg.modules.llm_judges import build_judge
-from aisg.modules.input.llm_input_filter import LLMInputFilter
-from aisg.modules.output.llm_output_filter import LLMOutputFilter
+from aisafe.modules.llm_judges import build_judge
+from aisafe.modules.input.llm_input_filter import LLMInputFilter
+from aisafe.modules.output.llm_output_filter import LLMOutputFilter
 
 judge = build_judge(judge_type="llamaguard", judge_provider="groq", api_key="gsk_...")
 
@@ -416,7 +420,7 @@ LLMInputFilter(
 ### LLMToolFilter — indirect injection detection
 
 ```python
-from aisg.modules.processing.llm_tool_filter import LLMToolFilter
+from aisafe.modules.processing.llm_tool_filter import LLMToolFilter
 
 # Checks tool arguments before execution and tool results before feeding back to LLM
 tool_filter = LLMToolFilter(
@@ -445,7 +449,7 @@ For AI agents that call tools, the library provides three interlocking layers.
 ### Tool access policy (role-based, argument-level)
 
 ```python
-from aisg.modules.processing.tool_policy import ToolPolicyGuard, ToolPolicy
+from aisafe.modules.processing.tool_policy import ToolPolicyGuard, ToolPolicy
 
 guard = ToolPolicyGuard(
     policies={
@@ -558,13 +562,13 @@ NIST_IMPACT_LEVEL=moderate
 ### Using settings in code
 
 ```python
-from aisg.config.settings import settings
+from aisafe.config.settings import settings
 
 print(settings.groq_api_key)
 print(settings.is_production)       # True / False
 
 # Build a judge directly from settings
-from aisg.modules.llm_judges import build_judge
+from aisafe.modules.llm_judges import build_judge
 judge = build_judge(**settings.judge_kwargs())
 ```
 
@@ -575,7 +579,7 @@ judge = build_judge(**settings.judge_kwargs())
 ### EU AI Act (Regulation 2024/1689)
 
 ```python
-from aisg.modules.policy.eu_ai_act import EUAIActCompliance, RiskTier
+from aisafe.modules.policy.eu_ai_act import EUAIActCompliance, RiskTier
 
 eu_guard = EUAIActCompliance(
     risk_tier=RiskTier.HIGH,
@@ -603,7 +607,7 @@ eu_guard = EUAIActCompliance(
 ### NIST AI RMF 1.0
 
 ```python
-from aisg.modules.policy.nist_ai_rmf import NISTAIRMFCompliance, ImpactLevel
+from aisafe.modules.policy.nist_ai_rmf import NISTAIRMFCompliance, ImpactLevel
 
 nist_guard = NISTAIRMFCompliance(
     impact_level=ImpactLevel.HIGH,
@@ -640,7 +644,7 @@ Add NeMo as a guard inside your existing `GuardrailPipeline`:
 
 ```python
 from nemoguardrails import LLMRails, RailsConfig
-from aisg.integrations.nemo_rails import NemoRailsGuard
+from aisafe.integrations.nemo_rails import NemoRailsGuard
 
 rails_cfg = RailsConfig.from_path("config/nemo_rails")
 rails = LLMRails(rails_cfg)
@@ -662,7 +666,7 @@ NemoRailsGuard(rails_config_path="config/nemo_rails", fail_open=True)
 Use NeMo as the LLM callable, with your pipeline handling input/output guardrails around it:
 
 ```python
-from aisg.integrations.nemo_rails import NemoRailsMiddleware
+from aisafe.integrations.nemo_rails import NemoRailsMiddleware
 
 middleware = NemoRailsMiddleware(
     pipeline=pipeline,
@@ -697,7 +701,7 @@ Edit `config/nemo_rails/rails.co` to define your own dialog rails. The file ship
 
 ```python
 from fastapi import FastAPI
-from aisg.integrations.fastapi_middleware import FastAPIGuardrailMiddleware
+from aisafe.integrations.fastapi_middleware import FastAPIGuardrailMiddleware
 
 app = FastAPI()
 app.add_middleware(
@@ -713,7 +717,7 @@ The middleware automatically skips `/health`, `/ready`, `/metrics`, and `/docs`.
 ### Anthropic middleware
 
 ```python
-from aisg.integrations.anthropic_middleware import AnthropicGuardrailMiddleware
+from aisafe.integrations.anthropic_middleware import AnthropicGuardrailMiddleware
 import anthropic
 
 client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment
@@ -729,7 +733,7 @@ response = await middleware.messages.create(
 ### LangChain callback
 
 ```python
-from aisg.integrations.langchain_callback import LangChainGuardrailCallback
+from aisafe.integrations.langchain_callback import LangChainGuardrailCallback
 from langchain_openai import ChatOpenAI
 
 callback = LangChainGuardrailCallback(pipeline=pipeline)
@@ -742,33 +746,33 @@ llm = ChatOpenAI(callbacks=[callback])
 
 Two CLI tools ship with the library for pre-commit and CI use.
 
-### `aisg lint` — static EU AI Act compliance linter
+### `aisafe lint` — static EU AI Act compliance linter
 
 Scans Python source files for EU AI Act compliance issues without running any code:
 
 ```bash
 # Scan a directory
-aisg lint src/
+aisafe lint src/
 
 # List all rules
-aisg lint --list-rules
+aisafe lint --list-rules
 
 # SARIF output for GitHub Code Scanning
-aisg lint src/ --format sarif --output results.sarif
+aisafe lint src/ --format sarif --output results.sarif
 
 # Errors only (non-zero exit on Art. 5 / security violations)
-aisg lint src/ --errors-only
+aisafe lint src/ --errors-only
 ```
 
-### `aisg misalign` — AI alignment static analysis
+### `aisafe misalign` — AI alignment static analysis
 
 Scans for alignment anti-patterns: deceptive system prompts, missing human oversight hooks, goal misspecification:
 
 ```bash
-aisg misalign src/
+aisafe misalign src/
 
 # Strict mode (non-zero exit on any warning)
-aisg misalign src/ --fail-on-warnings
+aisafe misalign src/ --fail-on-warnings
 ```
 
 ### Pre-commit hooks
@@ -781,26 +785,26 @@ repos:
   - repo: https://github.com/ai-safe-earth/AnyAISafe
     rev: v0.1.0
     hooks:
-      - id: aisg-audit          # pre-push: the AI-surface audit against a baseline
+      - id: aisafe-audit          # pre-push: the AI-surface audit against a baseline
         args: ["--no-external", "--fail-on", "high", "--baseline", "audit-baseline.json"]
-      - id: aisg-lint           # staged Python files, errors only
-      - id: aisg-misalign       # staged Python files, errors only
+      - id: aisafe-lint           # staged Python files, errors only
+      - id: aisafe-misalign       # staged Python files, errors only
 ```
 
-`aisg-audit` runs at `pre-push` on purpose: a full audit is seconds on a small repo and
-about thirty on a 300-file one, too slow for every commit. With `aisg` already installed,
-a `repo: local` entry with `entry: aisg lint` / `aisg misalign` / `aisg audit` works the
+`aisafe-audit` runs at `pre-push` on purpose: a full audit is seconds on a small repo and
+about thirty on a 300-file one, too slow for every commit. With `aisafe` already installed,
+a `repo: local` entry with `entry: aisafe lint` / `aisafe misalign` / `aisafe audit` works the
 same way (this repository's own `.pre-commit-config.yaml` is the example).
 
 ---
 
 ## System card & live probing
 
-### `aisg init` — record what you assert about the system
+### `aisafe init` — record what you assert about the system
 
 ```bash
-aisg init                 # interactive
-aisg init --defaults      # non-interactive, for CI
+aisafe init                 # interactive
+aisafe init --defaults      # non-interactive, for CI
 ```
 
 Writes `./ai-system-card.yaml`: system id/name/purpose, your role (provider,
@@ -808,15 +812,15 @@ deployer, importer, distributor), risk tier, Annex III category when high-risk,
 affected persons and deployment region.
 
 The card records **assertions, not findings**. Risk classification is a legal
-determination — `aisg` writes down your answer and does not classify anything.
+determination — `aisafe` writes down your answer and does not classify anything.
 The generated file says so inline, above `risk_tier`.
 
-### `aisg measure` — what each guard catches, breaks, and costs
+### `aisafe measure` — what each guard catches, breaks, and costs
 
 ```bash
-aisg measure
-aisg measure --config config/eu_high_risk.yaml
-aisg measure --max-p99-ms 50
+aisafe measure
+aisafe measure --config config/eu_high_risk.yaml
+aisafe measure --max-p99-ms 50
 ```
 
 Runs 48 attack cases **and 42 benign cases** through your pipeline in-process,
@@ -838,31 +842,31 @@ you set the bar.
 
 Output is `measure-report.json` (schema `aisg/1`) plus a terminal table.
 
-### `aisg decide` — what each control costs, and whether it fits the budget
+### `aisafe decide` — what each control costs, and whether it fits the budget
 
 ```bash
-aisg measure --config config/guardrails.yaml -o .aisg-audit/measure-report.json
-aisg decide --requests-per-day 20000 --avg-input-tokens 400 --p99-budget-ms 250 --monthly-budget-usd 300
-aisg decide --format json -o .aisg-audit/decision-report.json
-aisg audit . --format html --decision .aisg-audit/decision-report.json -o .aisg-audit/audit-before.html
+aisafe measure --config config/guardrails.yaml -o .aisafe-audit/measure-report.json
+aisafe decide --requests-per-day 20000 --avg-input-tokens 400 --p99-budget-ms 250 --monthly-budget-usd 300
+aisafe decide --format json -o .aisafe-audit/decision-report.json
+aisafe audit . --format html --decision .aisafe-audit/decision-report.json -o .aisafe-audit/audit-before.html
 ```
 
-A guard is a trade, and cost is its third column. `aisg measure` records, per guard,
+A guard is a trade, and cost is its third column. `aisafe measure` records, per guard,
 what it catches, what it breaks, its p50/p99 latency and now what it spends on model
 calls: by default it runs **offline**, never calling a provider, timing the regex path
 and **estimating** a judge's tokens from the exact prompt the guard would send (the
 judge is marked `llm_exercised: false` and its catch rate is reported as not measured,
-never as 0%). `aisg measure --allow-provider-calls` runs the judges for real, which
+never as 0%). `aisafe measure --allow-provider-calls` runs the judges for real, which
 costs money and needs credentials; the tokens are then **measured** from the providers'
 usage fields. The runtime records tokens and never dollars; every judge call leaves
 `metadata["llm_usage"]` on its result, the audit logger and the OpenTelemetry
 instruments read the same key, and `--include-policy` adds the policy-stage guards.
 
-`aisg decide` joins the audit report (which controls, which symbols), the measure
+`aisafe decide` joins the audit report (which controls, which symbols), the measure
 report, a dated price table (`config/prices.yaml`: `as_of`, `sources`,
 `stale_after_days`; a model not listed renders `unavailable` and names itself, nothing
 is ever fetched or guessed) and the traffic you declare (flags, or the `traffic:` and
-`budgets:` blocks `aisg init` writes into the system card). One row per candidate
+`budgets:` blocks `aisafe init` writes into the system card). One row per candidate
 control: catch rate overall and for the families the guard is for, benign breakage,
 human-routing rate, p50/p99, tokens per request, usd per request and per month, fail
 mode, provenance (`MEASURED <date>`, `ESTIMATED <date>`, `UNMEASURED`), and a verdict
@@ -871,9 +875,9 @@ that is a deterministic reading of the budgets:
 | verdict | meaning |
 |---|---|
 | `apply` | inside every budget that is known |
-| `apply with <config change>` | over a budget, and a configuration change exists that is likely to bring it back (a hypothesis until `aisg measure` is re-run) |
+| `apply with <config change>` | over a budget, and a configuration change exists that is likely to bring it back (a hypothesis until `aisafe measure` is re-run) |
 | `defer (over budget: <which>)` | over a budget, and nothing in the package changes that |
-| `unmeasured (run aisg measure first)` | no measurement, or a judge the measure report never exercised |
+| `unmeasured (run aisafe measure first)` | no measurement, or a judge the measure report never exercised |
 
 An unknown budget never counts as exceeded, an unknown figure never counts as zero, and
 the UNMEASURED list prints in every format. Totals sum sequential stages and take the
@@ -881,18 +885,18 @@ maximum of parallel ones; the pipeline p99 is an upper bound and says so; month 
 days. Exit 0 rendered, 1 when a selected control or the total exceeds a budget, 2
 fatal. The decision document (`"kind": "decision"`) is evidence the next audit reads:
 AUD-806 reports a wired guard over a declared budget, and `--decision` adds the Trade
-table to the html document. `[tool.aisg-decide]` in `pyproject.toml` defaults every
+table to the html document. `[tool.aisafe-decide]` in `pyproject.toml` defaults every
 flag except `--select`.
 
-### `aisg attest` — a level, its criteria, and the person who signs it
+### `aisafe attest` — a level, its criteria, and the person who signs it
 
 ```bash
-aisg audit . --format json -o .aisg-audit/audit-report-after.json --baseline .aisg-audit/audit-baseline.json
-aisg attest . --owner "J. Doe <risk owner>" --html     # .aisg-audit/attestation.{json,md,html} and badge.json
-aisg attest . --check --require-level 2                # CI: exit 1 below level 2, nothing written
+aisafe audit . --format json -o .aisafe-audit/audit-report-after.json --baseline .aisafe-audit/audit-baseline.json
+aisafe attest . --owner "J. Doe <risk owner>" --html     # .aisafe-audit/attestation.{json,md,html} and badge.json
+aisafe attest . --check --require-level 2                # CI: exit 1 below level 2, nothing written
 ```
 
-`aisg attest` is what this toolchain offers instead of a compliance verdict. It reads the
+`aisafe attest` is what this toolchain offers instead of a compliance verdict. It reads the
 documents the other commands wrote (the audit report and baseline, the measure, probe and
 decision reports, the system card), evaluates the criteria in `attest-levels.yaml` and
 writes an attestation that a named owner signs. Four levels, each a short list of
@@ -907,7 +911,7 @@ criteria:
 
 The level reached is the highest one with every criterion of it and of every level below
 met; each row of the document says what was read and what is missing. The statement is
-literal: "J. Doe <risk owner> states that repo at commit 3f2a1c9 meets the AISG level 2
+literal: "J. Doe <risk owner> states that repo at commit 3f2a1c9 meets the AnyAISafe level 2
 (measured) criteria on 2026-10-19." The disclaimer says the tool checked the listed
 criteria and nothing else. Only baseline entries with a reason count as accepted (a bare
 fingerprint is a suppression), an absent input is recorded as absent and fails its
@@ -915,22 +919,22 @@ criteria rather than the run, `--owner` is required to write and can never come 
 `pyproject.toml`, and `--check` runs unsigned and writes nothing. `badge.json` is a
 shields.io endpoint (`informational` above level 0, `lightgrey` otherwise, never green or
 red). The attestation is the toolchain's own output: a re-audit skips it.
-`[tool.aisg-attest]` defaults every flag except `--owner` and `--check`;
+`[tool.aisafe-attest]` defaults every flag except `--owner` and `--check`;
 `--level-criteria PATH` points at your own criteria file, validated against the rule
 registry and the card schema.
 
-### `aisg fleet` — the same audit over many repositories
+### `aisafe fleet` — the same audit over many repositories
 
 ```bash
-aisg fleet fleet.yaml --jobs 4                # .aisg-fleet/fleet-report.{json,csv,md}
-aisg fleet bench/corpus.yaml --proposal       # plus a PR body per repository
-aisg fleet repos.csv --fail-on-findings       # a team gating its own repositories
+aisafe fleet fleet.yaml --jobs 4                # .aisafe-fleet/fleet-report.{json,csv,md}
+aisafe fleet bench/corpus.yaml --proposal       # plus a PR body per repository
+aisafe fleet repos.csv --fail-on-findings       # a team gating its own repositories
 ```
 
 `fleet.yaml` is `repos:` with `name`, `url` or `path`, optional `sha` and `branch`
 (`bench/corpus.yaml` is a valid list); a CSV with `name,url,sha` works too. Each
 repository is cloned at its pin (or used in place) and audited in its own subprocess with
-`--no-external`, under a wall-clock cap, with its own `[tool.aisg-audit]`. The three
+`--no-external`, under a wall-clock cap, with its own `[tool.aisafe-audit]`. The three
 documents carry counts, rule frequencies, inventory highlights and a path to each
 repository's report, never a snippet. Exit 0 when every repository was audited, 1 when
 one could not be (an incomplete survey must not look complete), 2 fatal;
@@ -943,10 +947,10 @@ Precision for the audit rules is measured the same way as for the linter:
 `python bench/score.py --tool audit` (`bench/README.md`). No row is labelled yet, so
 every audit rule stays `[UNMEASURED]` and keeps firing.
 
-### `aisg probe` — send an attack corpus at a live endpoint
+### `aisafe probe` — send an attack corpus at a live endpoint
 
 ```bash
-aisg probe http://localhost:8000/chat     --request-template '{"message":"{{payload}}"}'     --response-path '$.response'
+aisafe probe http://localhost:8000/chat     --request-template '{"message":"{{payload}}"}'     --response-path '$.response'
 ```
 
 48 fixed payloads across six families — prompt injection, system-prompt
@@ -1011,16 +1015,16 @@ treated as remote even if it would resolve to loopback.
 
 ## Audit
 
-### `aisg audit` -- what talks to a model, what it can reach, what stands between
+### `aisafe audit` -- what talks to a model, what it can reach, what stands between
 
 ```bash
-aisg audit .                                   # terminal report, exit 1 on any finding
-aisg audit . --format json -o audit-report.json
-aisg audit . --inventory-only                  # the AI surface only, no rules
-aisg audit . --list-rules                      # 54 rules: id, priority, severity, tier, precision
+aisafe audit .                                   # terminal report, exit 1 on any finding
+aisafe audit . --format json -o audit-report.json
+aisafe audit . --inventory-only                  # the AI surface only, no rules
+aisafe audit . --list-rules                      # 54 rules: id, priority, severity, tier, precision
 ```
 
-`aisg audit <path>` walks a repository, builds an inventory of its AI surface
+`aisafe audit <path>` walks a repository, builds an inventory of its AI surface
 -- LLM calls and model ids, tools and the gates in front of them, MCP servers,
 host permission files, data sources, ingress, sinks, guards, evals, on-disk
 reports -- and runs 54 rules over it, ordered by blast radius: `AUD-1xx` host
@@ -1050,8 +1054,8 @@ The quiet form on the fixture agent in `tests/fixtures/audit/py_agent`, with
 every external scanner switched off (real output, trimmed):
 
 ```
-$ aisg audit tests/fixtures/audit/py_agent --no-external -q
-aisg audit
+$ aisafe audit tests/fixtures/audit/py_agent --no-external -q
+aisafe audit
 ==========
 This report lists observations about a codebase.
 Not an assessment of compliance with any regulation.
@@ -1111,7 +1115,7 @@ the summary line always says how many were not counted.
 **In CI:**
 
 ```bash
-aisg audit . --fail-on high --fail-on-unknown tools,reports --baseline audit-baseline.json
+aisafe audit . --fail-on high --fail-on-unknown tools,reports --baseline audit-baseline.json
 ```
 
 `--baseline` takes a fingerprint list written by `--write-baseline` (a full
@@ -1147,27 +1151,27 @@ and printed on every run.
 ### The skill
 
 ```bash
-aisg skill install --host claude       # .claude/skills/ai-safety-audit/
-aisg skill install --host codex        # .agents/skills/ai-safety-audit/ (alias of agents)
-aisg skill install --host agents       # any agentskills.io host
-aisg skill install --host all          # claude + agents, plus every host whose directory already exists
-aisg skill list                        # host table: project dir, global dir, verified, source
-aisg skill diff --host all             # exit 1 when an installed copy has drifted
+aisafe skill install --host claude       # .claude/skills/ai-safety-audit/
+aisafe skill install --host codex        # .agents/skills/ai-safety-audit/ (alias of agents)
+aisafe skill install --host agents       # any agentskills.io host
+aisafe skill install --host all          # claude + agents, plus every host whose directory already exists
+aisafe skill list                        # host table: project dir, global dir, verified, source
+aisafe skill diff --host all             # exit 1 when an installed copy has drifted
 ```
 
 The skill (`ai-safety-audit`, shipped inside the wheel) is what an agent host
 adds on top of the CLI: a seven-phase procedure -- survey, document 1, decide,
-apply, document 2, verify, attest -- in which the agent runs `aisg audit`
+apply, document 2, verify, attest -- in which the agent runs `aisafe audit`
 through a bootstrap script pinned to this package's version (the script says
-which `aisg` ran, from where, at which version), renders a before document of
-the system (`--format html`), prices the proposed controls with `aisg decide`
+which `aisafe` ran, from where, at which version), renders a before document of
+the system (`--format html`), prices the proposed controls with `aisafe decide`
 against the budgets the operator declares, walks the plan one row per user
 approval with the finding's `recommendation.package` as the decision source,
 re-audits after every diff against the baseline written in phase 1, renders
-the after document, runs tests, `aisg measure` or `aisg probe` only with
-approval, and finally runs `aisg attest` so a named owner signs the level the
+the after document, runs tests, `aisafe measure` or `aisafe probe` only with
+approval, and finally runs `aisafe attest` so a named owner signs the level the
 criteria support (`references/levels.md` lists them). Every artefact lands
-under `.aisg-audit/`. The intelligence stays in the CLI; the skill adds
+under `.aisafe-audit/`. The intelligence stays in the CLI; the skill adds
 explanation and a gated change workflow, never edits permission files, CI or
 secrets without a per-diff approval, and never pushes. `docs/SYSTEM.md` is
 the whole flow on one page.
@@ -1175,9 +1179,9 @@ the whole flow on one page.
 The audit is evidence, not a compliance verdict: it lists what it found and
 what it could not check. Absence of a finding is not evidence of safety.
 
-### Hooks for coding agents (`aisg hook`)
+### Hooks for coding agents (`aisafe hook`)
 
-`aisg hook` is one adapter between an agent host's command hooks and the audit. It
+`aisafe hook` is one adapter between an agent host's command hooks and the audit. It
 reads the host's JSON payload on stdin, applies a fixed set of policies, and answers in
 the host's own envelope:
 
@@ -1185,27 +1189,27 @@ the host's own envelope:
 |---|---|---|---|---|
 | deny | a secret-shaped literal is about to be written; a download piped into a shell (curl or wget); plain-http `pip install` | `permissionDecision: deny` | `permission: deny` | `decision: deny` |
 | ask | an edit to a protected path (host permission file, CI, `.env*`, `.secrets*`); `npx -y`; a permission-bypass flag; a shell write to a protected path | `permissionDecision: ask` | `permission: ask` | `ask-fallback` (allow, recorded, or deny) |
-| context | after an edit, `aisg audit --only <file>` against the baseline found something new; the posture at session start | `additionalContext` / plain text | recorded; `followup_message` at stop | `additionalContext` |
+| context | after an edit, `aisafe audit --only <file>` against the baseline found something new; the posture at session start | `additionalContext` / plain text | recorded; `followup_message` at stop | `additionalContext` |
 | block | at Stop, a full audit against the baseline shows a new finding at or above `fail-on` (once per session) | `decision: block` | `followup_message` | n/a |
 
 ```bash
-aisg hook list                              # host table and which aisg this is
-aisg hook install --host claude --dry-run   # the diff it would apply to .claude/settings.json
-aisg hook install --host claude --yes       # apply; copies the pinned bootstrap to .claude/hooks/
-aisg hook install --host cursor --yes       # .cursor/hooks.json (shell/MCP gating enforced, file checks advisory)
-aisg hook install --host gemini --yes       # .gemini/settings.json
-aisg hook uninstall --host claude --yes     # removes only this adapter's entries
+aisafe hook list                              # host table and which aisafe this is
+aisafe hook install --host claude --dry-run   # the diff it would apply to .claude/settings.json
+aisafe hook install --host claude --yes       # apply; copies the pinned bootstrap to .claude/hooks/
+aisafe hook install --host cursor --yes       # .cursor/hooks.json (shell/MCP gating enforced, file checks advisory)
+aisafe hook install --host gemini --yes       # .gemini/settings.json
+aisafe hook uninstall --host claude --yes     # removes only this adapter's entries
 ```
 
 Rules that hold: the hook fails OPEN on its own errors (payload not JSON, audit
-exception, state unwritable), records them in `.aisg-audit/hook-state.json` and says so
+exception, state unwritable), records them in `.aisafe-audit/hook-state.json` and says so
 at the next session start; the secret-literal deny is a positive detection and stays a
 deny. It never calls a model, never installs anything, never opens a socket, and writes
-only under `.aisg-audit/`. `install` prints a unified diff and writes only with `--yes`
+only under `.aisafe-audit/`. `install` prints a unified diff and writes only with `--yes`
 or an interactive yes, because the host's hook file is itself a protected path.
-Project configs get the portable bootstrap (`sh .../hooks/aisg-hook.sh`, pinned to this
+Project configs get the portable bootstrap (`sh .../hooks/aisafe-hook.sh`, pinned to this
 version); `--global` and `--local` configs are machine-local and get this interpreter.
-Defaults live in `[tool.aisg-hook]` of `pyproject.toml` (`fail-on`, `policies`,
+Defaults live in `[tool.aisafe-hook]` of `pyproject.toml` (`fail-on`, `policies`,
 `max-audit-seconds`, `stop-max-audit-seconds`, `debounce-seconds`, `baseline`, `report`,
 `ask-fallback`); `prompt_injection` (flag injection-shaped text in a prompt as context) is
 opt-in. Codex is listed but nothing is written: the Codex CLI does not document command
@@ -1237,12 +1241,12 @@ One step audits any repository and fails on a new finding at or above `fail-on`:
     upload-sarif: "true"              # Code Scanning (needs security-events: write)
 ```
 
-`action.yml` writes the JSON, SARIF and markdown documents under `.aisg-audit/`, appends
+`action.yml` writes the JSON, SARIF and markdown documents under `.aisafe-audit/`, appends
 the markdown to the job summary, uploads the SARIF, optionally posts a sticky
 pull-request comment, and exposes `exit-code`, `findings`, `new-findings` and `report`
 as outputs. `install-from: action-path` installs the checkout the action came from
 (this repository dogfoods it in `tests.yml`). `.gitlab-ci-euaiact.yml` carries the
-matching `aisg-audit` job (`AUDIT_PATH`, `AUDIT_FAIL_ON`, `AUDIT_BASELINE`; SARIF to the
+matching `aisafe-audit` job (`AUDIT_PATH`, `AUDIT_FAIL_ON`, `AUDIT_BASELINE`; SARIF to the
 Security Dashboard).
 
 ---
@@ -1252,7 +1256,7 @@ Security Dashboard).
 ### Audit logging
 
 ```python
-from aisg.modules.observability.audit_logger import AuditLogger
+from aisafe.modules.observability.audit_logger import AuditLogger
 
 logger = AuditLogger(log_path="audit/pipeline.jsonl")
 pipeline = GuardrailPipeline(..., audit_logger=logger)
@@ -1263,14 +1267,14 @@ Each pipeline run writes a structured JSON record with stage, latency, findings,
 ### OpenTelemetry traces + metrics
 
 ```bash
-pip install "anyaisafe[otel]"
+pip install "aisafe[otel]"
 # OTLP gRPC backend: pip install opentelemetry-exporter-otlp-proto-grpc
 # OTLP HTTP backend: pip install opentelemetry-exporter-otlp-proto-http
 ```
 
 ```python
-from aisg.modules.observability.otel import TelemetryProvider
-from aisg.core.pipeline import GuardrailPipeline
+from aisafe.modules.observability.otel import TelemetryProvider
+from aisafe.core.pipeline import GuardrailPipeline
 
 telemetry = TelemetryProvider(
     service_name="my-ai-system",
@@ -1349,8 +1353,8 @@ Blocked stages and guards have their span status set to `ERROR` for automatic al
 Any class that extends `GuardrailBase` and implements `check()` is a valid guard:
 
 ```python
-from aisg.core.base import GuardrailBase, GuardrailStage, CheckResult, Action, Severity, Finding
-from aisg.core.registry import register_guard
+from aisafe.core.base import GuardrailBase, GuardrailStage, CheckResult, Action, Severity, Finding
+from aisafe.core.registry import register_guard
 
 @register_guard("my_guard")
 class MyCustomGuard(GuardrailBase):

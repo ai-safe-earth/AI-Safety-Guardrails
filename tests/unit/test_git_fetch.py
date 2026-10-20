@@ -1,6 +1,6 @@
 """tests/unit/test_git_fetch.py
 ----------------------------
-`aisg.devtools._git` is the one pinned-fetch implementation behind `bench/run.py` and `aisg
+`aisafe.devtools._git` is the one pinned-fetch implementation behind `bench/run.py` and `aisafe
 fleet`. These tests run it against a local repository created on the spot (no network): an
 exact commit is reached and stamped, a second call is a cache hit, a short id falls back to
 the branch history, and every failure is a one-line `GitError`.
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools._git import STAMP_FILE, GitError, clone_shallow, fetch_pinned, head_sha
+from aisafe.devtools._git import STAMP_FILE, GitError, clone_shallow, fetch_pinned, head_sha
 
 needs_git = pytest.mark.skipif(shutil.which("git") is None, reason="git not on PATH")
 
@@ -70,7 +70,7 @@ class TestFetchPinned:
         repo, (first, _) = origin
         dest = tmp_path / "dest"
         fetch_pinned(str(repo), first, dest, timeout=120)
-        from aisg.devtools import _git as module
+        from aisafe.devtools import _git as module
 
         def boom(*args, **kwargs):
             raise AssertionError("git was run on a cache hit")

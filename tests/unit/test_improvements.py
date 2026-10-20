@@ -31,8 +31,8 @@ if "anthropic" not in sys.modules:
 # 1.  LangChain callback — _run_async
 # ===========================================================================
 
-from aisg.core.base import Action, GuardrailStage, PipelineResult
-from aisg.integrations.langchain_callback import LangChainGuardrailCallback, _run_async
+from aisafe.core.base import Action, GuardrailStage, PipelineResult
+from aisafe.integrations.langchain_callback import LangChainGuardrailCallback, _run_async
 
 
 def _make_pipeline_result(blocked=False, sanitized="clean", msg="blocked"):
@@ -137,7 +137,7 @@ class TestLangChainCallback:
 # 2.  Anthropic middleware — deep copy
 # ===========================================================================
 
-from aisg.integrations.anthropic_middleware import _BlockedResponse, _GuardedMessages
+from aisafe.integrations.anthropic_middleware import _BlockedResponse, _GuardedMessages
 
 
 class TestAnthropicMiddleware:
@@ -233,7 +233,7 @@ class TestAnthropicMiddleware:
 # 3.  Audit logger — stderr on write failure
 # ===========================================================================
 
-from aisg.modules.observability.audit_logger import AuditLogger
+from aisafe.modules.observability.audit_logger import AuditLogger
 
 
 def _make_result():
@@ -295,8 +295,8 @@ class TestAuditLoggerErrors:
 # 4.  Config validation
 # ===========================================================================
 
-from aisg.core.exceptions import GuardrailConfigError
-from aisg.core.pipeline import GuardrailPipeline
+from aisafe.core.exceptions import GuardrailConfigError
+from aisafe.core.pipeline import GuardrailPipeline
 
 
 class TestConfigValidation:
@@ -362,7 +362,7 @@ class TestConfigValidation:
 # 5.  RateLimiter
 # ===========================================================================
 
-from aisg.modules.input.rate_limiter import RateLimiter
+from aisafe.modules.input.rate_limiter import RateLimiter
 
 
 class TestRateLimiter:
@@ -464,7 +464,7 @@ class TestRateLimiter:
 
     @pytest.mark.asyncio
     async def test_registered_as_rate_limiter(self):
-        from aisg.core.registry import REGISTRY
+        from aisafe.core.registry import REGISTRY
 
         assert "rate_limiter" in REGISTRY
 
@@ -473,8 +473,8 @@ class TestRateLimiter:
 # 6.  CachedJudge
 # ===========================================================================
 
-from aisg.modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
-from aisg.modules.llm_judges.cache import CachedJudge
+from aisafe.modules.llm_judges.base import JudgeVerdict, LLMJudgeBase
+from aisafe.modules.llm_judges.cache import CachedJudge
 
 
 class _CountingJudge(LLMJudgeBase):

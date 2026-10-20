@@ -1,7 +1,7 @@
 """tests/unit/test_skill_package.py
 --------------------------------
 Pins the shipped `ai-safety-audit` skill package: the canonical tree under
-`src/aisg/skills/`, its two byte-identical mirrors, the bootstrap scripts' pin and
+`src/aisafe/skills/`, its two byte-identical mirrors, the bootstrap scripts' pin and
 ignore marker, the wording rules (no compliance claims, no unicode), and the dev
 tool that keeps the mirrors in sync.
 
@@ -21,10 +21,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from aisg.skills import SKILL_NAME, iter_skill_files, skill_root
+from aisafe.skills import SKILL_NAME, iter_skill_files, skill_root
 
 REPO = Path(__file__).resolve().parents[2]
-CANONICAL = REPO / "src" / "aisg" / "skills" / SKILL_NAME
+CANONICAL = REPO / "src" / "aisafe" / "skills" / SKILL_NAME
 MIRRORS = (
     REPO / ".claude" / "skills" / SKILL_NAME,
     REPO / ".agents" / "skills" / SKILL_NAME,
@@ -55,7 +55,7 @@ SYNC_TOOL = REPO / "scripts" / "sync_skill.py"
 CONTROLS_TOOL = REPO / "scripts" / "controls_md.py"
 PYPROJECT = REPO / "pyproject.toml"
 
-IGNORE_MARKER = "# aisg-audit: ignore-file"
+IGNORE_MARKER = "# aisafe-audit: ignore-file"
 
 # The negative-phrase list. Defined once here; the report module's copy must match so the
 # skill text and the renderer are held to the same rule. Assembled from fragments, as in
@@ -75,21 +75,21 @@ BANNED_WORD = re.compile(r"\bcl" + r"ean\b", re.IGNORECASE)
 # Phase-3 and document vocabulary the skill must name (design section 7). Each is a flag,
 # path or JSON key another slice implements; a rename there must reach the skill text.
 SKILL_MD_NEEDLES = (
-    ".aisg-audit/",
+    ".aisafe-audit/",
     "--amend-baseline",
     "--accept",
     "--format html",
     "recommendation.package",
     "leaves_open",
     "same_control",
-    "aisg decide",
-    "aisg attest",
+    "aisafe decide",
+    "aisafe attest",
     "--owner",
     "--require-level",
     "attestation.json",
     "pr-body.md",
     "gh pr create",
-    "aisg hook install",
+    "aisafe hook install",
 )
 REPORT_FORMAT_NEEDLES = (
     "html",
@@ -173,13 +173,13 @@ def run_script(script: Path, cwd: Path, env: dict[str, str]) -> subprocess.Compl
     )
 
 
-FAKE_LOG = "aisg-calls.log"
+FAKE_LOG = "aisafe-calls.log"
 
-# A stand-in `aisg` for the verify script: appends every argv to FAKE_LOG (relative to the
+# A stand-in `aisafe` for the verify script: appends every argv to FAKE_LOG (relative to the
 # cwd, so sh on Windows needs no path translation) and, for `probe`, writes a report with
 # one failed case to the `-o` path and exits 1 the way the real probe does.
-_FAKE_AISG = """#!/bin/sh
-printf '%s\\n' "$*" >> "$AISG_FAKE_LOG"
+_FAKE_AISAFE = """#!/bin/sh
+printf '%s\\n' "$*" >> "$AISAFE_FAKE_LOG"
 if [ "$1" = "probe" ]; then
   out=""
   while [ $# -gt 0 ]; do
@@ -193,17 +193,17 @@ exit 0
 """
 
 
-def fake_aisg_env(tmp_path: Path, **extra: str) -> dict[str, str]:
-    """An env whose PATH holds `sh`'s own bin dir and a fake `aisg`, plus `extra`."""
+def fake_aisafe_env(tmp_path: Path, **extra: str) -> dict[str, str]:
+    """An env whose PATH holds `sh`'s own bin dir and a fake `aisafe`, plus `extra`."""
     assert SH is not None
     bin_dir = tmp_path / "fake-bin"
     bin_dir.mkdir()
-    fake = bin_dir / "aisg"
-    fake.write_text(_FAKE_AISG, encoding="utf-8", newline="\n")
+    fake = bin_dir / "aisafe"
+    fake.write_text(_FAKE_AISAFE, encoding="utf-8", newline="\n")
     fake.chmod(0o755)
     env = {
         "PATH": os.pathsep.join([str(Path(SH).parent), str(bin_dir)]),
-        "AISG_FAKE_LOG": FAKE_LOG,
+        "AISAFE_FAKE_LOG": FAKE_LOG,
     }
     env.update(extra)
     return env
@@ -230,7 +230,7 @@ class TestPackagedSkill:
         root = skill_root()
         assert (root / "SKILL.md").is_file()
         assert root.resolve() == CANONICAL.resolve()
-        assert CANONICAL.is_relative_to(REPO / "src" / "aisg" / "skills")
+        assert CANONICAL.is_relative_to(REPO / "src" / "aisafe" / "skills")
 
     def test_iter_skill_files_matches_the_tree(self):
         assert dict(iter_skill_files()) == tree(CANONICAL)
@@ -319,19 +319,19 @@ class TestSkillMd:
 
     def test_hard_rules_eight_and_nine(self):
         text = skill_md()
-        assert "8. Which aisg ran." in text and "(pinned <version>)" in text
+        assert "8. Which aisafe ran." in text and "(pinned <version>)" in text
         assert "9. No push without approval." in text and "never run `git push`" in text
 
     def test_decide_precedes_apply_and_attest_follows_verify(self):
         text = skill_md()
-        assert text.find("aisg decide --format json") < text.find("## Phase 4 --")
+        assert text.find("aisafe decide --format json") < text.find("## Phase 4 --")
         assert text.find("--owner") > text.find("## Phase 7 --")
         assert "--require-level 2" in text
-        assert "AISG_VERIFY_SKIP_TESTS=1" in text
+        assert "AISAFE_VERIFY_SKIP_TESTS=1" in text
 
-    def test_every_artefact_lives_under_aisg_audit(self):
+    def test_every_artefact_lives_under_aisafe_audit(self):
         # Every `-o <path>` and every `--baseline`/`--write-baseline`/`--amend-baseline
-        # <path>` in SKILL.md points into `.aisg-audit/`, so two documents made in one
+        # <path>` in SKILL.md points into `.aisafe-audit/`, so two documents made in one
         # session describe one scan from one working directory.
         commands = [
             line
@@ -345,7 +345,7 @@ class TestSkillMd:
                 r"(?:\s-o|--baseline|--write-baseline|--amend-baseline)\s+(\S+)", line
             )
         assert paths
-        stray = [p for p in paths if not p.startswith(".aisg-audit/")]
+        stray = [p for p in paths if not p.startswith(".aisafe-audit/")]
         assert not stray, stray
 
     def test_never_edits_gitignore_unasked(self):
@@ -381,9 +381,9 @@ class TestReferences:
 
     def test_controls_package_column_covers_every_rule(self):
         try:
-            from aisg.devtools.audit.rules import ALL_RULES
+            from aisafe.devtools.audit.rules import ALL_RULES
         except ImportError:
-            pytest.skip("aisg.devtools.audit.rules not importable")
+            pytest.skip("aisafe.devtools.audit.rules not importable")
         text = (CANONICAL / "references" / "controls.md").read_text(encoding="utf-8")
         rows = set(re.findall(r"^\|\s*(AUD-\d+)\s*\|", text, re.MULTILINE))
         expected = {rule.id for rule in ALL_RULES}
@@ -423,9 +423,9 @@ class TestReferences:
         # The renderers print `controls: <items>` (terminal and markdown) and the html
         # prints no such list; the doc used to name a label no renderer emits.
         try:
-            from aisg.devtools.audit import report
+            from aisafe.devtools.audit import report
         except ImportError:
-            pytest.skip("aisg.devtools.audit.report not importable")
+            pytest.skip("aisafe.devtools.audit.report not importable")
         text = (CANONICAL / "references" / "report-format.md").read_text(encoding="utf-8")
         assert f"`{report._T_CONTROLS.format(items='<items>')}`" in text
         assert "Related controls" not in text
@@ -434,10 +434,10 @@ class TestReferences:
         # Secrets are masked by `model.redact()` as `<redacted:PREFIX...LAST4>`; PII hits
         # are masked at discovery as `<pii:ENTITY>`. Two mechanisms, two shapes.
         try:
-            from aisg.devtools.audit.model import redact
-            from aisg.devtools.audit.patterns import PII_TABLE
+            from aisafe.devtools.audit.model import redact
+            from aisafe.devtools.audit.patterns import PII_TABLE
         except ImportError:
-            pytest.skip("aisg.devtools.audit not importable")
+            pytest.skip("aisafe.devtools.audit not importable")
         text = (CANONICAL / "references" / "report-format.md").read_text(encoding="utf-8")
         assert "<redacted:PREFIX...LAST4>" in text
         assert redact("sk-ant-" + "a" * 30) == "<redacted:sk-ant-...aaaa>"
@@ -450,7 +450,7 @@ class TestReferences:
         # A blank or TODO `incident_contact` is absent for AUD-703, but the snippet says
         # `unfilled`, not `no`, and the docs must say the same.
         rule = (
-            REPO / "src" / "aisg" / "devtools" / "audit" / "rules" / "observability.py"
+            REPO / "src" / "aisafe" / "devtools" / "audit" / "rules" / "observability.py"
         ).read_text(encoding="utf-8")
         assert "unfilled" in rule and "incident_contact" in rule
         for name in ("apply/python.md", "controls.md"):
@@ -514,9 +514,9 @@ class TestControlsMatchesRegistry:
     @pytest.fixture(scope="class")
     def rules(self):
         try:
-            from aisg.devtools.audit.rules import ALL_RULES
+            from aisafe.devtools.audit.rules import ALL_RULES
         except ImportError:
-            pytest.skip("aisg.devtools.audit.rules not importable")
+            pytest.skip("aisafe.devtools.audit.rules not importable")
         return {rule.id: rule for rule in ALL_RULES}
 
     @pytest.fixture(scope="class")
@@ -583,9 +583,9 @@ class TestControlsMatchesRegistry:
 class TestWording:
     def test_banned_phrases_match_the_report_module(self):
         try:
-            from aisg.devtools.audit.report import BANNED_PHRASES as REPORT_PHRASES
+            from aisafe.devtools.audit.report import BANNED_PHRASES as REPORT_PHRASES
         except ImportError:
-            pytest.skip("aisg.devtools.audit.report not importable")
+            pytest.skip("aisafe.devtools.audit.report not importable")
         assert tuple(REPORT_PHRASES) == BANNED_PHRASES
 
     @pytest.mark.parametrize(
@@ -625,8 +625,8 @@ class TestScripts:
     @pytest.mark.parametrize("name", SCRIPTS)
     def test_version_pinned_to_pyproject(self, name: str):
         text = (CANONICAL / "scripts" / name).read_text(encoding="utf-8")
-        pins = re.findall(r'^\$?AISG_VERSION\s*=\s*"([^"]*)"', text, re.MULTILINE)
-        assert pins, f"{name}: no AISG_VERSION line"
+        pins = re.findall(r'^\$?AISAFE_VERSION\s*=\s*"([^"]*)"', text, re.MULTILINE)
+        assert pins, f"{name}: no AISAFE_VERSION line"
         assert set(pins) == {project_version()}, pins
 
     @pytest.mark.parametrize("name", SCRIPTS)
@@ -640,12 +640,12 @@ class TestScripts:
     @pytest.mark.parametrize("name", ["verify.sh", "verify.ps1"])
     def test_never_asserts_probe_authorization(self, name: str):
         # Saying the script never adds the flag (comment, echo) is fine; passing it to
-        # `aisg probe` through the bootstrap chain is not.
+        # `aisafe probe` through the bootstrap chain is not.
         text = (CANONICAL / "scripts" / name).read_text(encoding="utf-8")
         invocations = [
             line
             for line in text.splitlines()
-            if re.search(r"\b(run_aisg|Invoke-Aisg|aisg)\s+probe\b", line)
+            if re.search(r"\b(run_aisafe|Invoke-Aisafe|aisafe)\s+probe\b", line)
             and not line.lstrip().startswith("#")
             and not re.search(r"\b(echo|Write-Output|WriteLine)\b", line)
         ]
@@ -667,21 +667,21 @@ class TestScripts:
 
     @needs_sh
     @pytest.mark.parametrize("name", ["audit.sh", "attest.sh"])
-    def test_front_script_without_aisg_exits_2(self, name: str, tmp_path: Path):
+    def test_front_script_without_aisafe_exits_2(self, name: str, tmp_path: Path):
         proc = run_script(CANONICAL / "scripts" / name, tmp_path, {"PATH": ""})
         assert proc.returncode == 2, (proc.stdout, proc.stderr)
-        assert "aisg not found" in proc.stderr
+        assert "aisafe not found" in proc.stderr
 
     @needs_sh
     @pytest.mark.parametrize("name", ["audit.sh", "attest.sh"])
-    def test_front_script_says_which_aisg_ran(self, name: str, tmp_path: Path):
+    def test_front_script_says_which_aisafe_ran(self, name: str, tmp_path: Path):
         # Rule 8: the resolved path and version go to stderr before the command runs; a
-        # fake aisg that prints nothing for --version reads `unknown`, never blank.
+        # fake aisafe that prints nothing for --version reads `unknown`, never blank.
         verb = name.split(".")[0]
         proc = subprocess.run(
             [SH, str(CANONICAL / "scripts" / name), ".", "--format", "json"],
             cwd=tmp_path,
-            env=fake_aisg_env(tmp_path),
+            env=fake_aisafe_env(tmp_path),
             capture_output=True,
             text=True,
             timeout=60,
@@ -689,15 +689,15 @@ class TestScripts:
         )
         assert proc.returncode == 0, (proc.stdout, proc.stderr)
         line = proc.stderr.strip().splitlines()[0]
-        assert line.startswith("aisg: ") and f"(pinned {project_version()})" in line, line
+        assert line.startswith("aisafe: ") and f"(pinned {project_version()})" in line, line
         assert "version unknown" in line, line
         calls = (tmp_path / FAKE_LOG).read_text(encoding="utf-8").splitlines()
         assert calls == ["--version", f"{verb} . --format json"]
 
     @needs_sh
     def test_verify_sh_skip_tests_runs_the_offline_measure_only(self, tmp_path: Path):
-        # Phase 3: AISG_VERIFY_SKIP_TESTS=1 leaves the project's tests out and runs the
-        # offline measure, so `aisg decide` has figures before anything is applied.
+        # Phase 3: AISAFE_VERIFY_SKIP_TESTS=1 leaves the project's tests out and runs the
+        # offline measure, so `aisafe decide` has figures before anything is applied.
         write_configs(tmp_path)
         (tmp_path / "pyproject.toml").write_text(
             '[project]\nname = "target"\nversion = "0.0.0"\n', encoding="utf-8"
@@ -705,37 +705,37 @@ class TestScripts:
         proc = run_script(
             CANONICAL / "scripts" / "verify.sh",
             tmp_path,
-            fake_aisg_env(tmp_path, AISG_VERIFY_RUN="1", AISG_VERIFY_SKIP_TESTS="1"),
+            fake_aisafe_env(tmp_path, AISAFE_VERIFY_RUN="1", AISAFE_VERIFY_SKIP_TESTS="1"),
         )
         assert proc.returncode == 0, (proc.stdout, proc.stderr)
         assert "tests: pytest" in proc.stdout
-        assert "tests: skipped (AISG_VERIFY_SKIP_TESTS=1)" in proc.stdout
+        assert "tests: skipped (AISAFE_VERIFY_SKIP_TESTS=1)" in proc.stdout
         calls = (tmp_path / FAKE_LOG).read_text(encoding="utf-8").splitlines()
         assert calls == [
-            "measure --config config/guardrails.yaml -o .aisg-audit/measure-report.json"
+            "measure --config config/guardrails.yaml -o .aisafe-audit/measure-report.json"
         ]
 
     @needs_sh
-    def test_verify_sh_without_aisg_skips_measure(self, tmp_path: Path):
+    def test_verify_sh_without_aisafe_skips_measure(self, tmp_path: Path):
         (tmp_path / "pyproject.toml").write_text(
             '[project]\nname = "target"\nversion = "0.0.0"\n', encoding="utf-8"
         )
         proc = run_script(
             CANONICAL / "scripts" / "verify.sh",
             tmp_path,
-            {"PATH": "", "AISG_VERIFY_RUN": "0"},
+            {"PATH": "", "AISAFE_VERIFY_RUN": "0"},
         )
         assert proc.returncode == 0, (proc.stdout, proc.stderr)
-        assert "measure skipped: aisg not importable in target" in proc.stderr
+        assert "measure skipped: aisafe not importable in target" in proc.stderr
         assert "pytest" in proc.stdout
 
     @pytest.mark.parametrize("name", ["verify.sh", "verify.ps1"])
-    def test_verify_reports_live_under_aisg_audit(self, name: str):
-        # SKILL.md says every artefact of the flow lives under `.aisg-audit/`, and the
+    def test_verify_reports_live_under_aisafe_audit(self, name: str):
+        # SKILL.md says every artefact of the flow lives under `.aisafe-audit/`, and the
         # walker discovers measure and probe reports there even when gitignored. The
         # scripts used to write both to the repository root.
         text = (CANONICAL / "scripts" / name).read_text(encoding="utf-8")
-        assert re.search(r'^\$?report_?[dD]ir\s*=\s*"\.aisg-audit"', text, re.MULTILINE), name
+        assert re.search(r'^\$?report_?[dD]ir\s*=\s*"\.aisafe-audit"', text, re.MULTILINE), name
         for report in ("measure-report.json", "probe-report.json"):
             hits = [m.start() for m in re.finditer(re.escape(report), text)]
             assert hits, (name, report)
@@ -758,7 +758,7 @@ class TestScripts:
         found = re.search(r"\^\(([a-z|]+)\):", text)
         assert found, f"{name}: no top-level key pattern"
         keys = set(found.group(1).split("|"))
-        loader = (REPO / "src" / "aisg" / "core" / "pipeline.py").read_text(encoding="utf-8")
+        loader = (REPO / "src" / "aisafe" / "core" / "pipeline.py").read_text(encoding="utf-8")
         stage_keys = set(re.findall(r'build_guards\("(\w+)"\)', loader))
         assert stage_keys, "from_config: no build_guards calls found"
         assert keys == stage_keys, (keys, stage_keys)
@@ -766,34 +766,36 @@ class TestScripts:
         # Every shipped pipeline preset carries at least one of those keys, so the
         # detection would find a preset copied into the target. Other packaged YAML
         # (the price table, the attestation levels) is not a pipeline and is not read
-        # by `from_config`, so `aisg.config.PRESETS` is the list, not a glob.
-        from aisg.config import PRESETS
+        # by `from_config`, so `aisafe.config.PRESETS` is the list, not a glob.
+        from aisafe.config import PRESETS
 
         pattern = re.compile(r"^(?:" + "|".join(sorted(stage_keys)) + r"):", re.MULTILINE)
         for name_ in PRESETS:
-            preset = REPO / "src" / "aisg" / "config" / name_
+            preset = REPO / "src" / "aisafe" / "config" / name_
             assert pattern.search(preset.read_text(encoding="utf-8")), preset.name
 
     @needs_sh
-    def test_verify_sh_dry_run_names_the_aisg_audit_report_and_creates_nothing(
+    def test_verify_sh_dry_run_names_the_aisafe_audit_report_and_creates_nothing(
         self, tmp_path: Path
     ):
         write_configs(tmp_path)
         proc = run_script(
             CANONICAL / "scripts" / "verify.sh",
             tmp_path,
-            fake_aisg_env(tmp_path, AISG_VERIFY_RUN="0", AISG_PROBE_URL="http://127.0.0.1:9/chat"),
+            fake_aisafe_env(
+                tmp_path, AISAFE_VERIFY_RUN="0", AISAFE_PROBE_URL="http://127.0.0.1:9/chat"
+            ),
         )
         assert proc.returncode == 0, (proc.stdout, proc.stderr)
         assert (
-            "measure: aisg measure --config config/guardrails.yaml"
-            " -o .aisg-audit/measure-report.json"
+            "measure: aisafe measure --config config/guardrails.yaml"
+            " -o .aisafe-audit/measure-report.json"
         ) in proc.stdout
-        assert "probe: aisg probe http://127.0.0.1:9/chat -o .aisg-audit/probe-report.json" in (
+        assert "probe: aisafe probe http://127.0.0.1:9/chat -o .aisafe-audit/probe-report.json" in (
             proc.stdout
         )
-        assert "not run (set AISG_VERIFY_RUN=1 to run)" in proc.stdout
-        assert not (tmp_path / ".aisg-audit").exists()
+        assert "not run (set AISAFE_VERIFY_RUN=1 to run)" in proc.stdout
+        assert not (tmp_path / ".aisafe-audit").exists()
         assert not (tmp_path / FAKE_LOG).exists()
 
     @needs_sh
@@ -805,7 +807,7 @@ class TestScripts:
         proc = run_script(
             CANONICAL / "scripts" / "verify.sh",
             tmp_path,
-            fake_aisg_env(tmp_path, AISG_VERIFY_RUN="1"),
+            fake_aisafe_env(tmp_path, AISAFE_VERIFY_RUN="1"),
         )
         assert proc.returncode == 0, (proc.stdout, proc.stderr)
         assert "measure: no pipeline config found" in proc.stdout
@@ -813,21 +815,23 @@ class TestScripts:
         assert not (tmp_path / FAKE_LOG).exists()
 
     @needs_sh
-    def test_verify_sh_run_writes_both_reports_under_aisg_audit(self, tmp_path: Path):
+    def test_verify_sh_run_writes_both_reports_under_aisafe_audit(self, tmp_path: Path):
         write_configs(tmp_path)
         proc = run_script(
             CANONICAL / "scripts" / "verify.sh",
             tmp_path,
-            fake_aisg_env(tmp_path, AISG_VERIFY_RUN="1", AISG_PROBE_URL="http://127.0.0.1:9/chat"),
+            fake_aisafe_env(
+                tmp_path, AISAFE_VERIFY_RUN="1", AISAFE_PROBE_URL="http://127.0.0.1:9/chat"
+            ),
         )
         # The fake probe exits 1 (a case got through), which the script passes on.
         assert proc.returncode == 1, (proc.stdout, proc.stderr)
         calls = (tmp_path / FAKE_LOG).read_text(encoding="utf-8").splitlines()
         assert calls == [
-            "measure --config config/guardrails.yaml -o .aisg-audit/measure-report.json",
-            "probe http://127.0.0.1:9/chat -o .aisg-audit/probe-report.json",
+            "measure --config config/guardrails.yaml -o .aisafe-audit/measure-report.json",
+            "probe http://127.0.0.1:9/chat -o .aisafe-audit/probe-report.json",
         ]
-        assert (tmp_path / ".aisg-audit" / "probe-report.json").is_file()
+        assert (tmp_path / ".aisafe-audit" / "probe-report.json").is_file()
         assert "probe passed: 0" in proc.stdout
         assert "probe failed: 1" in proc.stdout
         assert "only 'passed' means passed" in proc.stdout
@@ -871,9 +875,9 @@ class TestMirrors:
 class TestLevelsDoc:
     def test_criterion_ids_equal_the_yaml(self):
         try:
-            from aisg.devtools.attest import load_levels
+            from aisafe.devtools.attest import load_levels
         except ImportError:
-            pytest.skip("aisg.devtools.attest not importable")
+            pytest.skip("aisafe.devtools.attest not importable")
         text = (CANONICAL / "references" / "levels.md").read_text(encoding="utf-8")
         in_doc = set(re.findall(r"^\| `(L\d+\.[A-Za-z0-9_]+)` \|", text, re.MULTILINE))
         in_yaml = {c.id for c in load_levels().criteria()}
@@ -907,9 +911,9 @@ class TestLevelsDoc:
 class TestHostsDoc:
     def test_hosts_md_names_every_host_and_source(self):
         try:
-            from aisg.devtools.skill import ALWAYS_HOSTS, HOSTS
+            from aisafe.devtools.skill import ALWAYS_HOSTS, HOSTS
         except ImportError:
-            pytest.skip("aisg.devtools.skill not importable")
+            pytest.skip("aisafe.devtools.skill not importable")
         text = (CANONICAL / "references" / "hosts.md").read_text(encoding="utf-8")
         for name, host in HOSTS.items():
             assert f"`{name}`" in text, name
@@ -917,17 +921,17 @@ class TestHostsDoc:
                 assert host.source in text, f"{name}: {host.source}"
         for name in ALWAYS_HOSTS:
             assert f"`{name}`" in text, name
-        assert "aisg skill list" in text
+        assert "aisafe skill list" in text
 
 
 class TestHostsDocHooks:
     def test_hosts_md_names_every_hook_host_and_source(self):
         try:
-            from aisg.devtools.hosts import hook_hosts
+            from aisafe.devtools.hosts import hook_hosts
         except ImportError:
-            pytest.skip("aisg.devtools.hosts not importable")
+            pytest.skip("aisafe.devtools.hosts not importable")
         text = (CANONICAL / "references" / "hosts.md").read_text(encoding="utf-8")
-        assert "## Hooks" in text and "aisg hook install" in text and "aisg hook list" in text
+        assert "## Hooks" in text and "aisafe hook install" in text and "aisafe hook list" in text
         for host in hook_hosts():
             assert f"`{host.name}`" in text, host.name
             assert host.hooks.config_project in text, host.name

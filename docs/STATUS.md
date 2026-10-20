@@ -1,4 +1,4 @@
-# Status — 2026-10-19
+# Status — 2026-10-20
 
 Where the work stands, what is verified, and what is waiting on a decision.
 Written as a handoff: a fresh session should be able to pick up from here plus
@@ -17,27 +17,43 @@ reason written there.
 | wave | scope | state |
 | --- | --- | --- |
 | 0 | performance pass, CHANGELOG, `bump_version.py`, `release.yml`, README truth-up, `v0.1.0` | code done; **the tag is the user's act** (below) |
-| 1 | tokens and prices, `aisg measure` offline + cost columns, `aisg decide`, `Budget`, AUD-806 | committed `e748021` |
-| 2 | `aisg audit --only`, `aisg hook`, Claude Code plugin, Cursor/Gemini installers, Action, pre-commit, GitLab job | committed `40af8c1` |
+| 1 | tokens and prices, `aisafe measure` offline + cost columns, `aisafe decide`, `Budget`, AUD-806 | committed `e748021` |
+| 2 | `aisafe audit --only`, `aisafe hook`, Claude Code plugin, Cursor/Gemini installers, Action, pre-commit, GitLab job | committed `40af8c1` |
 | 3 | P11 persons-and-manipulation rules, `ManipulationGuard`, `AIDisclosureGuard`, corpora, `prompt_audit` | committed `ed7b41b` |
-| 4 | `aisg attest` with levels and a named owner | committed `e5ef805` |
+| 4 | `aisafe attest` with levels and a named owner | committed `e5ef805` |
 | 5 | seven-phase skill, SYSTEM.md, CONTRIBUTING, README | committed `ab19e68` |
-| 6 | `aisg fleet`, bench `--tool audit`, `v0.2.0` | fleet and bench committed 2026-10-19 (the commit after `ab19e68`); the PyPI pin flip and `0.2.0` wait for the `v0.1.0` tag |
+| 6 | `aisafe fleet`, bench `--tool audit`, `v0.2.0` | fleet and bench committed 2026-10-19 (the commit after `ab19e68`); the PyPI pin flip and `0.2.0` wait for the `v0.1.0` tag |
+
+## Landed 2026-10-20
+
+- **rename, `chore(name)`**: the distribution, the import name and the command are
+  all `aisafe` (were `anyaisafe`, `aisg`, `aisg`; none ever published). `aisafe` was
+  free on PyPI on 2026-10-20, including PyPI's look-alike rule (no project name
+  normalises to the same string), and no package installs an `aisafe` module; the
+  unrelated `aisafeguard` does install an `aisafe` command. Renamed with them:
+  `.aisafe-audit/`, `.aisafe-fleet/`, `[tool.aisafe-*]`, `# aisafe-audit:
+  ignore-file`, the `AISAFE_*` variables, the hook bootstrap `aisafe-hook.sh`, the
+  pre-commit ids `aisafe-audit`, `aisafe-lint` and `aisafe-misalign`, and "AnyAISafe
+  level" in the attestation statement. The old spellings are read, never written
+  (`patterns.LEGACY_*`, `_config.LEGACY_SECTION_PREFIX`, the hook marker, the semgrep
+  keys, `AISG_PRICES`). Kept: `"schema": "aisg/1"` with its SARIF and html carriers,
+  and the probe canaries.
+- **the `v0.1.0` release run failed at the upload** (`invalid-publisher`: PyPI had
+  no pending publisher for the repository). Nothing reached PyPI; the tag `v0.1.0`
+  exists on `origin` at `a81b3b2`, with the old names.
 
 ## Landed 2026-10-19
 
-- **rename, `chore(name)`**: the project is AnyAISafe. Distribution `anyaisafe`
-  (was `aisguard`, never published), repository `github.com/ai-safe-earth/AnyAISafe`
-  (GitHub redirects the old name), OpenTelemetry service-name default `anyaisafe`,
-  prose everywhere. Unchanged on purpose: the import name and the `aisg` command,
-  `"schema": "aisg/1"`, `.aisg-audit/`, `[tool.aisg-*]`, the ignore markers,
-  `AISG_VERSION`, the skill name `ai-safety-audit`. The PyPI pending publisher
-  below must be registered as `anyaisafe` / `AnyAISafe`.
+- **rename, `chore(name)` (`a81b3b2`)**: the project is AnyAISafe. Distribution
+  `anyaisafe` (was `aisguard`, never published), repository
+  `github.com/ai-safe-earth/AnyAISafe` (GitHub redirects the old name), the
+  OpenTelemetry service-name default and prose everywhere. The import name and the
+  `aisg` command were kept that day; 2026-10-20 renamed them (above).
 - **wave 6, `feat(fleet)`**: design `docs/plan/02` sections 6 and 7.
   - `devtools/_git.py` (`fetch_pinned`, `clone_shallow`, one-line `GitError`; the
     bench's fetch moved into the package, two callers) and `devtools/fleet.py`,
-    `aisg fleet LIST`: YAML or CSV list the operator wrote (`bench/corpus.yaml` is
-    valid), one `aisg audit --no-external` subprocess per repository under a
+    `aisafe fleet LIST`: YAML or CSV list the operator wrote (`bench/corpus.yaml` is
+    valid), one `aisafe audit --no-external` subprocess per repository under a
     wall-clock cap, `--jobs`, `--resume`, `--proposal` (a PR body with the plan
     and a blank decide table, `file:line` only), `--fail-on-findings`;
     `fleet-report.{json,csv,md}` (`kind: fleet`) with counts, rule frequencies,
@@ -51,7 +67,7 @@ reason written there.
     name). No audit row is labelled; `measured_precision` stays `None`.
   - Docs: CLAUDE.md section, README section and structure block, `docs/SYSTEM.md`
     fleet row, `SECURITY.md` scope, `bench/README.md`, CHANGELOG.
-  - One mistake found and undone: the wave-5 gate's bare `aisg measure` wrote
+  - One mistake found and undone: the wave-5 gate's bare `aisafe measure` wrote
     `measure-report.json` into the repository root and `git add -A` committed it in
     `ab19e68`; the next self-audit read it as evidence and reported seven AUD-801
     acceptances as `no longer reported`. The file is removed, `/measure-report.json`
@@ -63,23 +79,23 @@ reason written there.
     and the template installs from the git tag.
 - **wave 5, `feat(skill)` (`ab19e68`)**: design `docs/plan/03` part D.
   - `SKILL.md` runs seven phases (survey, document 1, decide, apply, document 2,
-    verify, attest) and a closing step that offers `aisg hook install` and the
-    Action by name. Hard rule 8 (which aisg ran: `audit.sh` / `attest.sh` print
-    `aisg: <path> version <v> (pinned <v>)` on stderr, the skill stops on a
+    verify, attest) and a closing step that offers `aisafe hook install` and the
+    Action by name. Hard rule 8 (which aisafe ran: `audit.sh` / `attest.sh` print
+    `aisafe: <path> version <v> (pinned <v>)` on stderr, the skill stops on a
     mismatch) and rule 9 (never push; the PR path commits on a branch and prints
-    the `gh pr create` line). Phase 3 prices the plan with `aisg decide` after
-    the offline measure (`AISG_VERIFY_SKIP_TESTS=1` on `verify.sh|ps1`); phase 7
+    the `gh pr create` line). Phase 3 prices the plan with `aisafe decide` after
+    the offline measure (`AISAFE_VERIFY_SKIP_TESTS=1` on `verify.sh|ps1`); phase 7
     reads every unmet criterion's `missing` text aloud.
   - New `scripts/attest.sh|ps1` (same chain and pin as `audit.sh`);
     `references/levels.md` generated whole from the criteria file by
     `scripts/levels_md.py` (`--check` in the release gate, `test_levels_md.py`);
     `report-format.md` documents the decision and attestation documents;
-    `apply/python.md` has the `aisg attest` idiom; phase numbers renumbered in
+    `apply/python.md` has the `aisafe attest` idiom; phase numbers renumbered in
     every reference. `test_skill_package.py` pins the seven titles in order, the
     new vocabulary, the stderr line and the skip-tests switch.
   - `docs/SYSTEM.md` (the flow on one page), `CONTRIBUTING.md`, `SECURITY.md`
     scope (decide, hook, attest, plugin, CI surface), README and CLAUDE.md.
-  - Two fixes the end-to-end run forced: `aisg attest` printed a sub-finding's
+  - Two fixes the end-to-end run forced: `aisafe attest` printed a sub-finding's
     display id twice and matched `rules_closed` against display ids instead of
     rule ids; AUD-903 raised `report models unknown` on every decision document
     (it names no model by design).
@@ -92,9 +108,9 @@ reason written there.
     re-audit skipped `attestation.json` and `attestation.html` as own output and
     reported nothing new. Phases 4 and 6 need a person and were not run.
   - `~/.claude/skills/ai-safety-audit` refreshed from this tree
-    (`aisg skill install --host claude --global --force`; `diff` identical).
+    (`aisafe skill install --host claude --global --force`; `diff` identical).
 - **wave 4, `feat(attest)` (`e5ef805`)**: design `docs/plan/03` part C.
-  - `devtools/attest.py`, `aisg attest`: reads `.aisg-audit/audit-report-after.json`
+  - `devtools/attest.py`, `aisafe attest`: reads `.aisafe-audit/audit-report-after.json`
     (falls back to the survey report with a note), the baseline, the measure, probe
     and decision reports and the system card; evaluates `attest-levels.yaml` (levels
     0 audited, 1 triaged, 2 measured, 3 governed; 14 criterion kinds, one evaluator
@@ -111,9 +127,9 @@ reason written there.
     red; `walk.git_meta` is the only subprocess, no socket.
   - `"kind": "attestation"` joined `discover._OWN_OUTPUT_KINDS` and `walk._OWN_KIND_RE`;
     `cli.COMMANDS["attest"]`; docs in CLAUDE.md, README and the CHANGELOG.
-  - On this repository `aisg attest . --check` reads level 0: the self-audit runs
+  - On this repository `aisafe attest . --check` reads level 0: the self-audit runs
     `--no-external`, no measure or decision document is committed, no card. The
-    skill's attest phase (wave 5) writes those under `.aisg-audit/`.
+    skill's attest phase (wave 5) writes those under `.aisafe-audit/`.
 - **wave 3, `feat(persons)` (`ed7b41b`)**: design `docs/plan/03`, parts A and B.
   - `rules/persons.py`, AUD-1101..1107 (54 rules), the eleventh subsystem
     `persons` drawn on a third row of Fig. 1, vocabulary in
@@ -132,11 +148,11 @@ reason written there.
     reaches `final_content` (a long-standing bug).
   - Corpora: attack family `manipulation_elicitation` (7 families, CI pins 7),
     six benign cases (ben-043..048), `manipulation_responses.yaml`
-    (`kind: output`, 12 manipulative + 8 benign responses) that `aisg measure`
+    (`kind: output`, 12 manipulative + 8 benign responses) that `aisafe measure`
     routes to output-stage guards (`output_seen/output_caught/output_catch_rate`,
-    `corpus.output`); `aisg probe` never sends it.
+    `corpus.output`); `aisafe probe` never sends it.
   - `ai-system-card.yaml` gains `prompt_audit` (reviewer, reviewed_at, scope,
-    notes); `aisg init` asks for it; discover passes `affected_persons` and
+    notes); `aisafe init` asks for it; discover passes `affected_persons` and
     `prompt_audit` through for AUD-1107.
   - Art. 5(1) letters fixed in the policy guard and the linter (biometric
     identification is (h), criminal-risk profiling is (d)), pinned by a test.
@@ -150,49 +166,69 @@ reason written there.
     report not committed). Fixtures `persons_companion` (fires 1101, 1104,
     1104/vulnerable, 1105/persona, 1105/no-disclosure, 1106, 1107) and
     `persons_benign` (silent). 215 new tests.
-- **wave 2, `feat(hook)` (`40af8c1`)**: `aisg audit --only`, `aisg hook` for
+- **wave 2, `feat(hook)` (`40af8c1`)**: `aisafe audit --only`, `aisafe hook` for
   Claude Code/Cursor/Gemini, `devtools/hosts.py`, the Claude Code plugin,
   `action.yml`, `.pre-commit-hooks.yaml`, the GitLab job.
-- **wave 1, `feat(decide)` (`e748021`)**: `LLMUsage`, offline `aisg measure`
-  with cost columns, `prices.yaml`, `aisg decide`, `Budget`, AUD-806.
+- **wave 1, `feat(decide)` (`e748021`)**: `LLMUsage`, offline `aisafe measure`
+  with cost columns, `prices.yaml`, `aisafe decide`, `Budget`, AUD-806.
 - **`perf(audit)` (`9fad7b6`)**, **`release` (`1f33bfe`)**, **`docs(plan)`
   (`7a89478`)**: see the git log.
 
-## What the user has to do for `v0.1.0`
+## What the user has to do for the first release
 
 Nothing is uploaded without these steps; the plan prepared them and stops here.
-The 0.1.0 CHANGELOG section now includes waves 1-6 and the rename, since the tag does not
-exist yet and will point at a `main` that carries them.
+The 0.1.0 CHANGELOG section includes waves 1-6 and both renames, since nothing has
+been published.
 
 1. On pypi.org: Your projects -> Publishing -> Add a new pending publisher:
-   project `anyaisafe`, owner `ai-safe-earth`, repository `AnyAISafe`,
-   workflow `release.yml`, environment `pypi`. Check `anyaisafe` is still
-   unclaimed first (`pip index versions anyaisafe` should find nothing; it was
-   free on 2026-10-19, when the name was chosen).
+   project `aisafe`, owner `ai-safe-earth`, repository `AnyAISafe`,
+   workflow `release.yml`, environment `pypi`. A pending publisher does not
+   reserve the name, so check `aisafe` is still unclaimed first (`pip index
+   versions aisafe` should find nothing; it was free on 2026-10-20). Remove a
+   pending publisher for `anyaisafe` if one was added.
 2. On GitHub: Settings -> Environments -> `pypi` -> required reviewers: you.
    This is the approval step; the publish job waits on it.
-3. `git tag v0.1.0 && git push origin v0.1.0`, approve the `pypi` run, watch
-   the `smoke` job print `smoke: anyaisafe==0.1.0 audits as expected`.
+3. The tag `v0.1.0` already exists at `a81b3b2`, with the old names. Its upload failed.
+   Its `.pre-commit-hooks.yaml` defines `aisg-audit`, `aisg-lint` and `aisg-misalign`,
+   and its `action.yml` installs `anyaisafe`. Prefer moving the tag to the current
+   `main` (`git tag -f v0.1.0 && git push -f origin v0.1.0`): README.md (`rev: v0.1.0`
+   with the `aisafe-*` hook ids, and `uses: ai-safe-earth/AnyAISafe@v0.1.0`), the
+   example comments in `action.yml` and `.pre-commit-hooks.yaml`, the GitLab
+   template's git pin and the CHANGELOG's `[0.1.0]` section all describe a `v0.1.0`
+   that carries the `aisafe` names. Releasing `0.1.1` instead (`python
+   scripts/bump_version.py 0.1.1`, commit, `git tag v0.1.1 && git push origin v0.1.1`)
+   also means editing those `v0.1.0` example refs by hand, since `bump_version.py`
+   does not rewrite them, and moving the 0.1.0 CHANGELOG entries under 0.1.1. Approve
+   the `pypi` run and watch the `smoke` job print `smoke: aisafe==<version> audits as
+   expected`.
 
 Until then the skill's bootstrap resolves only against a local checkout or
-`pip install "anyaisafe[devtools] @ git+https://github.com/ai-safe-earth/AnyAISafe"`,
+`pip install "aisafe[devtools] @ git+https://github.com/ai-safe-earth/AnyAISafe"`,
 and `.gitlab-ci-euaiact.yml` keeps its git-tag install (flipped to PyPI in wave 6).
 
 ## Head
 
-`main` at the wave-6 commit (after `ab19e68`). Pushed to `origin`
-(`github.com/ai-safe-earth/AnyAISafe`). No tags yet.
+`main` at the `aisafe` rename commit (after `a81b3b2`). Pushed to `origin`
+(`github.com/ai-safe-earth/AnyAISafe`). Tag `v0.1.0` at `a81b3b2` (see above).
 
 ## Green
 
+After the `aisafe` rename (2026-10-20): **4403 passed, 2 skipped**; `ruff format
+--check .` and `ruff check .` clean; `aisafe lint src examples --errors-only` no
+issues; `aisafe misalign` reports the same findings as before the rename; self-audit
+`baseline: 0 new, 33 unchanged, 0 no longer reported` (32 fingerprints, 32 reasons);
+`aisafe measure --max-p99-ms 25 -o <scratch>` exit 0; `controls_md.py`,
+`levels_md.py`, `sync_skill.py` and `bump_version.py` `--check` in sync; a clean
+wheel build ships only the `aisafe` package and the `aisafe` console script.
+
 Locally on the wave-6 tree (2026-10-19): **4392 passed, 2 skipped** (the wave-5
 entry used to say 4314 here by mistake; that run was 4355 passed, 2 skipped),
-`ruff format --check .` and `ruff check .`, `aisg lint src examples
---errors-only` no issues, `aisg misalign` on the changed modules no issues (the
+`ruff format --check .` and `ruff check .`, `aisafe lint src examples
+--errors-only` no issues, `aisafe misalign` on the changed modules no issues (the
 two pre-existing ALIGN-006 hits in `llm_judges/claude_judge.py` are unchanged),
 self-audit `baseline: 0 new, 33 unchanged, 0 no longer reported` (32
-fingerprints, 32 reasons), `aisg measure --max-p99-ms 25 -o <scratch>` exit 0,
-`aisg attest . --check` level 0 (self-audit is `--no-external`, no committed
+fingerprints, 32 reasons), `aisafe measure --max-p99-ms 25 -o <scratch>` exit 0,
+`aisafe attest . --check` level 0 (self-audit is `--no-external`, no committed
 measure or decision document, no card), `sync_skill.py --check` (18 files, 3
 mirrors), `controls_md.py --check` (54 rules), `levels_md.py --check` (16
 criteria) and `bump_version.py --check` (9 sites) in sync.
@@ -209,13 +245,13 @@ criteria) and `bump_version.py --check` (9 sites) in sync.
   wave-3 change.
 - `ManipulationGuard`'s English stock-phrase tables miss paraphrase and
   multi-turn escalation; the judge mode is off in both presets (one model call
-  per response). `aisg measure` scores both guards on the 20-case output corpus.
+  per response). `aisafe measure` scores both guards on the 20-case output corpus.
 - The hook's Cursor `afterFileEdit` has no documented answer channel; Gemini
   has no `ask`; Codex writes nothing (`hosts.md`).
 - AUD-801 is accepted in the baseline for the seven guards `default.yaml`
   wires (CI measures them, keeps the report as a build artifact); committing a
-  measure report under `.aisg-audit/` is the alternative, and it is also what
-  `aisg attest` level 2 reads. Decide in wave 5.
+  measure report under `.aisafe-audit/` is the alternative, and it is also what
+  `aisafe attest` level 2 reads. Decide in wave 5.
 - The attest criteria file is a first cut: the rule lists (`L2.evals_ci`,
   `L3.controls`), the 30/180-day freshness limits and the 90-day review interval
   are defaults for operators to override with `--level-criteria`, not measured
@@ -225,16 +261,16 @@ criteria) and `bump_version.py --check` (9 sites) in sync.
   why.
 - The VaiVia walkthrough in `docs/handoff.md` (five-phase skill) stopped at
   apply row 2 of 11; wave 5 re-ran the deterministic phases of the seven-phase
-  skill on a fresh clone (above). The apply and verify phases, and `aisg
+  skill on a fresh clone (above). The apply and verify phases, and `aisafe
   attest --owner` with a real owner, need a person at the keyboard.
 - `AUD-602`, `AUD-605` and `AUD-106` still report per occurrence; two findings
   can still share a fingerprint (digits stripped). Both are in the plan's risks.
 - `measured_precision` is `None` on every rule; `bench/` has 0 labelled rows;
   wave 6 adds `bench --tool audit`.
-- `aisg decide` has no bootstrap script of its own; the skill runs it as `aisg
-  decide` (or through `uvx --from 'anyaisafe==<pin>'`). A `decide.sh` twin is a
+- `aisafe decide` has no bootstrap script of its own; the skill runs it as `aisafe
+  decide` (or through `uvx --from 'aisafe==<pin>'`). A `decide.sh` twin is a
   small follow-up if a host turns out to need it.
-- `aisg fleet` has not been run over the 20-repo bench corpus from this machine
+- `aisafe fleet` has not been run over the 20-repo bench corpus from this machine
   (it clones 20 repositories); the tests cover two local fixtures, `--jobs 2`,
   `--resume`, `--proposal` and the exit-code rule. Running it is the natural
   first use of `bench/run.py --tool audit`, which produces the labelling CSV.
@@ -253,16 +289,16 @@ the note there is stale), 3 (`examples/advanced_injection_demo.py:68`) and 4
 ```bash
 pytest                                    # ~4235 tests, ~3 min, no API keys
 ruff check . && ruff format --check .
-aisg lint src examples --errors-only
-aisg misalign src
-aisg audit . --no-external --fail-on high --baseline audit-baseline.json
-aisg measure --max-p99-ms 25 -o /tmp/measure-report.json   # never bare: the root copy is read as evidence
-aisg attest . --check                     # level 0 here; each unmet criterion says why
-aisg fleet bench/corpus.yaml --help       # the fleet over a list; clones only what is listed
+aisafe lint src examples --errors-only
+aisafe misalign src
+aisafe audit . --no-external --fail-on high --baseline audit-baseline.json
+aisafe measure --max-p99-ms 25 -o /tmp/measure-report.json   # never bare: the root copy is read as evidence
+aisafe attest . --check                     # level 0 here; each unmet criterion says why
+aisafe fleet bench/corpus.yaml --help       # the fleet over a list; clones only what is listed
 python scripts/sync_skill.py --check
 python scripts/controls_md.py --check
 python scripts/levels_md.py --check
 python scripts/bump_version.py --check
-aisg audit tests/fixtures/audit/persons_companion --no-external   # the P11 fixture, from a neutral cwd
+aisafe audit tests/fixtures/audit/persons_companion --no-external   # the P11 fixture, from a neutral cwd
 gh run list --limit 4
 ```

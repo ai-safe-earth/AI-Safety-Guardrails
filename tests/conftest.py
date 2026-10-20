@@ -18,7 +18,7 @@ if str(SRC) not in sys.path:
 
 
 # ---------------------------------------------------------------------------
-# `aisg audit` fixtures: tests/fixtures/audit/<name>
+# `aisafe audit` fixtures: tests/fixtures/audit/<name>
 # ---------------------------------------------------------------------------
 
 import shutil
@@ -57,7 +57,7 @@ def py_agent(tmp_path: Path) -> Path:
 @pytest.fixture
 def audit_context() -> Callable[..., object]:
     """
-    Build an `AuditContext` for a fixture tree the way `aisg audit` does:
+    Build an `AuditContext` for a fixture tree the way `aisafe audit` does:
     walk -> discover -> pydeep, with every UNKNOWN item folded in.
 
     `build(root, deep=True, options=None, exclude=())`. Rule tests use this so
@@ -65,8 +65,8 @@ def audit_context() -> Callable[..., object]:
     inventory. `options` is duck-typed (any object with `include_home`,
     `trusted_mcp_hosts`, ... attributes); None means defaults.
     """
-    from aisg.devtools.audit import discover, lint_bridge, pydeep, walk
-    from aisg.devtools.audit.model import AuditContext
+    from aisafe.devtools.audit import discover, lint_bridge, pydeep, walk
+    from aisafe.devtools.audit.model import AuditContext
 
     def build(root: Path, *, deep: bool = True, options: object = None, exclude=()) -> AuditContext:
         root = Path(root)

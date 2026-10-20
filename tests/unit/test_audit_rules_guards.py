@@ -3,7 +3,7 @@ tests/unit/test_audit_rules_guards.py
 -------------------------------------
 AUD-801..805 (guards) against tmp_path trees built here and the shipped audit
 fixtures. No shipped fixture wires a guard library, so the positive cases assemble
-a small tree: a Python agent importing aisg, a preset YAML, a word-list filter and
+a small tree: a Python agent importing aisafe, a preset YAML, a word-list filter and
 a copy of `reports/measure-report.json`.
 
 Pinned here because the design depends on them: AUD-803 reads a report from disk
@@ -22,8 +22,8 @@ from pathlib import Path
 
 import pytest
 
-from aisg.core.measurement import Thresholds
-from aisg.devtools.audit.model import (
+from aisafe.core.measurement import Thresholds
+from aisafe.devtools.audit.model import (
     AuditContext,
     Basis,
     Bucket,
@@ -33,10 +33,10 @@ from aisg.devtools.audit.model import (
     Severity,
     Unit,
 )
-from aisg.devtools.audit.report import BANNED_PHRASES
-from aisg.devtools.audit.rules import guards as guards_module
-from aisg.devtools.audit.rules import run_rules
-from aisg.devtools.audit.rules.guards import (
+from aisafe.devtools.audit.report import BANNED_PHRASES
+from aisafe.devtools.audit.rules import guards as guards_module
+from aisafe.devtools.audit.rules import run_rules
+from aisafe.devtools.audit.rules.guards import (
     RULES,
     GuardFailOpen,
     GuardReportedBelowThreshold,
@@ -56,10 +56,10 @@ CONTROL_TOKEN = re.compile(
 )
 BASELINE_FIXTURE = "clean_py"  # the fixture with no AI surface at all
 
-PYPROJECT = '[project]\nname = "guarded"\ndependencies = ["anthropic", "aisg"]\n'
+PYPROJECT = '[project]\nname = "guarded"\ndependencies = ["anthropic", "aisafe"]\n'
 
 AGENT_PY = """import anthropic
-from aisg import GuardrailPipeline, PromptInjectionGuard
+from aisafe import GuardrailPipeline, PromptInjectionGuard
 
 client = anthropic.Anthropic()
 guard = PromptInjectionGuard(fail_open=True)
@@ -106,7 +106,7 @@ def flagged(reply: str) -> bool:
 """
 
 PRESET_ONLY_AGENT_PY = """import anthropic
-from aisg import GuardrailPipeline
+from aisafe import GuardrailPipeline
 
 client = anthropic.Anthropic()
 pipeline = GuardrailPipeline.from_config("guardrails.yaml")
@@ -202,7 +202,7 @@ def test_rule_metadata(rule):
     for token in rule.controls:
         assert CONTROL_TOKEN.match(token), token
     assert len(rule.recommendation.alternatives) >= 3
-    assert any("aisg" not in alt for alt in rule.recommendation.alternatives)
+    assert any("aisafe" not in alt for alt in rule.recommendation.alternatives)
     assert rule.measured_precision is None
     assert set(rule.related_lint_rules) <= ALLOWED_LINT_RULES
     assert rule.known_failure_modes
@@ -231,7 +231,7 @@ def test_inventory_only_context_with_none_fields_does_not_raise(rule, tmp_path: 
     unit = Unit(id="u0", root=".", manifest="pyproject.toml", language="python", ai_surface=True)
     inventory = Inventory(
         units=[unit],
-        guardrails=[{"lib": "aisg", "file": "agent.py", "line": 2, "fail_open": True}],
+        guardrails=[{"lib": "aisafe", "file": "agent.py", "line": 2, "fail_open": True}],
         evals=[{"tool": "promptfoo", "file": "missing.yaml", "in_ci": False, "has_benign": False}],
     )
     ctx = AuditContext(
@@ -256,7 +256,7 @@ def test_801_fires_once_per_enabled_guard_without_a_report(tmp_path: Path, audit
     """One unmeasured guard is one fact: prompt_injection is constructed in agent.py
     and enabled in the preset, and that is one finding with two sites, not two."""
     ctx = audit_context(_guarded(tmp_path))
-    assert [g["lib"] for g in ctx.inventory.guardrails] == ["aisg", "aisg_preset"]
+    assert [g["lib"] for g in ctx.inventory.guardrails] == ["aisafe", "aisafe_preset"]
     findings, _ = _run(GuardUnmeasured, ctx)
     assert _locations(findings) == [("agent.py", 2), ("guardrails.yaml", 10)]
     notes = [f.notes for f in findings]
@@ -285,9 +285,9 @@ def test_801_one_guard_imported_in_three_files_is_one_finding(tmp_path: Path, au
     files = {
         "pyproject.toml": PYPROJECT,
         "agent.py": AGENT_PY,
-        "pkg/__init__.py": "from aisg import PromptInjectionGuard\n",
+        "pkg/__init__.py": "from aisafe import PromptInjectionGuard\n",
         "pkg/moderation.py": (
-            "from aisg import PromptInjectionGuard\n\n\nGUARD = PromptInjectionGuard()\n"
+            "from aisafe import PromptInjectionGuard\n\n\nGUARD = PromptInjectionGuard()\n"
         ),
     }
     ctx = audit_context(_write(tmp_path / "three", files))
@@ -315,8 +315,8 @@ def test_801_evidence_order_is_file_then_line_whatever_the_write_order(
 ):
     """The anchor is the first site by (file, line), not the first file written or the
     first entry discovery happened to record, and the fingerprint is that site's alone."""
-    later = "import os\n\nfrom aisg import ToxicityFilter\n\nGUARD = ToxicityFilter()\n"
-    first = "from aisg import ToxicityFilter\n"
+    later = "import os\n\nfrom aisafe import ToxicityFilter\n\nGUARD = ToxicityFilter()\n"
+    first = "from aisafe import ToxicityFilter\n"
     root = _write(
         tmp_path / "order",
         {"pyproject.toml": PYPROJECT, "zeta.py": later, "mid/late.py": later, "alpha.py": first},
@@ -336,7 +336,7 @@ def test_801_evidence_order_is_file_then_line_whatever_the_write_order(
 def test_801_also_sites_are_capped_and_the_rest_counted_in_the_notes(tmp_path: Path, audit_context):
     files = {"pyproject.toml": PYPROJECT}
     for index in range(11):
-        files[f"mod_{index:02d}.py"] = "from aisg import RateLimiter\n"
+        files[f"mod_{index:02d}.py"] = "from aisafe import RateLimiter\n"
     findings, _ = _run(GuardUnmeasured, audit_context(_write(tmp_path / "many", files)))
     assert len(findings) == 1
     finding = findings[0]
@@ -348,7 +348,7 @@ def test_801_also_sites_are_capped_and_the_rest_counted_in_the_notes(tmp_path: P
 
 
 def test_801_groups_per_unit_not_per_repo(tmp_path: Path, audit_context):
-    agent = "from aisg import PromptInjectionGuard\n\nGUARD = PromptInjectionGuard()\n"
+    agent = "from aisafe import PromptInjectionGuard\n\nGUARD = PromptInjectionGuard()\n"
     files = {
         "svc_a/pyproject.toml": PYPROJECT,
         "svc_a/agent.py": agent,
@@ -420,7 +420,7 @@ def test_801_eval_file_naming_the_guard_counts(tmp_path: Path, audit_context):
 
 
 def test_801_bare_import_without_named_guard_fires_once(tmp_path: Path, audit_context):
-    agent = "from aisg import GuardrailPipeline\n\npipeline = GuardrailPipeline()\n"
+    agent = "from aisafe import GuardrailPipeline\n\npipeline = GuardrailPipeline()\n"
     root = _write(tmp_path / "bare", {"pyproject.toml": PYPROJECT, "agent.py": agent})
     findings, _ = _run(GuardUnmeasured, audit_context(root))
     assert _locations(findings) == [("agent.py", 1)]
@@ -476,7 +476,7 @@ def test_801_anchors_on_the_code_line_not_the_docstring_mention(tmp_path: Path, 
     agent = (
         '"""Agent entry point; runs PromptInjectionGuard before every call."""\n'
         "import anthropic\n"
-        "from aisg import PromptInjectionGuard\n"
+        "from aisafe import PromptInjectionGuard\n"
         "\n"
         "client = anthropic.Anthropic()\n"
         "# ToxicityFilter is not wired here; see the output stage.\n"
@@ -518,13 +518,13 @@ def test_801_preset_site_anchors_on_the_key_line_after_a_blank_line(
 def test_804_judge_named_only_in_a_docstring_is_not_a_site(tmp_path: Path, audit_context):
     agent = (
         '"""Wraps the model call.\n\nExample:\n    guard = LLMInputFilter(judge=ClaudeJudge())\n"""\n'
-        "from aisg import PromptInjectionGuard\n"
+        "from aisafe import PromptInjectionGuard\n"
         "\n"
         "guard = PromptInjectionGuard()\n"
     )
     root = _write(tmp_path / "docjudge", {"pyproject.toml": PYPROJECT, "agent.py": agent})
     ctx = audit_context(root)
-    assert [g["lib"] for g in ctx.inventory.guardrails] == ["aisg"]
+    assert [g["lib"] for g in ctx.inventory.guardrails] == ["aisafe"]
     findings, _ = _run(LLMJudgeWithoutCredentialsOrTimeout, ctx)
     assert findings == []
 
@@ -533,10 +533,10 @@ def test_guardrail_entries_carry_unit_and_llm_judge_from_discovery(tmp_path: Pat
     """The keys the rules consume are set by discovery, not re-derived here."""
     ctx = audit_context(_guarded(tmp_path))
     entries = {g["lib"]: g for g in ctx.inventory.guardrails}
-    assert entries["aisg"]["unit"] == "u0"
-    assert entries["aisg_preset"]["unit"] == "u0"
-    assert entries["aisg_preset"]["llm_judge"] is True
-    assert entries["aisg"]["llm_judge"] is None  # agent.py wires no judge
+    assert entries["aisafe"]["unit"] == "u0"
+    assert entries["aisafe_preset"]["unit"] == "u0"
+    assert entries["aisafe_preset"]["llm_judge"] is True
+    assert entries["aisafe"]["llm_judge"] is None  # agent.py wires no judge
 
 
 # ---------------------------------------------------------------------------
@@ -574,7 +574,7 @@ def test_802_deep_false_keeps_grep_and_drops_ast(tmp_path: Path, audit_context):
 
 def test_802_ast_wins_over_grep_on_the_same_line(tmp_path: Path, audit_context):
     agent = (
-        "from aisg import PromptInjectionGuard\n"
+        "from aisafe import PromptInjectionGuard\n"
         "\n"
         "def check(text):\n"
         "    try: PromptInjectionGuard(fail_open=True).check(text)\n"
@@ -766,7 +766,7 @@ def test_804_no_timeout_sub_finding_when_only_credentials_exist(tmp_path: Path, 
 
 def test_804_python_judge_constructor_is_a_site(tmp_path: Path, audit_context):
     agent = (
-        "from aisg import ClaudeJudge, LLMInputFilter\n"
+        "from aisafe import ClaudeJudge, LLMInputFilter\n"
         "\n"
         "judge = ClaudeJudge()\n"
         "guard = LLMInputFilter(judge=judge)\n"
@@ -786,7 +786,7 @@ def test_804_judge_lines_across_a_unit_group_into_one_finding_per_sub(
     """Credentials and timeouts are resolved per unit, so every judge line in the unit
     says the same thing; the preset line anchors and the constructors are `also`."""
     agent = (
-        "from aisg import ClaudeJudge, LLMInputFilter\n"
+        "from aisafe import ClaudeJudge, LLMInputFilter\n"
         "\n"
         "judge = ClaudeJudge()\n"
         "guard = LLMInputFilter(judge=judge)\n"
@@ -831,7 +831,7 @@ def test_804_trusts_the_llm_judge_key_when_discovery_set_it(tmp_path: Path, audi
     """`llm_judge` present and None means discovery saw no judge; the file is not re-scanned."""
     ctx = audit_context(_guarded(tmp_path))
     for entry in ctx.inventory.guardrails:
-        if entry["lib"] == "aisg_preset":
+        if entry["lib"] == "aisafe_preset":
             assert entry["llm_judge"] is True
             entry["llm_judge"] = None
     findings, _ = _run(LLMJudgeWithoutCredentialsOrTimeout, ctx)
@@ -963,9 +963,9 @@ def test_texts_describe_evidence_not_verdicts(tmp_path: Path, audit_context, aud
 def test_python_guards_anchor_on_the_first_code_occurrence_in_one_pass() -> None:
     text = (
         '"""PIIDetector and tool_policy are named here, in the docstring."""\n'
-        "import aisg  # ToolPolicyGuard in a comment is a mention\n"
+        "import aisafe  # ToolPolicyGuard in a comment is a mention\n"
         "\n"
-        'guard = aisg.ToolPolicyGuard(require_approval=["send_email"])\n'
+        'guard = aisafe.ToolPolicyGuard(require_approval=["send_email"])\n'
         'detector = PIIDetector(action="tokenize")\n'
         "other = pii_detector\n"
     )
@@ -985,13 +985,13 @@ def test_python_guards_token_table_covers_every_registry_name_and_class() -> Non
 
 
 def test_guard_sites_are_computed_once_per_context_and_copied(tmp_path: Path) -> None:
-    from aisg.devtools.audit.model import AuditContext, Inventory
+    from aisafe.devtools.audit.model import AuditContext, Inventory
 
     inventory = Inventory()
-    inventory.guardrails = [{"file": "app.py", "lib": "aisg", "line": 1}]
+    inventory.guardrails = [{"file": "app.py", "lib": "aisafe", "line": 1}]
     ctx = AuditContext(root=tmp_path, inventory=inventory)
     # `file_text` reads only files the walk enumerated; seed its cache instead.
-    ctx.texts["app.py"] = "from aisg import ToolPolicyGuard\nToolPolicyGuard()\n"
+    ctx.texts["app.py"] = "from aisafe import ToolPolicyGuard\nToolPolicyGuard()\n"
     first = guards_module._guard_sites(ctx)
     assert [s.name for s in first] == ["tool_policy"]
     assert "guards.sites" in ctx.cache

@@ -3,21 +3,20 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
-# Single entry point. `aisg <command> --help` shows each tool's own options.
-#   aisg lint src/
-#   aisg lint src/ --format sarif --output results.sarif
-#   aisg misalign src/ --fail-on-warnings
-aisg = "aisg.cli:main"
+# Single entry point. `aisafe <command> --help` shows each tool's own options.
+#   aisafe lint src/
+#   aisafe lint src/ --format sarif --output results.sarif
+#   aisafe misalign src/ --fail-on-warnings
+aisafe = "aisafe.cli:main"
 # Retained so existing pre-commit configs and CI keep working.
-euaiact-lint = "aisg.devtools.euaiact_lint:main"
-misalignment-check = "aisg.devtools.misalignment_check:main"
+euaiact-lint = "aisafe.devtools.euaiact_lint:main"
+misalignment-check = "aisafe.devtools.misalignment_check:main"
 
 [project]
-# Distribution name: the project is AnyAISafe. The importable name and the console
-# script stay `aisg` (see CLAUDE.md "Layout"): `aisg` is taken on PyPI by an
-# unrelated AI-gateway SDK, and the short name is what people type.
-# pip install "anyaisafe[devtools]", then import aisg.
-name = "anyaisafe"
+# The project is AnyAISafe; the distribution, the importable name and the console
+# script are all `aisafe` (see CLAUDE.md "Layout").
+# pip install "aisafe[devtools]", then import aisafe.
+name = "aisafe"
 version = "0.1.0"
 description = "AnyAISafe: audit, measure, price, apply and attest AI-safety controls for any software that calls a model or runs an agent; runtime guardrails included"
 readme = "README.md"
@@ -101,7 +100,7 @@ claude-judge = [
 
 # All LLM judges
 llm-judges = [
-    "anyaisafe[anthropic]",
+    "aisafe[anthropic]",
 ]
 
 # NVIDIA NeMo Guardrails integration
@@ -121,7 +120,7 @@ metrics = [
     "prometheus-client>=0.20",
 ]
 
-# Static analysis CLI (`aisg lint` / `aisg misalign`) -- deliberately light.
+# Static analysis CLI (`aisafe lint` / `aisafe misalign`) -- deliberately light.
 # The analysers are pure-stdlib AST walkers; they need nothing beyond the base
 # dependencies. tomli only backfills tomllib on Python 3.10 so the CLI can read
 # its [tool.*] defaults out of pyproject.toml.
@@ -131,7 +130,7 @@ devtools = [
 
 # Deprecated alias for `devtools`.
 lint = [
-    "anyaisafe[devtools]",
+    "aisafe[devtools]",
 ]
 
 # Pre-commit companion tools
@@ -142,7 +141,7 @@ precommit = [
 
 # Full install (everything)
 all = [
-    "anyaisafe[presidio,langchain,fastapi,anthropic,otel,metrics,devtools,precommit,llm-judges,settings,nemo]",
+    "aisafe[presidio,langchain,fastapi,anthropic,otel,metrics,devtools,precommit,llm-judges,settings,nemo]",
 ]
 
 # Development
@@ -159,17 +158,17 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["aisg*"]
+include = ["aisafe*"]
 
 [tool.setuptools.package-data]
-# YAML presets ship inside the wheel; readable via aisg.config.preset_path().
-"aisg.config" = ["*.yaml", "nemo_rails/*"]
-# Attack corpus for `aisg probe`, loaded via importlib.resources.
-"aisg.probes" = ["*.yaml"]
-# Agent skill copied by `aisg skill install`, read via aisg.skills.skill_root().
+# YAML presets ship inside the wheel; readable via aisafe.config.preset_path().
+"aisafe.config" = ["*.yaml", "nemo_rails/*"]
+# Attack corpus for `aisafe probe`, loaded via importlib.resources.
+"aisafe.probes" = ["*.yaml"]
+# Agent skill copied by `aisafe skill install`, read via aisafe.skills.skill_root().
 # The recursive glob is the intent; the per-type globs cover setuptools
 # versions that do not recurse `**`.
-"aisg.skills" = [
+"aisafe.skills" = [
     "ai-safety-audit/**/*",
     "ai-safety-audit/SKILL.md",
     "ai-safety-audit/**/*.md",
@@ -177,8 +176,8 @@ include = ["aisg*"]
     "ai-safety-audit/**/*.sh",
     "ai-safety-audit/**/*.ps1",
 ]
-# Semgrep taint rules for the `aisg audit` semgrep adapter.
-"aisg.devtools.audit" = ["semgrep/*.yaml"]
+# Semgrep taint rules for the `aisafe audit` semgrep adapter.
+"aisafe.devtools.audit" = ["semgrep/*.yaml"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -209,7 +208,7 @@ exclude = ["tests/fixtures/"]   # fixtures contain intentionally bad code
 # -------------------------------------------------------
 # euaiact-lint configuration
 # -------------------------------------------------------
-# Read by aisg/devtools/euaiact_lint.py via aisg/devtools/_config.py
+# Read by aisafe/devtools/euaiact_lint.py via aisafe/devtools/_config.py
 # when invoked with no explicit flags.
 [tool.euaiact-lint]
 paths = ["src", "examples"]
@@ -221,7 +220,7 @@ fail_on_warnings = false    # set true for strict CI enforcement
 # -------------------------------------------------------
 # misalignment-check configuration
 # -------------------------------------------------------
-# Read by aisg/devtools/misalignment_check.py via aisg/devtools/_config.py
+# Read by aisafe/devtools/misalignment_check.py via aisafe/devtools/_config.py
 # when invoked with no explicit flags.
 [tool.misalignment-check]
 paths = ["src", "examples"]
@@ -231,9 +230,9 @@ errors_only = false         # set true to hard-block on ALIGN-001/005/006/008 on
 fail_on_warnings = false    # set true for strict PR enforcement
 
 # -------------------------------------------------------
-# aisg-audit configuration
+# aisafe-audit configuration
 # -------------------------------------------------------
-# Read by aisg/devtools/audit/main.py via aisg/devtools/_config.py.
+# Read by aisafe/devtools/audit/main.py via aisafe/devtools/_config.py.
 # An explicit CLI flag always wins over a value here.
 #
 # exclude: tests/ and the probe corpus hold fake keys and injection text the
@@ -243,29 +242,29 @@ fail_on_warnings = false    # set true for strict PR enforcement
 # it (an over-grant flag, a kill-switch name, a floating model id) or the
 # self-audit reports the finding a second time, from the baseline itself.
 # tests/unit/test_audit_baseline.py pins that the committed file stays quiet.
-[tool.aisg-audit]
-exclude = ["tests", "src/aisg/probes"]
+[tool.aisafe-audit]
+exclude = ["tests", "src/aisafe/probes"]
 fail-on = "high"
 
 # -------------------------------------------------------
-# aisg-decide configuration
+# aisafe-decide configuration
 # -------------------------------------------------------
-# Read by aisg/devtools/decide.py via aisg/devtools/_config.py. Every flag of
-# `aisg decide` can be defaulted here except `select` (a per-decision act).
+# Read by aisafe/devtools/decide.py via aisafe/devtools/_config.py. Every flag of
+# `aisafe decide` can be defaulted here except `select` (a per-decision act).
 # `prices` points the decision at a price table other than the packaged one;
 # a figure typed in with a date beats a figure nobody can recheck.
-[tool.aisg-decide]
+[tool.aisafe-decide]
 # prices = "config/prices.yaml"
 
-# `aisg hook` (agent-host hooks). Every key is optional; these are the defaults.
-# fail-on falls back to [tool.aisg-audit].fail-on. `prompt_injection` is opt-in.
-[tool.aisg-hook]
+# `aisafe hook` (agent-host hooks). Every key is optional; these are the defaults.
+# fail-on falls back to [tool.aisafe-audit].fail-on. `prompt_injection` is opt-in.
+[tool.aisafe-hook]
 # fail-on = "high"
 # policies = ["protected_path", "secret_literal", "unsafe_in_hook_config", "shell_unsafe",
 #             "shell_overgrant", "shell_protected_write", "recheck", "posture", "stop_gate"]
 # max-audit-seconds = 10          # PostToolUse re-audits the whole tree only below this
 # stop-max-audit-seconds = 90     # the Stop gate is skipped (context only) above this
 # debounce-seconds = 2
-# baseline = ".aisg-audit/audit-baseline.json"   # else audit-baseline.json at the root
-# report = ".aisg-audit/audit-report.json"
+# baseline = ".aisafe-audit/audit-baseline.json"   # else audit-baseline.json at the root
+# report = ".aisafe-audit/audit-report.json"
 # ask-fallback = "allow"          # hosts without an ask primitive (Gemini): allow | deny

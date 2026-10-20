@@ -14,14 +14,14 @@ from pathlib import Path
 
 import pytest
 
-from aisg.devtools.audit import patterns as p
-from aisg.devtools.system_card import ANNEX_III
-from aisg.modules.input.advanced_injection_detectors import UnicodeBypassDetector
-from aisg.modules.input.pii_detector import PII_PATTERNS
-from aisg.modules.input.prompt_injection import INJECTION_PATTERNS
+from aisafe.devtools.audit import patterns as p
+from aisafe.devtools.system_card import ANNEX_III
+from aisafe.modules.input.advanced_injection_detectors import UnicodeBypassDetector
+from aisafe.modules.input.pii_detector import PII_PATTERNS
+from aisafe.modules.input.prompt_injection import INJECTION_PATTERNS
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PATTERNS_PY = REPO_ROOT / "src" / "aisg" / "devtools" / "audit" / "patterns.py"
+PATTERNS_PY = REPO_ROOT / "src" / "aisafe" / "devtools" / "audit" / "patterns.py"
 
 FLAT_TABLES = {
     "MODEL_ID_PATTERNS": p.MODEL_ID_PATTERNS,
@@ -135,7 +135,7 @@ def test_kind_symbol_keys_have_a_kind() -> None:
 
 def test_source_file_starts_with_ignore_marker() -> None:
     first = PATTERNS_PY.read_text(encoding="utf-8").splitlines()[0]
-    assert first == p.IGNORE_MARKER == "# aisg-audit: ignore-file"
+    assert first == p.IGNORE_MARKER == "# aisafe-audit: ignore-file"
 
 
 def test_walker_constants() -> None:
@@ -705,7 +705,7 @@ def test_llm_response_accessor_negative(line: str) -> None:
 @pytest.mark.parametrize(
     "line,key",
     [
-        ("from aisg import GuardrailPipeline", "aisg"),
+        ("from aisafe import GuardrailPipeline", "aisafe"),
         ("from nemoguardrails import LLMRails", "nemoguardrails"),
         ("from guardrails import Guard", "guardrails_ai"),
         ("from llm_guard import scan_prompt", "llm_guard"),
@@ -718,7 +718,7 @@ def test_guardrail_libs_positive(line: str, key: str) -> None:
     assert key in _hits(p.GUARDRAIL_LIBS, line)
 
 
-@pytest.mark.parametrize("line", [BENIGN, "guardrails = []  # metal ones", "import aisgnal"])
+@pytest.mark.parametrize("line", [BENIGN, "guardrails = []  # metal ones", "import aisafenal"])
 def test_guardrail_libs_negative(line: str) -> None:
     assert not _hits(p.GUARDRAIL_LIBS, line)
 
@@ -739,7 +739,7 @@ def test_fail_open() -> None:
         ("LANGCHAIN_TRACING_V2=true", "langchain_tracing"),
         ("from traceloop.sdk import Traceloop", "traceloop"),
         ("span.set_attribute('gen_ai.request.model', m)", "otel_genai"),
-        ("tp = TelemetryProvider(service_name='x')", "aisg_telemetry"),
+        ("tp = TelemetryProvider(service_name='x')", "aisafe_telemetry"),
         ("from phoenix.otel import register", "phoenix"),
         ("import weave", "weave"),
     ],
@@ -785,7 +785,7 @@ def test_eval_tools() -> None:
     assert "deepeval" in _hits(p.EVAL_TOOLS, "from deepeval import assert_test")
     assert "inspect_ai" in _hits(p.EVAL_TOOLS, "inspect-ai>=0.3")
     assert "evals_dir" in _hits(p.EVAL_TOOLS, "python evals/run.py")
-    assert "aisg_measure" in _hits(p.EVAL_TOOLS, "run: aisg measure --preset default")
+    assert "aisafe_measure" in _hits(p.EVAL_TOOLS, "run: aisafe measure --preset default")
     assert not _hits(p.EVAL_TOOLS, BENIGN)
     assert not _hits(p.EVAL_TOOLS, "evaluate(model)")
 
@@ -1598,7 +1598,7 @@ def test_discussion_cues_and_quoted_span_shape() -> None:
     assert p.DISCUSSION_CUES.search("Do not do this")
     assert p.DISCUSSION_CUES.search("WARNING: careful")
     assert not p.DISCUSSION_CUES.search("run the deploy")
-    assert p.QUOTED_SPAN_RE.search("use `aisg audit .` here")
+    assert p.QUOTED_SPAN_RE.search("use `aisafe audit .` here")
     assert not p.QUOTED_SPAN_RE.search("it's fine")
     assert not p.QUOTED_SPAN_RE.search("a 'x' b")
 
@@ -1617,11 +1617,11 @@ def _commented(text: str, lang: str) -> list[str]:
 
 def test_python_hash_comments_and_triple_quotes() -> None:
     text = (
-        'x = 1  # from aisg import y\n"""doc\nLlamaGuard"""\nz = "# not"  # tail\n'
+        'x = 1  # from aisafe import y\n"""doc\nLlamaGuard"""\nz = "# not"  # tail\n'
         "s = '''a\nb''' + 1\nt = \"it's\"  # apostrophe\n"
     )
     assert _commented(text, "python") == [
-        "# from aisg import y",
+        "# from aisafe import y",
         '"""doc',
         'LlamaGuard"""',
         "# tail",
@@ -1709,7 +1709,7 @@ def test_eval_file_globs(path: str, expected: bool) -> None:
 def test_no_compliance_language_in_patterns_module() -> None:
     # The bare word is stricter than any phrase on the ban list (it also catches
     # "non-compliant"); the list itself is imported so this file never spells it out.
-    from aisg.devtools.audit.report import BANNED_PHRASES
+    from aisafe.devtools.audit.report import BANNED_PHRASES
 
     text = PATTERNS_PY.read_text(encoding="utf-8").lower()
     for phrase in ("compliant", *BANNED_PHRASES):

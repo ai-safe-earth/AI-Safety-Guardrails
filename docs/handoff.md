@@ -177,33 +177,33 @@ Rows are walked top-down, one approval each. Decision source is
 | 10 | `AUD-901` | unit `.` | **`same_control: true`** — evals in CI |
 | 11 | `AUD-1001` | unit `.` | no system card |
 
-Rows 7-8 and 10 are the only ones where `aisg` itself wires the control. They
+Rows 7-8 and 10 are the only ones where `aisafe` itself wires the control. They
 exercise the last untested branch of phase 3 — the package idiom in
 `references/apply/python.md`, keyed by the first symbol — and are worth doing
 before declaring the flow tested.
 
 ## Two decisions still unanswered from phase 2
 
-- Whether `.aisg-audit/` should be committed in VaiVia or ignored. The skill
+- Whether `.aisafe-audit/` should be committed in VaiVia or ignored. The skill
   proposes the one-line `.gitignore` diff and never edits it unasked.
 - Which rows to defer. Default was top-down, which is what was walked.
 
 ## Phases 4 and 5, not started
 
-Document 2 is `--baseline .aisg-audit/audit-baseline.json` into a *new* file,
-never overwriting document 1. Phase 5 (tests, `aisg measure`, `aisg probe`)
+Document 2 is `--baseline .aisafe-audit/audit-baseline.json` into a *new* file,
+never overwriting document 1. Phase 5 (tests, `aisafe measure`, `aisafe probe`)
 needs explicit approval first: those can call model providers and cost money.
 
 ## What the run taught about the tooling itself
 
 Worth fixing before anyone else runs this:
 
-1. **The skill's bootstrap runs whatever `aisg` is on PATH.** Here that was a
-   stale pipx install at `~/.local/bin/aisg.exe` reporting version `0.1.0` —
+1. **The skill's bootstrap runs whatever `aisafe` is on PATH.** Here that was a
+   stale pipx install at `~/.local/bin/aisg.exe` (the command was `aisg` until 2026-10-20) reporting version `0.1.0` —
    the same version string as the source it was several commits behind — whose
    first act was to fail on a bug fixed the day before. The flow should print
-   which `aisg` it used and from where. Everything above was run with
-   `PYTHONPATH=…/src python -m aisg.cli` instead.
+   which `aisafe` it used and from where. Everything above was run with
+   `PYTHONPATH=…/src python -m aisafe.cli` instead.
 2. **Two findings can share one fingerprint** (normalisation strips digits from
    identifiers). Seen live: `.env.example` lines 70 and 73 collided, so when
    line 73 stopped being reported the baseline diff said two disappearances
@@ -228,8 +228,8 @@ Worth fixing before anyone else runs this:
 ```bash
 pytest                                    # ~3630 tests, ~5 min, no API keys
 ruff check src tests scripts
-aisg lint src examples --errors-only
-aisg audit . --no-external --fail-on high --baseline audit-baseline.json
+aisafe lint src examples --errors-only
+aisafe audit . --no-external --fail-on high --baseline audit-baseline.json
 python scripts/sync_skill.py --check
 python scripts/controls_md.py --check
 gh run list --limit 4

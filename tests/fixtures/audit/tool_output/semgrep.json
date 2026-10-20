@@ -2,14 +2,14 @@
   "version": "1.90.0",
   "results": [
     {
-      "check_id": "aisg.audit.aud-401-model-output-to-shell",
+      "check_id": "aisafe.audit.aud-401-model-output-to-shell",
       "path": "src/agent.ts",
       "start": {"line": 16, "col": 3, "offset": 0},
       "end": {"line": 16, "col": 14, "offset": 0},
       "extra": {
         "message": "Model output flows into child_process.exec without validation.",
         "metadata": {
-          "aisg_rule_id": "AUD-401",
+          "aisafe_rule_id": "AUD-401",
           "category": "security",
           "confidence": "MEDIUM"
         },
@@ -22,14 +22,14 @@
       }
     },
     {
-      "check_id": "aisg.audit.aud-404-model-output-to-html",
+      "check_id": "aisafe.audit.aud-404-model-output-to-html",
       "path": "src/agent.ts",
       "start": {"line": 24, "col": 3, "offset": 0},
       "end": {"line": 24, "col": 28, "offset": 0},
       "extra": {
         "message": "Model output assigned to innerHTML without sanitisation.",
         "metadata": {
-          "aisg_rule_id": "AUD-404",
+          "aisafe_rule_id": "AUD-404",
           "category": "security",
           "confidence": "MEDIUM"
         },

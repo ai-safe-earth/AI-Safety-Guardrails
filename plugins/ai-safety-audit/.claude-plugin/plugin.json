@@ -2,7 +2,7 @@
   "name": "ai-safety-audit",
   "displayName": "AI Safety Audit",
   "version": "0.1.0",
-  "description": "Audit an AI/agent codebase for safety gaps ordered by blast radius (aisg audit), price the proposed controls against declared budgets (aisg decide), apply them one approval at a time, attest a level that a named owner signs (aisg attest), and gate edits with hooks. Never a compliance verdict.",
+  "description": "Audit an AI/agent codebase for safety gaps ordered by blast radius (aisafe audit), price the proposed controls against declared budgets (aisafe decide), apply them one approval at a time, attest a level that a named owner signs (aisafe attest), and gate edits with hooks. Never a compliance verdict.",
   "author": {
     "name": "AI SAFE EARTH",
     "url": "https://github.com/ai-safe-earth"

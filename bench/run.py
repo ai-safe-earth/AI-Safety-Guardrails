@@ -1,8 +1,8 @@
 """
 bench/run.py
 ------------
-Clone every repo in corpus.yaml at its pinned SHA, run `aisg lint` (or, with
-`--tool audit`, `aisg audit`) over it, and collect the findings.
+Clone every repo in corpus.yaml at its pinned SHA, run `aisafe lint` (or, with
+`--tool audit`, `aisafe audit`) over it, and collect the findings.
 
 Outputs, `--tool lint` (the default):
     bench/results/<name>.sarif        raw SARIF per repo
@@ -43,7 +43,7 @@ BENCH = Path(__file__).resolve().parent
 ROOT = BENCH.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from aisg.devtools._git import GitError, fetch_pinned  # noqa: E402
+from aisafe.devtools._git import GitError, fetch_pinned  # noqa: E402
 
 CORPUS = BENCH / "corpus.yaml"
 CACHE = BENCH / ".cache"
@@ -96,12 +96,12 @@ def load_corpus() -> list[dict]:
 
 def fetch(repo: dict) -> Path:
     """
-    Shallow-fetch exactly the pinned commit through `aisg.devtools._git.fetch_pinned`
-    (one implementation, shared with `aisg fleet`). A cached checkout whose stamp
+    Shallow-fetch exactly the pinned commit through `aisafe.devtools._git.fetch_pinned`
+    (one implementation, shared with `aisafe fleet`). A cached checkout whose stamp
     names the SHA is reused.
     """
     dest = CACHE / repo["name"]
-    stamp = dest / ".aisg-bench-sha"
+    stamp = dest / ".aisafe-bench-sha"
     if stamp.is_file() and stamp.read_text(encoding="utf-8").strip() == repo["sha"]:
         print(f"    cached at {repo['sha'][:12]}")
         return dest
@@ -110,7 +110,7 @@ def fetch(repo: dict) -> Path:
 
 
 def _child_env() -> dict[str, str]:
-    # PYTHONPATH keeps aisg importable in the child without requiring an install.
+    # PYTHONPATH keeps aisafe importable in the child without requiring an install.
     env = dict(os.environ)
     src = str(ROOT / "src")
     env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
@@ -118,8 +118,8 @@ def _child_env() -> dict[str, str]:
 
 
 def lint(path: Path, out_stem: Path, experimental: bool) -> tuple[int, dict | None]:
-    """Run `aisg lint` twice: once for SARIF, once for JSON (JSON has the summary)."""
-    base = [sys.executable, "-m", "aisg.cli", "lint", str(path.resolve())]
+    """Run `aisafe lint` twice: once for SARIF, once for JSON (JSON has the summary)."""
+    base = [sys.executable, "-m", "aisafe.cli", "lint", str(path.resolve())]
     if experimental:
         base.append("--experimental")
 
@@ -153,14 +153,14 @@ def lint(path: Path, out_stem: Path, experimental: bool) -> tuple[int, dict | No
 
 def audit(path: Path, out_file: Path) -> tuple[int, dict | None]:
     """
-    Run `aisg audit . --format json --no-external` with the clone as cwd (so the
-    target's own `[tool.aisg-audit]` applies, as under the skill). Exit 0 and 1
+    Run `aisafe audit . --format json --no-external` with the clone as cwd (so the
+    target's own `[tool.aisafe-audit]` applies, as under the skill). Exit 0 and 1
     are both a completed audit; 2 is fatal and says so.
     """
     argv = [
         sys.executable,
         "-m",
-        "aisg.cli",
+        "aisafe.cli",
         "audit",
         ".",
         "--format",

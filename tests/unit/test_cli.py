@@ -1,6 +1,6 @@
 """tests/unit/test_cli.py
 ----------------------
-Pins for the `aisg` console script: every subcommand is registered and listed,
+Pins for the `aisafe` console script: every subcommand is registered and listed,
 `--help` reaches each tool's own parser through the REMAINDER pass-through,
 `audit` and `skill` are imported only when invoked, and the exit codes of the
 wrapped tools come back unchanged.
@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from aisg import __version__, cli
-from aisg.devtools._config import find_pyproject
+from aisafe import __version__, cli
+from aisafe.devtools._config import find_pyproject
 
 EXPECTED_COMMANDS = (
     "lint",
@@ -38,15 +38,15 @@ EXPECTED_COMMANDS = (
 PROG_BY_COMMAND = {
     "lint": "euaiact-lint",
     "misalign": "misalignment-check",
-    "init": "aisg init",
-    "probe": "aisg probe",
-    "measure": "aisg measure",
-    "audit": "aisg audit",
-    "skill": "aisg skill",
-    "decide": "aisg decide",
-    "hook": "aisg hook",
-    "attest": "aisg attest",
-    "fleet": "aisg fleet",
+    "init": "aisafe init",
+    "probe": "aisafe probe",
+    "measure": "aisafe measure",
+    "audit": "aisafe audit",
+    "skill": "aisafe skill",
+    "decide": "aisafe decide",
+    "hook": "aisafe hook",
+    "attest": "aisafe attest",
+    "fleet": "aisafe fleet",
 }
 
 SRC_DIR = Path(__file__).resolve().parents[2] / "src"
@@ -62,7 +62,7 @@ def no_socket(monkeypatch: pytest.MonkeyPatch) -> None:
     """Nothing driven from these tests may open a socket."""
 
     def refuse(*args, **kwargs):
-        raise AssertionError("the aisg console script opened a socket")
+        raise AssertionError("the aisafe console script opened a socket")
 
     monkeypatch.setattr(socket, "socket", refuse)
     monkeypatch.setattr(socket, "create_connection", refuse)
@@ -70,7 +70,7 @@ def no_socket(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def neutral_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A cwd with no pyproject above it, so the repo's [tool.aisg-audit] stays out."""
+    """A cwd with no pyproject above it, so the repo's [tool.aisafe-audit] stays out."""
     cwd = tmp_path / "cwd"
     cwd.mkdir()
     monkeypatch.chdir(cwd)
@@ -107,8 +107,8 @@ def test_no_arguments_prints_the_epilog_and_exits_2(capsys) -> None:
     assert "Commands:" in out
     for name in EXPECTED_COMMANDS:
         assert f"  {name} " in out, name
-    assert "aisg audit ." in out
-    assert "aisg skill install" in out
+    assert "aisafe audit ." in out
+    assert "aisafe skill install" in out
 
 
 def test_version_flag() -> None:
@@ -121,7 +121,7 @@ def test_unknown_command_is_a_usage_error(capsys) -> None:
     with pytest.raises(SystemExit) as exc:
         cli.main(["frobnicate"])
     assert exc.value.code == 2
-    assert "usage: aisg" in capsys.readouterr().err
+    assert "usage: aisafe" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("name", EXPECTED_COMMANDS)
@@ -157,10 +157,10 @@ def test_skill_help_lists_its_verbs(capsys) -> None:
 
 
 def test_importing_the_cli_does_not_load_the_devtools() -> None:
-    """`aisg lint` must not pay the audit engine's import cost; check in a fresh interpreter."""
+    """`aisafe lint` must not pay the audit engine's import cost; check in a fresh interpreter."""
     code = (
-        "import sys, aisg.cli\n"
-        "loaded = sorted(m for m in sys.modules if m.startswith('aisg.devtools'))\n"
+        "import sys, aisafe.cli\n"
+        "loaded = sorted(m for m in sys.modules if m.startswith('aisafe.devtools'))\n"
         "print(','.join(loaded))\n"
     )
     env = dict(os.environ, PYTHONPATH=str(SRC_DIR), PYTHONIOENCODING="utf-8")
@@ -189,7 +189,7 @@ def test_skill_list_prints_the_host_table(capsys) -> None:
 
 def test_skill_without_a_verb_prints_help_and_exits_2(capsys) -> None:
     assert cli.main(["skill"]) == 2
-    assert "usage: aisg skill" in capsys.readouterr().out
+    assert "usage: aisafe skill" in capsys.readouterr().out
 
 
 def test_skill_path_points_at_the_packaged_skill(capsys) -> None:
@@ -208,7 +208,7 @@ def test_audit_unrecognised_flag_is_a_usage_error(capsys) -> None:
         cli.main(["audit", "--no-such-flag"])
     assert exc.value.code == 2
     err = capsys.readouterr().err
-    assert "usage: aisg audit" in err
+    assert "usage: aisafe audit" in err
     assert "unrecognized arguments" in err
 
 
@@ -246,7 +246,7 @@ def test_audit_reference_fixture_without_findings_exits_zero(
 
 
 def test_audit_exit_codes_pass_through_unchanged(py_agent: Path, neutral_cwd: Path) -> None:
-    from aisg.devtools.audit.main import EXIT_FATAL, EXIT_FINDINGS, EXIT_OK
+    from aisafe.devtools.audit.main import EXIT_FATAL, EXIT_FINDINGS, EXIT_OK
 
     assert cli.main(["audit", str(py_agent), "--no-external", "--fail-on", "never"]) == EXIT_OK
     assert cli.main(["audit", str(py_agent), "--no-external"]) == EXIT_FINDINGS
@@ -256,4 +256,4 @@ def test_audit_exit_codes_pass_through_unchanged(py_agent: Path, neutral_cwd: Pa
 def test_version_string_matches_the_package() -> None:
     parser = cli.build_parser()
     version_action = next(a for a in parser._actions if a.dest == "version")
-    assert version_action.version == f"aisg {__version__}"
+    assert version_action.version == f"aisafe {__version__}"

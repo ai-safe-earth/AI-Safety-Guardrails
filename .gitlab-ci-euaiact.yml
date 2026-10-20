@@ -14,7 +14,7 @@
 # patterns the rules look for. A path that does not exist fails the job
 # (exit 2) instead of passing with nothing scanned.
 #
-# Every `aisg lint` call is followed by `|| [ $? -eq 1 ]`: exit 1 means
+# Every `aisafe lint` call is followed by `|| [ $? -eq 1 ]`: exit 1 means
 # findings, which the verdict step reads from the JSON; anything else is
 # a broken run and must stay fatal.
 
@@ -24,21 +24,20 @@ stages:
 variables:
   SCAN_PATH: "src"                    # space-separated; e.g. "src examples"
   FAIL_ON_WARNINGS: "false"
-  AUDIT_PATH: "."                     # what `aisg audit` walks
+  AUDIT_PATH: "."                     # what `aisafe audit` walks
   AUDIT_FAIL_ON: "high"               # critical | high | medium | low | info | never
   AUDIT_BASELINE: ""                  # e.g. "audit-baseline.json"; empty = every finding counts
-  AISG_VERSION: "0.1.0"               # a release tag of the project below; pinned
+  AISAFE_VERSION: "0.1.0"               # a release tag of the project below; pinned
   # Installed from the project's own repository at that tag, because the
-  # distribution (`anyaisafe`) is not on PyPI yet. Do not shorten this to a
-  # PyPI spec by the importable name: `aisg` on PyPI is an unrelated project.
-  AISG_SOURCE: "git+https://github.com/ai-safe-earth/AnyAISafe.git"
+  # distribution (`aisafe`) is not on PyPI yet.
+  AISAFE_SOURCE: "git+https://github.com/ai-safe-earth/AnyAISafe.git"
 
 .eu-ai-act-base:
   stage: compliance
   image: python:3.11-slim
   before_script:
     - apt-get update -qq && apt-get install -y -qq git >/dev/null
-    - pip install --quiet "anyaisafe[devtools] @ ${AISG_SOURCE}@v${AISG_VERSION}"
+    - pip install --quiet "aisafe[devtools] @ ${AISAFE_SOURCE}@v${AISAFE_VERSION}"
 
 # ── Full scan (all pushes to main/develop) ───────────────────────────────
 
@@ -50,9 +49,9 @@ eu-ai-act-full-scan:
     - if: '$CI_PIPELINE_SOURCE == "web"'  # Manual trigger
   script:
     - 'echo "Running EU AI Act compliance scan on: $SCAN_PATH"'
-    - aisg lint $SCAN_PATH --format terminal --no-color || [ $? -eq 1 ]
-    - aisg lint $SCAN_PATH --format json --output eu-ai-act-report.json || [ $? -eq 1 ]
-    - aisg lint $SCAN_PATH --format sarif --output eu-ai-act-results.sarif || [ $? -eq 1 ]
+    - aisafe lint $SCAN_PATH --format terminal --no-color || [ $? -eq 1 ]
+    - aisafe lint $SCAN_PATH --format json --output eu-ai-act-report.json || [ $? -eq 1 ]
+    - aisafe lint $SCAN_PATH --format sarif --output eu-ai-act-results.sarif || [ $? -eq 1 ]
     - |
       python - <<'EOF'
       import json, os, sys
@@ -101,7 +100,7 @@ eu-ai-act-mr-scan:
       echo "Changed files:"
       cat changed_files.txt
       mapfile -t FILES < changed_files.txt
-      aisg lint "${FILES[@]}" --errors-only --no-color
+      aisafe lint "${FILES[@]}" --errors-only --no-color
   allow_failure: false
 
 # ── Scheduled weekly audit ────────────────────────────────────────────────
@@ -116,8 +115,8 @@ eu-ai-act-weekly-audit:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
   script:
-    - aisg lint $SCAN_PATH --format json --output weekly-audit.json || [ $? -eq 1 ]
-    - aisg lint $SCAN_PATH --format terminal --no-color --fail-on-warnings
+    - aisafe lint $SCAN_PATH --format json --output weekly-audit.json || [ $? -eq 1 ]
+    - aisafe lint $SCAN_PATH --format terminal --no-color --fail-on-warnings
   artifacts:
     name: "eu-ai-act-weekly-audit-$CI_COMMIT_SHORT_SHA"
     paths:
@@ -127,38 +126,38 @@ eu-ai-act-weekly-audit:
   allow_failure: true   # Weekly audit is informational; does not block
 
 # ── AI-surface audit (merge requests and the main branches) ──────────────
-# `aisg audit` walks the repository, reports what talks to a model, what it can
+# `aisafe audit` walks the repository, reports what talks to a model, what it can
 # reach and what evidence exists for the guards around it, and exits 1 on a
 # finding at or above AUDIT_FAIL_ON (only NEW findings when AUDIT_BASELINE is
 # set). Findings describe evidence; no document states a compliance verdict.
 # The SARIF lands in the Security Dashboard; the verdict step reads the JSON.
 
-aisg-audit:
+aisafe-audit:
   extends: .eu-ai-act-base
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
   script:
-    - aisg audit $AUDIT_PATH --no-external --fail-on $AUDIT_FAIL_ON ${AUDIT_BASELINE:+--baseline $AUDIT_BASELINE} --format json --output aisg-audit-report.json || [ $? -eq 1 ]
-    - aisg audit $AUDIT_PATH --no-external --fail-on $AUDIT_FAIL_ON ${AUDIT_BASELINE:+--baseline $AUDIT_BASELINE} --format sarif --output aisg-audit-results.sarif || [ $? -eq 1 ]
+    - aisafe audit $AUDIT_PATH --no-external --fail-on $AUDIT_FAIL_ON ${AUDIT_BASELINE:+--baseline $AUDIT_BASELINE} --format json --output aisafe-audit-report.json || [ $? -eq 1 ]
+    - aisafe audit $AUDIT_PATH --no-external --fail-on $AUDIT_FAIL_ON ${AUDIT_BASELINE:+--baseline $AUDIT_BASELINE} --format sarif --output aisafe-audit-results.sarif || [ $? -eq 1 ]
     - |
       python - <<'EOF'
       import json, sys
-      report = json.load(open("aisg-audit-report.json", encoding="utf-8"))
+      report = json.load(open("aisafe-audit-report.json", encoding="utf-8"))
       if report.get("schema") != "aisg/1" or report.get("kind") != "audit":
-          sys.exit("not an aisg audit report")
+          sys.exit("not an aisafe audit report")
       s = report["summary"]
       print(f"findings={s['findings']} unknown_items={s['unknown_items']} "
             f"new={s.get('baseline_new')} exit_code={s['exit_code']}")
       sys.exit(int(s["exit_code"]))
       EOF
   artifacts:
-    name: "aisg-audit-$CI_COMMIT_SHORT_SHA"
+    name: "aisafe-audit-$CI_COMMIT_SHORT_SHA"
     paths:
-      - aisg-audit-report.json
-      - aisg-audit-results.sarif
+      - aisafe-audit-report.json
+      - aisafe-audit-results.sarif
     reports:
-      sast: aisg-audit-results.sarif
+      sast: aisafe-audit-results.sarif
     expire_in: 90 days
     when: always
   allow_failure: false

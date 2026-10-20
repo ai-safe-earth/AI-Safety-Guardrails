@@ -21,7 +21,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from aisg.devtools.audit.model import (  # noqa: E402
+from aisafe.devtools.audit.model import (  # noqa: E402
     AuditContext,
     Basis,
     Bucket,
@@ -31,8 +31,8 @@ from aisg.devtools.audit.model import (  # noqa: E402
     Severity,
     UnknownCategory,
 )
-from aisg.devtools.audit.report import BANNED_PHRASES  # noqa: E402
-from aisg.devtools.audit.rules import governance, run_rules  # noqa: E402
+from aisafe.devtools.audit.report import BANNED_PHRASES  # noqa: E402
+from aisafe.devtools.audit.rules import governance, run_rules  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "audit"
 
@@ -126,7 +126,7 @@ def test_metadata_contract(rule_cls):
     assert set(rule_cls.related_lint_rules) <= ALLOWED_LINT_RULES
     assert rule_cls.measured_precision is None
     assert len(rule_cls.recommendation.alternatives) >= 3
-    assert any("aisg" not in alt.lower() for alt in rule_cls.recommendation.alternatives)
+    assert any("aisafe" not in alt.lower() for alt in rule_cls.recommendation.alternatives)
     assert rule_cls.known_failure_modes
     assert isinstance(rule_cls.title, str) and rule_cls.title
 
@@ -172,11 +172,11 @@ def test_1001_fires_on_noise_fixture(audit_fixture, audit_context):
     assert f.evidence[0].role == "absence"
     assert f.evidence[0].file == "."
     assert f.evidence[0].line == 0
-    assert "aisg init" in f.recommendation.summary
+    assert "aisafe init" in f.recommendation.summary
 
 
 def test_1001_summary_names_only_fields_the_card_has():
-    # The card `aisg init` writes has purpose, operator role, affected persons, an incident
+    # The card `aisafe init` writes has purpose, operator role, affected persons, an incident
     # contact and the risk-tier caveat; it has no model field, so the summary must not
     # promise one.
     summary = governance.NoSystemCard.recommendation.summary
@@ -311,7 +311,7 @@ def test_unset_is_the_shared_card_placeholder_reading(value, unset):
     # the placeholder words cannot drift apart between the card rules. A bool or a
     # number is a value the card holds, not a placeholder; what it means is the rule's
     # business.
-    from aisg.devtools.audit import vocab
+    from aisafe.devtools.audit import vocab
 
     assert governance._unset(value) is unset
     assert vocab.is_unset(value) is unset

@@ -14,17 +14,17 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from aisg.devtools.audit.discover import DiscoverOptions
-from aisg.devtools.audit.model import (
+from aisafe.devtools.audit.discover import DiscoverOptions
+from aisafe.devtools.audit.model import (
     TRIFECTA_RULE_ID,
     AuditContext,
     Inventory,
     MatchKind,
     Severity,
 )
-from aisg.devtools.audit.pydeep import PyFacts
-from aisg.devtools.audit.rules import trust_boundary
-from aisg.devtools.audit.rules.trust_boundary import (
+from aisafe.devtools.audit.pydeep import PyFacts
+from aisafe.devtools.audit.rules import trust_boundary
+from aisafe.devtools.audit.rules.trust_boundary import (
     RULES,
     LethalTrifecta,
     SystemPromptFromRequest,
@@ -95,7 +95,7 @@ def test_rule_metadata(rule_cls):
     assert rule_cls.priority == int(rule_cls.id[4])
     assert rule_cls.controls
     assert len(rule_cls.recommendation.alternatives) >= 3
-    assert any("aisg" not in alt.lower() for alt in rule_cls.recommendation.alternatives)
+    assert any("aisafe" not in alt.lower() for alt in rule_cls.recommendation.alternatives)
     assert rule_cls.measured_precision is None
     assert set(rule_cls.related_lint_rules) <= ALLOWED_LINT_RULES
     assert rule_cls.known_failure_modes

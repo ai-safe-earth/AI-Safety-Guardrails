@@ -74,7 +74,7 @@ jobs:
         run: pytest -q
 
   audit:
-    name: aisg audit gate
+    name: aisafe audit gate
     # Runs after the matrix test job. Everything here exercises the built
     # wheel, not the source tree: the console script, the packaged skill and
     # the audit's own package data have to work from the artifact alone.
@@ -94,20 +94,20 @@ jobs:
 
       - name: Install the wheel into a fresh venv
         # Not an editable install. The venv's bin/ goes first on PATH so that
-        # `aisg` and `python` in the later steps are the installed wheel's.
+        # `aisafe` and `python` in the later steps are the installed wheel's.
         run: |
-          python -m venv "$RUNNER_TEMP/aisg-venv"
-          "$RUNNER_TEMP/aisg-venv/bin/pip" install dist/*.whl
-          echo "$RUNNER_TEMP/aisg-venv/bin" >> "$GITHUB_PATH"
+          python -m venv "$RUNNER_TEMP/aisafe-venv"
+          "$RUNNER_TEMP/aisafe-venv/bin/pip" install dist/*.whl
+          echo "$RUNNER_TEMP/aisafe-venv/bin" >> "$GITHUB_PATH"
 
       - name: Skill ships in the wheel
         # From a neutral directory so the import cannot fall back to src/.
         run: |
           cd "$RUNNER_TEMP"
-          python -c "from aisg.skills import skill_root; assert (skill_root()/'SKILL.md').exists()"
+          python -c "from aisafe.skills import skill_root; assert (skill_root()/'SKILL.md').exists()"
 
       - name: Fixture exit codes
-        # [tool.aisg-audit] in pyproject.toml is resolved from the CURRENT
+        # [tool.aisafe-audit] in pyproject.toml is resolved from the CURRENT
         # DIRECTORY, not from the audited path, and ours sets fail-on = "high"
         # plus an exclude list for the self-audit. These runs therefore cd
         # into a temporary directory (chosen over passing --fail-on low so
@@ -121,20 +121,20 @@ jobs:
           cd "$(mktemp -d)"
 
           # py_agent: trifecta, uncapped loop, ungated tools -> findings -> 1.
-          rc=0; aisg audit "$fixtures/py_agent" --no-external --format json -o /dev/null || rc=$?
+          rc=0; aisafe audit "$fixtures/py_agent" --no-external --format json -o /dev/null || rc=$?
           test "$rc" -eq 1
 
           # clean_py: no finding, but --no-external leaves UNKNOWN items for
           # the skipped scanners; --fail-on-unknown turns those into exit 1 ...
-          rc=0; aisg audit "$fixtures/clean_py" --fail-on-unknown --no-external || rc=$?
+          rc=0; aisafe audit "$fixtures/clean_py" --fail-on-unknown --no-external || rc=$?
           test "$rc" -eq 1
 
           # ... and without it the same tree exits 0.
-          rc=0; aisg audit "$fixtures/clean_py" --no-external || rc=$?
+          rc=0; aisafe audit "$fixtures/clean_py" --no-external || rc=$?
           test "$rc" -eq 0
 
       - name: Self-audit against the baseline
-        # From the repo root on purpose: here [tool.aisg-audit] supplies the
+        # From the repo root on purpose: here [tool.aisafe-audit] supplies the
         # exclude list (tests/ and the probe corpus hold fake keys and
         # injection text the rules must catch elsewhere) and fail-on = high.
         # Exit 0 means no NEW finding at high or above. Every accepted finding
@@ -147,14 +147,14 @@ jobs:
         # a finding: re-run with --format json, add its fingerprint to both
         # lists with a reason, never a bare fingerprint.
         run: |
-          rc=0; aisg audit . --no-external --fail-on high --baseline audit-baseline.json || rc=$?
+          rc=0; aisafe audit . --no-external --fail-on high --baseline audit-baseline.json || rc=$?
           test "$rc" -eq 0
 
       - name: Skill mirrors match the packaged skill
         # .claude/skills and .agents/skills are byte-identical copies of the
         # packaged skill; exit 1 lists the drifted files.
         run: |
-          rc=0; aisg skill diff --host all || rc=$?
+          rc=0; aisafe skill diff --host all || rc=$?
           test "$rc" -eq 0
 
   lint:
@@ -184,11 +184,11 @@ jobs:
       - run: pip install -e ".[devtools]"
 
       - name: Measure the default pipeline
-        # The ratchet. `aisg measure` exits 1 when any guard breaches a
+        # The ratchet. `aisafe measure` exits 1 when any guard breaches a
         # threshold, so a guard that starts over-blocking or slows down fails
         # the build instead of quietly degrading. Detection-only testing cannot
         # catch either -- "block everything" passes an attack corpus perfectly.
-        run: aisg measure --max-p99-ms 25
+        run: aisafe measure --max-p99-ms 25
 
       - name: Upload the measurement
         if: always()
@@ -199,7 +199,7 @@ jobs:
           retention-days: 90
 
   build:
-    name: wheel builds and exposes only `aisg`
+    name: wheel builds and exposes only `aisafe`
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -210,7 +210,7 @@ jobs:
       - run: pip install build==1.2.2.post1
       - run: python -m build --wheel
       - name: No top-level name collisions
-        # The whole point of the src/aisg layout: a published wheel must not
+        # The whole point of the src/aisafe layout: a published wheel must not
         # claim `core`, `modules`, `config` or any other common name.
         run: |
           python - <<'PY'
@@ -219,8 +219,8 @@ jobs:
           top = {n.split("/")[0] for n in zipfile.ZipFile(whl).namelist()}
           pkgs = {t for t in top if not t.endswith(".dist-info")}
           print("top-level in wheel:", sorted(pkgs))
-          if pkgs != {"aisg"}:
-              sys.exit(f"wheel exposes more than `aisg`: {sorted(pkgs)}")
+          if pkgs != {"aisafe"}:
+              sys.exit(f"wheel exposes more than `aisafe`: {sorted(pkgs)}")
           PY
 
       - name: Packaged config presets are readable from the wheel
@@ -228,8 +228,8 @@ jobs:
           pip install dist/*.whl
           cd /tmp
           python -c "
-          from aisg.config import preset_path
-          from aisg.core.pipeline import GuardrailPipeline
+          from aisafe.config import preset_path
+          from aisafe.core.pipeline import GuardrailPipeline
           p = preset_path('default.yaml')
           assert p.is_file(), p
           GuardrailPipeline.from_config(p)
@@ -240,7 +240,7 @@ jobs:
         run: |
           cd /tmp
           python -c "
-          from aisg.devtools.probe import load_corpus, available_families
+          from aisafe.devtools.probe import load_corpus, available_families
           cases = load_corpus(system_canary='CI-CANARY')
           assert len(cases) >= 40, len(cases)
           assert len(available_families()) == 7

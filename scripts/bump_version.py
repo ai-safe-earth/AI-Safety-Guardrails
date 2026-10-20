@@ -11,7 +11,7 @@ the same string or the release gate fails.
                                                           # dated heading, run sync_skill
     python scripts/bump_version.py --changelog-section v0.1.0   # print that section
 
-Sites, in the order they are rewritten: pyproject, `aisg.__version__`, the two legacy
+Sites, in the order they are rewritten: pyproject, `aisafe.__version__`, the two legacy
 CLI `--version` strings, the SARIF reporter's tool version, the GitLab template's pin,
 then (when the files exist) the GitHub Action's default `version` input and the Claude
 Code plugin manifest. The skill's bootstrap scripts and the mirrors are pinned by
@@ -50,23 +50,23 @@ class Site:
 
 SITES: tuple[Site, ...] = (
     Site("pyproject.toml", re.compile(r'^(version\s*=\s*")([^"]+)(")', re.M)),
-    Site("src/aisg/__init__.py", re.compile(r'^(__version__\s*=\s*")([^"]+)(")', re.M)),
-    Site("src/aisg/devtools/euaiact_lint.py", re.compile(r'(version="euaiact-lint )([^"]+)(")')),
+    Site("src/aisafe/__init__.py", re.compile(r'^(__version__\s*=\s*")([^"]+)(")', re.M)),
+    Site("src/aisafe/devtools/euaiact_lint.py", re.compile(r'(version="euaiact-lint )([^"]+)(")')),
     Site(
-        "src/aisg/devtools/misalignment_check.py",
+        "src/aisafe/devtools/misalignment_check.py",
         re.compile(r'(version="misalignment-check )([^"]+)(")'),
     ),
     # The SARIF driver block: `"version"` followed by the informationUri line, so the
     # SARIF schema version two lines above (`"version": "2.1.0"`) is left alone.
     Site(
-        "src/aisg/modules/policy/code_analyzer/reporters.py",
+        "src/aisafe/modules/policy/code_analyzer/reporters.py",
         re.compile(r'("version":\s*")([^"]+)(",\s*\n\s*"informationUri")'),
     ),
     Site(
-        "src/aisg/modules/policy/code_analyzer/reporters.py",
+        "src/aisafe/modules/policy/code_analyzer/reporters.py",
         re.compile(r'("semanticVersion":\s*")([^"]+)(")'),
     ),
-    Site(".gitlab-ci-euaiact.yml", re.compile(r'^(\s*AISG_VERSION:\s*")([^"]+)(")', re.M)),
+    Site(".gitlab-ci-euaiact.yml", re.compile(r'^(\s*AISAFE_VERSION:\s*")([^"]+)(")', re.M)),
     Site(
         "action.yml",
         re.compile(r'(\n\s*version:\s*\n(?:[^\n]*\n)*?\s*default:\s*")([^"]+)(")'),

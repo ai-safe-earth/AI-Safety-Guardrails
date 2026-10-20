@@ -20,10 +20,10 @@ from typing import Any
 
 import pytest
 
-from aisg.devtools.audit import html as html_mod
-from aisg.devtools.audit.baseline import BaselineDiff
-from aisg.devtools.audit.html import TEMPLATES, render_html
-from aisg.devtools.audit.model import (
+from aisafe.devtools.audit import html as html_mod
+from aisafe.devtools.audit.baseline import BaselineDiff
+from aisafe.devtools.audit.html import TEMPLATES, render_html
+from aisafe.devtools.audit.model import (
     DISCLAIMER,
     AuditContext,
     Basis,
@@ -45,7 +45,7 @@ from aisg.devtools.audit.model import (
     Unit,
     UnknownItem,
 )
-from aisg.devtools.audit.report import (
+from aisafe.devtools.audit.report import (
     BANNED_PHRASES,
     FORMATS,
     all_templates,
@@ -54,9 +54,9 @@ from aisg.devtools.audit.report import (
     compute_exit_code,
     render,
 )
-from aisg.devtools.audit.rules import NOT_ATTRIBUTED, SUBSYSTEMS, AuditRule, subsystem_of
+from aisafe.devtools.audit.rules import NOT_ATTRIBUTED, SUBSYSTEMS, AuditRule, subsystem_of
 
-MARKER = "<!-- # aisg-audit: ignore-file -->"
+MARKER = "<!-- # aisafe-audit: ignore-file -->"
 ABSENCE = "Absence of a finding is not evidence of safety."
 GENERATED_AT = "2026-09-06T12:00:00Z"
 # The word the design bans outright and the past participle the html must never use
@@ -145,7 +145,7 @@ def make_inventory(**overrides: Any) -> Inventory:
         ],
         mcp={"configs": [".mcp.json"], "servers": [{"name": "fs", "file": ".mcp.json"}]},
         hosts=[{"host": "claude", "file": ".claude/settings.json"}],
-        secrets={"literal_hits": 1, "config_hits": 0, "scanner": "aisg"},
+        secrets={"literal_hits": 1, "config_hits": 0, "scanner": "aisafe"},
         loops=[{"file": "app.py", "line": 50, "capped": False}],
         own_output_skipped=["audit-report.json"],
     )
@@ -248,7 +248,7 @@ def test_line_one_is_the_ignore_marker_then_a_standalone_document():
     assert '<html lang="en">' in page
     assert '<meta charset="utf-8">' in page
     assert '<meta name="aisg-schema" content="aisg/1">' in page
-    assert re.search(r'<meta name="aisg-tool" content="anyaisafe [^"]+">', page)
+    assert re.search(r'<meta name="aisg-tool" content="aisafe [^"]+">', page)
     assert "<title>" in page and "<style>" in page
     assert "<script" not in page
     assert 'src="' not in page and 'href="http' not in page and "@import" not in page
@@ -462,7 +462,7 @@ def test_finding_head_carries_severity_bucket_and_unmeasured():
 def test_package_line_same_control():
     page = render_html(build([make_finding("AUD-201", package=GATE)]))
     assert (
-        "aisg: ToolPolicyGuard -- implements the control this rule asks for. "
+        "aisafe: ToolPolicyGuard -- implements the control this rule asks for. "
         "Leaves open: the approval prompt itself" in page
     )
     assert "Python-only" not in page
@@ -472,7 +472,7 @@ def test_package_line_same_control():
 def test_package_line_other_control():
     page = render_html(build([make_finding("AUD-201", package=DETECTOR)]))
     assert (
-        "aisg: PromptInjectionGuard -- a different control (detector), in addition to, "
+        "aisafe: PromptInjectionGuard -- a different control (detector), in addition to, "
         "not instead of: the sandbox boundary" in page
     )
 
@@ -480,21 +480,23 @@ def test_package_line_other_control():
 def test_package_line_none_names_the_control_outside_the_package():
     page = render_html(build([make_finding("AUD-201", summary="sandbox the tool")]))
     assert "outside the package: sandbox the tool" in page
-    assert "aisg: " not in page[page.index('<h2 id="subsystems">') : page.index('<h2 id="plan">')]
+    assert "aisafe: " not in page[page.index('<h2 id="subsystems">') : page.index('<h2 id="plan">')]
 
 
 def test_package_line_python_only_note_on_a_typescript_unit():
     finding = make_finding("AUD-201", package=GATE, unit="u2", file="web/agent.ts")
     page = render_html(build([finding]))
-    assert "aisg controls are Python-only; the control still applies, this symbol does not." in page
+    assert (
+        "aisafe controls are Python-only; the control still applies, this symbol does not." in page
+    )
 
 
 def test_package_line_python_only_note_falls_back_to_the_extension():
     finding = make_finding("AUD-201", package=GATE, unit=None, file="cmd/agent.go")
     page = render_html(build([finding]))
-    assert "aisg controls are Python-only" in page
+    assert "aisafe controls are Python-only" in page
     unknown_ext = make_finding("AUD-201", package=GATE, unit=None, file="config/agent.yaml")
-    assert "aisg controls are Python-only" not in render_html(build([unknown_ext]))
+    assert "aisafe controls are Python-only" not in render_html(build([unknown_ext]))
 
 
 def test_package_line_protected_path_needs_approval():
@@ -538,7 +540,7 @@ def test_plan_who_column():
     page = render_html(build(findings, baseline=with_baseline()))
     plan = page[page.index('<h2 id="plan">') : page.index('<h2 id="remaining">')]
     header = re.findall(r"<tr>(.*?)</tr>", plan)[0]
-    for col in ("#", "id", "severity", "subsystem", "control", "tier", "aisg", "who", "status"):
+    for col in ("#", "id", "severity", "subsystem", "control", "tier", "aisafe", "who", "status"):
         assert f"<th>{col}</th>" in header
     cells = plan_cells(page)
     assert len(cells) == 6
@@ -567,7 +569,7 @@ def test_plan_who_column():
 
 def test_plan_who_is_decided_by_the_file_extension_before_the_unit():
     # The idiom is offered for the file, not the unit: a `.ts` file in a Python-rooted
-    # unit cannot import aisg, a `.py` file under a package.json can.
+    # unit cannot import aisafe, a `.py` file under a package.json can.
     inventory = make_inventory(
         units=[
             Unit(id="u0", root=".", manifest="pyproject.toml", language="python"),
@@ -612,11 +614,11 @@ def test_plan_who_is_decided_by_the_file_extension_before_the_unit():
     assert who[rs_in_python.fingerprint] == "you"
     assert who[java_in_python.fingerprint] == "you"
     blocks = page[page.index('<h2 id="subsystems">') : page.index('<h2 id="plan">')]
-    assert blocks.count("aisg controls are Python-only") == 3
+    assert blocks.count("aisafe controls are Python-only") == 3
     for finding in (rs_in_python, java_in_python):
         block = blocks[blocks.index(f'id="f-{finding.fingerprint}"') :]
         block = block[: block.index("</article>")]
-        assert "aisg controls are Python-only" in block
+        assert "aisafe controls are Python-only" in block
     package_rows = page[page.index("Rows the package can implement") : page.index("Wiring a")]
     for finding in (rs_in_python, java_in_python, ts_in_python):
         assert finding.fingerprint not in package_rows
@@ -625,7 +627,7 @@ def test_plan_who_is_decided_by_the_file_extension_before_the_unit():
 def test_language_of_uses_the_walkers_table_not_a_copy():
     # Every language the walker names is a language here too, except `config`, which
     # says nothing about what the file can import and falls through to the unit.
-    from aisg.devtools.audit.patterns import LANG_BY_EXT
+    from aisafe.devtools.audit.patterns import LANG_BY_EXT
 
     assert not hasattr(html_mod, "_LANG_BY_EXT")
     languages = {"u1": "python", html_mod.ROOT_UNIT_ID: "python"}
@@ -817,7 +819,7 @@ def test_footer_carries_the_summary_exit_code_and_provenance():
     assert "1 finding (0 below --fail-on high, not counted in exit code); 0 unknown items" in footer
     assert "exit code: 1" in footer
     assert ABSENCE in footer
-    assert re.search(r"generated by anyaisafe [^;]+; the JSON report is authoritative", footer)
+    assert re.search(r"generated by aisafe [^;]+; the JSON report is authoritative", footer)
 
 
 def test_inventory_counts_include_own_output_skipped():
