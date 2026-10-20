@@ -174,11 +174,16 @@ reason written there.
 - **`perf(audit)` (`9fad7b6`)**, **`release` (`1f33bfe`)**, **`docs(plan)`
   (`7a89478`)**: see the git log.
 
-## What the user has to do for the first release
+## The first release (done 2026-10-20)
 
-Nothing is uploaded without these steps; the plan prepared them and stops here.
-The 0.1.0 CHANGELOG section includes waves 1-6 and both renames, since nothing has
-been published.
+**`aisafe` 0.1.0 is on PyPI** (wheel and sdist, with attestations), published by
+release run `39416623344` from the tag `v0.1.0` at `89706a6`, after the user approved
+the `pypi` environment. The smoke job printed `smoke: aisafe==0.1.0 audits as
+expected`; the GitHub release is
+https://github.com/ai-safe-earth/AnyAISafe/releases/tag/v0.1.0. `uv tool install
+aisafe` installs it. The steps below are kept as the record of how it got there.
+
+The 0.1.0 CHANGELOG section includes waves 1-6 and both renames.
 
 1. On pypi.org: Your account -> Publishing -> Add a new pending publisher:
    project `aisafe`, owner `ai-safe-earth`, repository `AnyAISafe`,
@@ -207,24 +212,20 @@ been published.
 identities cannot create new projects`. The pending publisher on PyPI named
 `anyaisafe`, not `aisafe`. PyPI used it anyway: it created an empty project
 `anyaisafe` (no files) and turned the pending publisher into a normal publisher of
-that project, and a token from that publisher cannot create `aisafe`. What is left:
-add the pending publisher for `aisafe` (step 1), set the reviewer (step 2), then
-rerun the failed jobs on the same tag: `gh run rerun 39416623344 --failed`. The
-empty `anyaisafe` project can stay; it keeps the name of the project from being
+that project, and a token from that publisher cannot create `aisafe`. The user then
+added the pending publisher for `aisafe`, removed the publisher from `anyaisafe`, set
+themselves as the `pypi` reviewer and reran the failed jobs; the third attempt
+published. The empty `anyaisafe` project stays, so the name of the project cannot be
 taken by someone else.
 
-Until then the skill's bootstrap resolves only against a local checkout or
-`pip install "aisafe[devtools] @ git+https://github.com/ai-safe-earth/AnyAISafe"`,
-and `.gitlab-ci-euaiact.yml` keeps its git-tag install (flipped to PyPI in wave 6).
-`uv tool install <path to the checkout>` puts the `aisafe` command on PATH from a
-local checkout; `uv tool install aisafe` fails with "not found in the package
-registry" until the upload succeeds.
+Still open from wave 6: `.gitlab-ci-euaiact.yml` keeps its git-tag install until it is
+flipped to the PyPI pin, and then `python scripts/bump_version.py 0.2.0`.
 
 ## Head
 
 `main` after the `aisafe` rename commit `89706a6`. Pushed to `origin`
 (`github.com/ai-safe-earth/AnyAISafe`). Tag `v0.1.0` at `89706a6` (moved there on
-2026-10-20; its upload failed, see above).
+2026-10-20), published to PyPI as `aisafe` 0.1.0.
 
 ## Green
 
