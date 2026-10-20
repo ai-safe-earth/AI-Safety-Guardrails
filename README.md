@@ -239,8 +239,8 @@ pip install "aisafe[all]"
 > `aisafe` runs.
 
 > **Releases** are published to PyPI from `v*` tags by `.github/workflows/release.yml`
-> (trusted publishing; a maintainer approves each release). Until the first tag is
-> on PyPI, install from the repository instead:
+> (trusted publishing; a maintainer approves each release). To run code that is on
+> `main` but not yet released, install from the repository:
 > `pip install "aisafe[devtools] @ git+https://github.com/ai-safe-earth/AnyAISafe"`.
 
 > **Note:** LlamaGuard via Groq, Together, Ollama or OpenAI needs nothing beyond the core

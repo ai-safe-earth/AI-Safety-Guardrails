@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `aisafe.core.*`, `aisafe.modules.*`, `aisafe.integrations.*`, `aisafe.devtools.*`,
 `aisafe.config.*`. Nothing is importable as a bare `core`/`modules`/`config`,
 and it must stay that way: those names would collide with users' own modules
-once published to PyPI.
+once installed from PyPI.
 
 **The project is AnyAISafe. The distribution, the import name and the console
 script are all `aisafe`.** `pip install "aisafe[devtools]"`, then `import aisafe` and
@@ -790,7 +790,8 @@ Rules that hold:
   a test; `install-from: action-path` for dogfooding; three `aisafe audit` calls each
   `|| [ $? -eq 1 ]`; the verdict step exits with the JSON's `summary.exit_code`),
   `.pre-commit-hooks.yaml` (`aisafe-audit` at `pre-push`, `aisafe-lint`, `aisafe-misalign`),
-  the `aisafe-audit` job in `.gitlab-ci-euaiact.yml` (git pin until wave 6) and the
+  the `aisafe-audit` job in `.gitlab-ci-euaiact.yml` (PyPI pin `aisafe[devtools]==` the
+  pyproject version, since 0.1.0 was published on 2026-10-20) and the
   `action` dogfood job in `tests.yml`. `test_ci_surface.py` pins the shapes.
 
 ## Persons and manipulation (P11)

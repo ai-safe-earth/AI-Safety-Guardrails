@@ -766,30 +766,33 @@ class TestCITemplates:
                     assert isinstance(entry, str), (job, key, entry)
 
     def test_gitlab_template_pins_the_package_to_pyproject(self):
-        """The template installs from this project's own repository at a tag
-        that tracks pyproject.toml, never from PyPI by name: the distribution
-        (`aisafe`) is not published yet, so a PyPI spec would fail to resolve
-        (or, should someone else claim the name first, install their code).
-
-        The name in the install spec must be the distribution name -- pip
-        rejects a `name @ url` whose name does not match the metadata of what
-        it downloaded."""
+        """The template installs the PyPI release of this project by its
+        distribution name, pinned to the version in pyproject.toml
+        (`bump_version.py` rewrites both). An unpinned or ranged spec would let
+        a later release change the gate under a pipeline that did not ask for
+        it. Until `aisafe` 0.1.0 was on PyPI (2026-10-20) the template installed
+        from the repository's git tag; nothing of that install may remain."""
         import re
 
         doc = self._load(self.GITLAB)
+        pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
         pin = doc["variables"]["AISAFE_VERSION"]
-        m = re.search(r'^version\s*=\s*"([^"]+)"', (REPO_ROOT / "pyproject.toml").read_text(), re.M)
+        m = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.M)
         assert m and pin == m.group(1), (pin, m and m.group(1))
-        name = re.search(r'^name\s*=\s*"([^"]+)"', (REPO_ROOT / "pyproject.toml").read_text(), re.M)
+        name = re.search(r'^name\s*=\s*"([^"]+)"', pyproject, re.M)
         assert name and name.group(1) == "aisafe", name and name.group(1)
-        assert doc["variables"]["AISAFE_SOURCE"].startswith("git+https://github.com/ai-safe-earth/")
-        install = " ".join(doc[".eu-ai-act-base"]["before_script"])
-        assert f"{name.group(1)}[devtools] @ " + "${AISAFE_SOURCE}@v${AISAFE_VERSION}" in install, (
-            install
-        )
+        install = [s for s in doc[".eu-ai-act-base"]["before_script"] if "pip install" in s]
+        assert install == [
+            'pip install --quiet "' + name.group(1) + '[devtools]==${AISAFE_VERSION}"'
+        ], install
         text = self.GITLAB.read_text(encoding="utf-8")
-        assert not re.search(r"\baisafe(\[[^\]]*\])?==", text), "PyPI spec by name"
+        assert "git+" not in text and "AISAFE_SOURCE" not in text
         assert "pip install pyyaml" not in text
+        # A job that overrides before_script (GitLab replaces it, never merges) or
+        # installs in its own script must pin the same way.
+        for line in re.findall(r"pip install[^\n]*", text):
+            if re.search(r"\baisafe\b", line):
+                assert "aisafe[devtools]==${AISAFE_VERSION}" in line, line
 
     @pytest.mark.parametrize("path", [GITHUB, GITLAB], ids=["github", "gitlab"])
     def test_every_gated_lint_call_tolerates_only_exit_1(self, path: Path):

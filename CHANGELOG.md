@@ -8,6 +8,12 @@ place the version lives and moves the Unreleased entries under a dated heading;
 
 ## [Unreleased]
 
+### Changed
+
+- The GitLab template (`.gitlab-ci-euaiact.yml`) installs `aisafe[devtools]` from PyPI,
+  pinned to `AISAFE_VERSION`, instead of from the repository's git tag, now that 0.1.0
+  is published. The `AISAFE_SOURCE` variable is gone; a pipeline that set it can drop it.
+
 ## [0.1.0] - 2026-10-19
 
 The first tagged release. The project is AnyAISafe; the distribution, the import

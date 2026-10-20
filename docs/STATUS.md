@@ -16,13 +16,13 @@ reason written there.
 
 | wave | scope | state |
 | --- | --- | --- |
-| 0 | performance pass, CHANGELOG, `bump_version.py`, `release.yml`, README truth-up, `v0.1.0` | code done; **the tag is the user's act** (below) |
+| 0 | performance pass, CHANGELOG, `bump_version.py`, `release.yml`, README truth-up, `v0.1.0` | tagged `v0.1.0` at `89706a6`; `aisafe` 0.1.0 on PyPI 2026-10-20 |
 | 1 | tokens and prices, `aisafe measure` offline + cost columns, `aisafe decide`, `Budget`, AUD-806 | committed `e748021` |
 | 2 | `aisafe audit --only`, `aisafe hook`, Claude Code plugin, Cursor/Gemini installers, Action, pre-commit, GitLab job | committed `40af8c1` |
 | 3 | P11 persons-and-manipulation rules, `ManipulationGuard`, `AIDisclosureGuard`, corpora, `prompt_audit` | committed `ed7b41b` |
 | 4 | `aisafe attest` with levels and a named owner | committed `e5ef805` |
 | 5 | seven-phase skill, SYSTEM.md, CONTRIBUTING, README | committed `ab19e68` |
-| 6 | `aisafe fleet`, bench `--tool audit`, `v0.2.0` | fleet and bench committed 2026-10-19 (the commit after `ab19e68`); the PyPI pin flip and `0.2.0` wait for the `v0.1.0` tag |
+| 6 | `aisafe fleet`, bench `--tool audit`, `v0.2.0` | fleet and bench committed 2026-10-19 (the commit after `ab19e68`); GitLab template on the PyPI pin 2026-10-20; `0.2.0` is the next release, the user's act |
 
 ## Landed 2026-10-20
 
@@ -41,6 +41,21 @@ reason written there.
 - **the `v0.1.0` release run failed at the upload** (`invalid-publisher`: PyPI had
   no pending publisher for the repository). Nothing reached PyPI; the tag `v0.1.0`
   exists on `origin` at `a81b3b2`, with the old names.
+- **`aisafe` 0.1.0 published** from `v0.1.0` moved to `89706a6` (see "The first
+  release" below).
+- **the GitLab template installs from PyPI**: `pip install --quiet
+  "aisafe[devtools]==${AISAFE_VERSION}"`; `AISAFE_SOURCE` and the git-tag install are
+  gone, `TestCITemplates` pins the exact install line and that no `aisafe` install in
+  the file is unpinned. The four jobs were run in `python:3.11-slim` (docker) against
+  this repository with the PyPI 0.1.0: full scan 0 errors exit 0, merge-request scan
+  exit 0, weekly audit exit 1 on warnings (`allow_failure: true`, as designed),
+  `aisafe-audit` exit 0 with the baseline and 1 without it.
+- **`bump_version.py 0.2.0` not run, on purpose.** It would pin the skill bootstraps
+  (`uvx --from aisafe==0.2.0`), the hook's `--expect-version`, the Action's default
+  `version`, the plugin manifest and the GitLab template to a version PyPI does not
+  have, and date a 0.2.0 CHANGELOG section that was never released. Plugin users
+  follow `main`, so they would get the broken pins at once. Rule from here on: run
+  `bump_version.py X.Y.Z` only in the commit that is tagged `vX.Y.Z` right after.
 
 ## Landed 2026-10-19
 
@@ -218,8 +233,9 @@ themselves as the `pypi` reviewer and reran the failed jobs; the third attempt
 published. The empty `anyaisafe` project stays, so the name of the project cannot be
 taken by someone else.
 
-Still open from wave 6: `.gitlab-ci-euaiact.yml` keeps its git-tag install until it is
-flipped to the PyPI pin, and then `python scripts/bump_version.py 0.2.0`.
+Wave 6 is complete: the GitLab template was switched to the PyPI pin on 2026-10-20.
+The next release (0.2.0 or 0.1.1) is `bump_version.py X.Y.Z` in the commit that gets
+tagged, then the tag; both the user's act.
 
 ## Head
 
@@ -290,9 +306,9 @@ criteria) and `bump_version.py --check` (9 sites) in sync.
   (it clones 20 repositories); the tests cover two local fixtures, `--jobs 2`,
   `--resume`, `--proposal` and the exit-code rule. Running it is the natural
   first use of `bench/run.py --tool audit`, which produces the labelling CSV.
-- After the user tags `v0.1.0`: flip `.gitlab-ci-euaiact.yml` to the PyPI pin
-  (`TestCITemplates` changes with it), then `python scripts/bump_version.py
-  0.2.0` and a new CHANGELOG heading; `v0.2.0` is again the user's act.
+- The next release: `python scripts/bump_version.py X.Y.Z` in the very commit that
+  is tagged `vX.Y.Z` (bumping earlier points every pin on `main` at a version PyPI
+  does not have); the tag is the user's act.
 
 ## Known-broken, deliberately left
 
