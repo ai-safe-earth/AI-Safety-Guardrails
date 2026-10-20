@@ -21,7 +21,8 @@ run aisafe` always run this package; `uv tool install` and `pipx install` keep t
 environments apart but link both commands into the same bin directory, where the
 second install refuses (or, with `--force`, replaces the first). That is why the
 bootstrap scripts print which `aisafe` ran, the skill stops on a version mismatch,
-and `hook.sh`/`hook.ps1` fail open when the `aisafe` they found rejects `hook run`. History: the project was
+and `hook.sh`/`hook.ps1` fail open when the `aisafe` they found rejects `hook run` or uvx/pipx
+cannot fetch the pinned release. History: the project was
 "AI Safety Guardrails" with the distribution `aisguard` until 2026-10-19, then the
 distribution `anyaisafe` with the import and command `aisg` until 2026-10-20; none
 of them was ever published. `aisg` went because PyPI's `aisg` (an AI-gateway SDK)

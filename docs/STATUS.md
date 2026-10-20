@@ -56,6 +56,16 @@ reason written there.
   have, and date a 0.2.0 CHANGELOG section that was never released. Plugin users
   follow `main`, so they would get the broken pins at once. Rule from here on: run
   `bump_version.py X.Y.Z` only in the commit that is tagged `vX.Y.Z` right after.
+- **the hook bootstrap fails open when uvx/pipx cannot fetch the pin.** `hook.sh` and
+  `hook.ps1` used `exec uvx ...` (sh) or passed the launcher's status through (ps1), so
+  offline the host got uvx's exit 1 and no answer, which Cursor can read as a block.
+  All three launchers now share the PATH branch's check: a non-zero status on `hook
+  run` prints `<launcher> exited N ...; hook skipped` and fails open (Cursor gets its
+  `allow`); other verbs keep their status. Checked with the real uvx (`UV_OFFLINE=1`,
+  empty cache and tool dir): old script exit 1 and no output, new one exit 0 and
+  `{"permission":"allow"}`, under sh, Windows PowerShell 5.1 and PowerShell 7; online
+  with a fresh cache the published 0.1.0 is fetched and answers. `TestBootstrapScript`
+  gained the uvx cases and `TestBootstrapScriptPowerShell` covers `hook.ps1`.
 
 ## Landed 2026-10-19
 

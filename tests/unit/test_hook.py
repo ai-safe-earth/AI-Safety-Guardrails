@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import shutil
 import socket
@@ -44,6 +45,7 @@ PY_AGENT = REPO / "tests" / "fixtures" / "audit" / "py_agent"
 FIXTURES = REPO / "tests" / "fixtures" / "hooks"
 HOOK_SOURCE = REPO / "src" / "aisafe" / "devtools" / "hook.py"
 SH = shutil.which("sh")
+PS = shutil.which("pwsh") or shutil.which("powershell")
 
 
 # ---------------------------------------------------------------------------
@@ -1405,3 +1407,124 @@ class TestBootstrapScript:
             assert proc.returncode == 0, proc.stderr
             assert proc.stdout == expected
             assert "exited 2" in proc.stderr and "hook skipped" in proc.stderr
+
+    def _fake_uvx(self, tmp_path, rc):
+        # Records its argv, prints one line on stdout and exits `rc`, the way uvx does when the
+        # pinned release resolves (0) or cannot be fetched (1: offline, index down).
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        fake = bin_dir / "uvx"
+        fake.write_bytes(
+            b'#!/bin/sh\necho "$@" > "${0%/*}/argv"\necho from-uvx\n'
+            + f"echo 'error: no solution found' >&2\nexit {rc}\n".encode()
+        )
+        fake.chmod(0o755)
+        return bin_dir
+
+    def test_a_uvx_that_cannot_fetch_the_pin_fails_open(self, tmp_path):
+        # uvx exits 1 when it cannot resolve `aisafe==<pin>`. Claude Code reads a non-zero
+        # exit as an error and Cursor an empty answer as a block; the bootstrap must not.
+        script = REPO / "src" / "aisafe" / "skills" / "ai-safety-audit" / "scripts" / "hook.sh"
+        bin_dir = self._fake_uvx(tmp_path, 1)
+        for host, expected in (
+            ("claude", "from-uvx\n"),
+            ("cursor", 'from-uvx\n{"permission":"allow"}\n'),
+        ):
+            proc = subprocess.run(
+                [SH, str(script), "run", "--host", host, "--event", "x"],
+                input="{}",
+                capture_output=True,
+                text=True,
+                env={"PATH": str(bin_dir)},
+                timeout=60,
+                check=False,
+            )
+            assert proc.returncode == 0, proc.stderr
+            assert proc.stdout == expected
+            assert "uvx exited 1" in proc.stderr and "hook skipped" in proc.stderr
+
+    def test_a_working_uvx_runs_the_pinned_release_and_passes_its_answer_through(self, tmp_path):
+        script = REPO / "src" / "aisafe" / "skills" / "ai-safety-audit" / "scripts" / "hook.sh"
+        bin_dir = self._fake_uvx(tmp_path, 0)
+        proc = subprocess.run(
+            [SH, str(script), "run", "--host", "cursor", "--event", "x"],
+            input="{}",
+            capture_output=True,
+            text=True,
+            env={"PATH": str(bin_dir)},
+            timeout=60,
+            check=False,
+        )
+        assert proc.returncode == 0 and proc.stdout == "from-uvx\n"
+        assert "hook skipped" not in proc.stderr
+        pin = re.search(r'^AISAFE_VERSION="([^"]+)"', script.read_text(), re.M).group(1)
+        argv = (bin_dir / "argv").read_text().split()
+        assert argv[:4] == ["--from", f"aisafe=={pin}", "aisafe", "hook"]
+        assert argv[-4:] == ["--origin", "uvx", "--expect-version", pin]
+
+    def test_only_run_fails_open_other_verbs_keep_their_status(self, tmp_path):
+        # `hook install` refusing is an answer for the person at the terminal, not a gate.
+        script = REPO / "src" / "aisafe" / "skills" / "ai-safety-audit" / "scripts" / "hook.sh"
+        bin_dir = self._fake_uvx(tmp_path, 1)
+        proc = subprocess.run(
+            [SH, str(script), "install", "--host", "claude"],
+            capture_output=True,
+            text=True,
+            env={"PATH": str(bin_dir)},
+            timeout=60,
+            check=False,
+        )
+        assert proc.returncode == 1 and "hook skipped" not in proc.stderr
+
+
+@pytest.mark.skipif(PS is None, reason="no PowerShell on PATH")
+class TestBootstrapScriptPowerShell:
+    SCRIPT = REPO / "src" / "aisafe" / "skills" / "ai-safety-audit" / "scripts" / "hook.ps1"
+
+    def _run(self, bin_dir, *args):
+        env = dict(os.environ, PATH=str(bin_dir))
+        return subprocess.run(
+            [PS, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(self.SCRIPT), *args],
+            input="{}",
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=120,
+            check=False,
+        )
+
+    def _fake(self, tmp_path, name, rc):
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        if os.name == "nt":
+            body = f"@echo off\r\necho error: no solution found 1>&2\r\nexit /b {rc}\r\n"
+            (bin_dir / f"{name}.cmd").write_text(body)
+        else:
+            fake = bin_dir / name
+            fake.write_text(f"#!/bin/sh\necho 'error: no solution found' >&2\nexit {rc}\n")
+            fake.chmod(0o755)
+        return bin_dir
+
+    def test_without_aisafe_the_bootstrap_fails_open(self, tmp_path):
+        bin_dir = tmp_path / "empty-bin"
+        bin_dir.mkdir()
+        for host, expected in (("claude", ""), ("cursor", '{"permission":"allow"}\n')):
+            proc = self._run(bin_dir, "run", "--host", host, "--event", "x")
+            assert proc.returncode == 0, proc.stderr
+            assert proc.stdout == expected
+            assert "hook skipped" in proc.stderr
+
+    @pytest.mark.parametrize("launcher", ["uvx", "aisafe"])
+    def test_a_launcher_that_fails_fails_open(self, tmp_path, launcher):
+        # uvx exits 1 when it cannot fetch the pin; a foreign `aisafe` exits 2 on `hook run`.
+        bin_dir = self._fake(tmp_path, launcher, 2 if launcher == "aisafe" else 1)
+        for host, expected in (("claude", ""), ("cursor", '{"permission":"allow"}\n')):
+            proc = self._run(bin_dir, "run", "--host", host, "--event", "x")
+            assert proc.returncode == 0, proc.stderr
+            assert proc.stdout == expected
+            assert "exited" in proc.stderr and "hook skipped" in proc.stderr
+
+    def test_only_run_fails_open_other_verbs_keep_their_status(self, tmp_path):
+        bin_dir = self._fake(tmp_path, "uvx", 1)
+        proc = self._run(bin_dir, "install", "--host", "claude")
+        assert proc.returncode == 1 and "hook skipped" not in proc.stderr

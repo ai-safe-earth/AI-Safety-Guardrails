@@ -101,7 +101,8 @@ That is the intersection of what the hosts above accept; host-specific metadata 
 `pipx run --spec 'aisafe==<version>'`. `aisafe` is the distribution, the importable name
 and the console script; on PyPI the unrelated `aisafeguard` also installs an `aisafe`
 command, so `audit.sh` and `attest.sh` say which one ran and `hook.sh` fails open when
-the one it found rejects `hook run`. The version is pinned to the package
+the one it found rejects `hook run`, and when uvx or pipx cannot fetch the pinned
+release (offline, for example). The version is pinned to the package
 that shipped the scripts and a test asserts it equals `pyproject.toml`; an unpinned bootstrap
 is what AUD-602 flags in targets, and the skill does not get an exception. When none of the
 three is available, `audit.sh` exits 2 with install hints, `verify.sh` prints

@@ -14,6 +14,14 @@ place the version lives and moves the Unreleased entries under a dated heading;
   pinned to `AISAFE_VERSION`, instead of from the repository's git tag, now that 0.1.0
   is published. The `AISAFE_SOURCE` variable is gone; a pipeline that set it can drop it.
 
+### Fixed
+
+- The hook bootstrap (`hook.sh`, `hook.ps1`) now fails open when uvx or pipx cannot fetch
+  the pinned `aisafe` release, for example offline. Before, the launcher's error status
+  reached the agent host: Claude Code reported a hook error, and Cursor could read the
+  empty answer to a permission hook as a block. It already failed open when no launcher
+  was found or a foreign `aisafe` rejected `hook run`.
+
 ## [0.1.0] - 2026-10-19
 
 The first tagged release. The project is AnyAISafe; the distribution, the import
