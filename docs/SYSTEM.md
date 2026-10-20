@@ -43,7 +43,7 @@ approving each change; the commands also run on their own, in CI, or over a flee
 
 `GuardrailPipeline` runs guards in four stages (input, processing, output, policy) from a
 YAML preset (`default.yaml`, `eu_high_risk.yaml`). A guard is a trade: `aisafe measure` runs
-the attack corpus (48 cases, seven families), the adversarially benign corpus (48 cases)
+the attack corpus (55 cases, seven families), the adversarially benign corpus (48 cases)
 and the output corpus (20 responses) through each guard in isolation and reports catch
 rate, benign breakage, latency and tokens; a `Profile` is populated from that output and
 never typed by hand. `GuardrailPipeline(thresholds=...)` demotes a guard whose MEASURED
