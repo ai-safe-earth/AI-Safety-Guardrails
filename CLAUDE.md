@@ -273,7 +273,7 @@ reports what got through. Rules that hold:
   hostname that is not a literal IP counts as remote even if it would resolve
   to loopback.
 
-The corpus is `src/aisafe/probes/*.yaml`, one file per family, 48 cases seeded
+The corpus is `src/aisafe/probes/*.yaml`, one file per family, 55 attack cases in seven families seeded
 from the guards this package already ships -- INJECTION_PATTERNS, PII_PATTERNS,
 TOXICITY_PATTERNS, AdvancedInjectionDetectors, high_risk_fail_closed. Every case
 records its `seed_pattern`; keep that link when adding cases, and add a case when
@@ -292,7 +292,7 @@ it breaks, and what it costs. Rules that hold:
 - **Guards are measured in isolation**, not through the assembled pipeline: a
   sequential pipeline short-circuits on the first block, so later guards would
   score a spurious zero.
-- **The headline catch rate is scored against all 48 attacks**, including
+- **The headline catch rate is scored against all 55 attacks**, including
   families outside a guard's remit. Read the per-family matrix, not the
   headline. Output-stage guards are flagged: they inspect responses, and the
   corpus is user input, so their catch rate measures the wrong thing.
@@ -401,7 +401,7 @@ was downgraded to a flag until the veto landed. When in doubt, treat the payload
 as live.
 
 `aisafe measure` is the arbiter. The fix costs zero attack coverage (21/48 either
-way) and takes benign breakage from 10% to 0%. A test asserts the lenient and
+way when it landed; 21/55 since the seventh family) and takes benign breakage from 10% to 0%. A test asserts the lenient and
 strict guards return identical verdicts on every attack case.
 
 Also fixed here: `TokenSmugglingDetector`'s `space_injection` was
@@ -555,7 +555,7 @@ the registry lists them all and `--list-rules` prints them. Invariants the tests
   an acceptance, which is why the flag cannot be given without one.
 - **`recommendation.package`** (`model.Package`) is on every finding:
   `mechanism` from `PACKAGE_MECHANISMS`, `symbols`, `same_control`,
-  `leaves_open`. `same_control` is a bool, never a score, and `True` (eleven
+  `leaves_open`. `same_control` is a bool, never a score, and `True` (thirteen
   rules) means wiring the symbol IS the control the rule asks for -- not that
   the finding goes away; the re-audit decides that. `leaves_open` is required
   text whenever the mechanism is not `none` and is rendered every time the
