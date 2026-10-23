@@ -251,7 +251,7 @@ KILL_SWITCH_ENV_READS: tuple[re.Pattern[str], ...] = (
 )
 
 # This package declares GUARDRAILS_DISABLE_ALL in `Settings` and documents it in
-# `.env.example`, but nothing in `core/` or `modules/` reads it (CLAUDE.md: inert).
+# `.env.example`, but nothing in `core/` or `modules/` reads it (inert).
 # A target that declares it has not got a kill switch; it gets `AUD-107/inert`.
 INERT_KILL_SWITCH: tuple[str, ...] = ("GUARDRAILS_DISABLE_ALL",)
 

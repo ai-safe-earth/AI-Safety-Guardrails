@@ -150,12 +150,10 @@ jobs:
           rc=0; aisafe audit . --no-external --fail-on high --baseline audit-baseline.json || rc=$?
           test "$rc" -eq 0
 
-      - name: Skill mirrors match the packaged skill
-        # .claude/skills and .agents/skills are byte-identical copies of the
-        # packaged skill; exit 1 lists the drifted files.
-        run: |
-          rc=0; aisafe skill diff --host all || rc=$?
-          test "$rc" -eq 0
+      - name: Plugin's skill copy matches the packaged skill
+        # plugins/aisafe/skills is a byte-identical copy of the packaged skill;
+        # exit 1 lists the drifted files.
+        run: python scripts/sync_skill.py --check
 
   lint:
     name: ruff

@@ -10,6 +10,16 @@ place the version lives and moves the Unreleased entries under a dated heading;
 
 ### Changed
 
+- The Claude Code plugin is now called `aisafe`, like the package:
+  `claude plugin install aisafe@ai-safe-earth`. It lives in `plugins/aisafe/`. Anyone who
+  installed `ai-safety-audit@ai-safe-earth` should uninstall it and install `aisafe`. The
+  skill inside keeps its name, `ai-safety-audit`.
+- The repository no longer carries copies of the skill in `.claude/skills/` and
+  `.agents/skills/`; `aisafe skill install` writes them where a host needs them. The
+  plugin's copy is the only mirror. The contributor-only skills, the editor hook and the
+  planning documents under `docs/` are gone; `CLAUDE.md` is now a short statement of the
+  mission and the principles, and `docs/REFERENCE.md` is the one reference document.
+
 - The GitLab template (`.gitlab-ci-euaiact.yml`) installs `aisafe[devtools]` from PyPI,
   pinned to `AISAFE_VERSION`, instead of from the repository's git tag, now that 0.1.0
   is published. The `AISAFE_SOURCE` variable is gone; a pipeline that set it can drop it.

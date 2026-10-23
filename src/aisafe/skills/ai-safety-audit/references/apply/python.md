@@ -18,7 +18,7 @@ Two things hold for every section:
   symbol still does not do. `same_control: no` means the symbol is offered "in addition
   to, not instead of" the rule's control, which is stated first from
   `references/controls.md`. A detector is never the control for a P1-P4 finding.
-- Pipeline rules that bite (from this package's CLAUDE.md): reuse ONE context dict per
+- Pipeline rules that bite (this package's `docs/REFERENCE.md` lists them all): reuse ONE context dict per
   request across `run_input` / `run_processing` / `run_output` (PII token maps, session
   budgets and the rate-limit key live in it); pass the tool call to `run_processing`
   explicitly -- it mutates the caller's context dict (the session budget depends on that)

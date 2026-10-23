@@ -11,7 +11,7 @@
 # Three files under src/ carry `# euaiact-lint: ignore-file` because they ARE
 # the rule vocabulary; the scan reports how many files it skipped and how
 # many findings a line directive silenced, so a clean run says what it did
-# not look at. See CLAUDE.md, "EU AI Act linter suppression".
+# not look at.
 #
 # Outputs:
 #   - Terminal summary in the job log

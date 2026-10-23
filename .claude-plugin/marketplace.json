@@ -7,8 +7,8 @@
   },
   "plugins": [
     {
-      "name": "ai-safety-audit",
-      "source": "./plugins/ai-safety-audit",
+      "name": "aisafe",
+      "source": "./plugins/aisafe",
       "description": "Audit an AI/agent codebase for safety gaps ordered by blast radius (aisafe audit), plan and apply controls one approval at a time, and gate edits with hooks: protected paths ask, secret literals are denied, unsafe shell commands are denied, edited files are re-audited, and a Stop with a new high finding blocks once. Never a compliance verdict.",
       "category": "security",
       "tags": ["ai-safety", "audit", "guardrails", "eu-ai-act", "nist-ai-rmf", "hooks"]

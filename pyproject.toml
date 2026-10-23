@@ -14,7 +14,7 @@ misalignment-check = "aisafe.devtools.misalignment_check:main"
 
 [project]
 # The project is AnyAISafe; the distribution, the importable name and the console
-# script are all `aisafe` (see CLAUDE.md "Layout").
+# script are all `aisafe`.
 # pip install "aisafe[devtools]", then import aisafe.
 name = "aisafe"
 version = "0.1.0"

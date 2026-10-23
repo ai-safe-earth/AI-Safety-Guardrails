@@ -4,8 +4,8 @@ Package-data accessor for the agent skill that `aisafe skill install` copies int
 
 The skill directory (`ai-safety-audit/`) ships as package data next to this
 module, so it is readable from an installed wheel via importlib.resources, not
-just from a source checkout. `.claude/skills/` and `.agents/skills/` at the
-repo root are byte-identical mirrors of it, pinned by a test.
+just from a source checkout. `plugins/aisafe/skills/` at the repo root is a
+byte-identical mirror of it, pinned by a test.
 
     from aisafe.skills import skill_root, iter_skill_files, skill_digest
 

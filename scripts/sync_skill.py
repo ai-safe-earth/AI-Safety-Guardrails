@@ -1,18 +1,17 @@
 """scripts/sync_skill.py
 ---------------------
-Pin the skill's bootstrap scripts and the plugin manifest to the package version and refresh the three mirrors.
+Pin the skill's bootstrap scripts and the plugin manifest to the package version and refresh the plugin's copy.
 
 The canonical skill lives in `src/aisafe/skills/ai-safety-audit/` (shipped in the wheel);
-`.claude/skills/ai-safety-audit/`, `.agents/skills/ai-safety-audit/` and
-`plugins/ai-safety-audit/skills/ai-safety-audit/` are byte-identical copies pinned by
-`tests/unit/test_skill_package.py`. This dev tool:
+`plugins/aisafe/skills/ai-safety-audit/` (the Claude Code plugin's copy) is a byte-identical
+mirror pinned by `tests/unit/test_skill_package.py`. This dev tool:
 
 1. reads `[project].version` from `pyproject.toml`;
 2. rewrites the `AISAFE_VERSION="..."` / `$AISAFE_VERSION = "..."` line in the six canonical
    scripts so the bootstrap stays pinned to the release (an unpinned bootstrap is exactly
    what AUD-602 flags in targets);
-3. pins `"version"` in `plugins/ai-safety-audit/.claude-plugin/plugin.json`;
-4. copies the canonical tree over the three mirrors, deleting stale mirror files.
+3. pins `"version"` in `plugins/aisafe/.claude-plugin/plugin.json`;
+4. copies the canonical tree over the mirror, deleting stale mirror files.
 
     python scripts/sync_skill.py          # write
     python scripts/sync_skill.py --check  # list differences, exit 1 if any, write nothing
@@ -37,12 +36,8 @@ except ModuleNotFoundError:  # Python 3.10
 
 REPO = Path(__file__).resolve().parents[1]
 CANONICAL = REPO / "src" / "aisafe" / "skills" / "ai-safety-audit"
-MIRRORS = (
-    REPO / ".claude" / "skills" / "ai-safety-audit",
-    REPO / ".agents" / "skills" / "ai-safety-audit",
-    REPO / "plugins" / "ai-safety-audit" / "skills" / "ai-safety-audit",
-)
-PLUGIN_JSON = REPO / "plugins" / "ai-safety-audit" / ".claude-plugin" / "plugin.json"
+MIRRORS = (REPO / "plugins" / "aisafe" / "skills" / "ai-safety-audit",)
+PLUGIN_JSON = REPO / "plugins" / "aisafe" / ".claude-plugin" / "plugin.json"
 PLUGIN_VERSION_LINE = re.compile(r'("version":\s*")([^"]*)(")')
 SCRIPTS = (
     "scripts/audit.sh",

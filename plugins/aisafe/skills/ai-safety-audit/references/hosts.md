@@ -53,7 +53,7 @@ has no "ask", so an `ask` follows `[tool.aisafe-hook].ask-fallback` (`allow`, re
 never installs anything and never opens a socket.
 
 The Claude Code plugin (`claude plugin marketplace add ai-safe-earth/AnyAISafe`,
-then `claude plugin install ai-safety-audit@ai-safe-earth`) carries the same hooks in
+then `claude plugin install aisafe@ai-safe-earth`) carries the same hooks in
 `hooks/hooks.json` and this skill as `skills/ai-safety-audit/`, so no settings file is
 edited at all.
 

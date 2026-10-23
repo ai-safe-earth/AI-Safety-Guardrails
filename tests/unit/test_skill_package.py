@@ -25,11 +25,7 @@ from aisafe.skills import SKILL_NAME, iter_skill_files, skill_root
 
 REPO = Path(__file__).resolve().parents[2]
 CANONICAL = REPO / "src" / "aisafe" / "skills" / SKILL_NAME
-MIRRORS = (
-    REPO / ".claude" / "skills" / SKILL_NAME,
-    REPO / ".agents" / "skills" / SKILL_NAME,
-    REPO / "plugins" / "ai-safety-audit" / "skills" / SKILL_NAME,
-)
+MIRRORS = (REPO / "plugins" / "aisafe" / "skills" / SKILL_NAME,)
 SCRIPTS = (
     "audit.sh",
     "audit.ps1",
@@ -938,4 +934,4 @@ class TestHostsDocHooks:
             if host.hooks.source:
                 assert host.hooks.source in text, f"{host.name}: {host.hooks.source}"
         assert "fails OPEN" in text or "fails open" in text
-        assert "claude plugin install ai-safety-audit@ai-safe-earth" in text
+        assert "claude plugin install aisafe@ai-safe-earth" in text

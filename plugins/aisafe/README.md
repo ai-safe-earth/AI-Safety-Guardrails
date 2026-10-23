@@ -7,7 +7,7 @@ rules. The skill copy under `skills/` is a byte-identical mirror of the canonica
 Install:
 
     claude plugin marketplace add ai-safe-earth/AnyAISafe
-    claude plugin install ai-safety-audit@ai-safe-earth
+    claude plugin install aisafe@ai-safe-earth
 
 What the hooks do (every command goes through the pinned bootstrap `scripts/hook.sh`, which
 resolves `aisafe` on PATH, else `uvx --from "aisafe==<version>"`, else `pipx run`; a missing

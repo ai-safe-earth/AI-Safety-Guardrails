@@ -1,5 +1,5 @@
 # The ai-safety-audit skill ships shell and PowerShell bootstrap scripts under
-# src/aisafe/skills/ and in two mirrors (.claude/skills/, .agents/skills/) that a test
+# src/aisafe/skills/ and in the plugin's mirror (plugins/aisafe/skills/) that a test
 # compares byte-for-byte and parses with `sh -n`. With core.autocrlf=true, git would
 # rewrite their line endings to CRLF on Windows checkout, breaking both; pin LF.
 *.sh text eol=lf

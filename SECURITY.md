@@ -16,10 +16,10 @@ only channel, and it is where you will hear back.
 - The `aisafe` command line: `lint`, `misalign`, `measure`, `probe`, `init`,
   `audit`, `skill`, `decide`, `hook`, `attest`, `fleet`.
 - The `ai-safety-audit` skill and its bootstrap scripts
-  (`src/aisafe/skills/ai-safety-audit/scripts/` and the mirrors under
-  `.claude/skills/`, `.agents/skills/` and `plugins/ai-safety-audit/skills/`).
+  (`src/aisafe/skills/ai-safety-audit/scripts/` and the plugin's mirror under
+  `plugins/aisafe/skills/`).
 - The agent-host hooks (`aisafe hook`, the bootstrap `hook.sh` / `hook.ps1`) and
-  the Claude Code plugin (`.claude-plugin/`, `plugins/ai-safety-audit/`).
+  the Claude Code plugin (`.claude-plugin/`, `plugins/aisafe/`).
 - The CI surface: `action.yml`, `.pre-commit-hooks.yaml` and the GitLab job
   template `.gitlab-ci-euaiact.yml`.
 

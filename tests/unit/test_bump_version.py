@@ -130,4 +130,4 @@ def test_cli_check_and_section(capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_optional_sites_are_the_future_action_and_plugin() -> None:
     optional = {s.relpath for s in bump_version.SITES if s.optional}
-    assert optional == {"action.yml", "plugins/ai-safety-audit/.claude-plugin/plugin.json"}
+    assert optional == {"action.yml", "plugins/aisafe/.claude-plugin/plugin.json"}

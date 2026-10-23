@@ -1,8 +1,8 @@
 # Contributing
 
-Thank you for looking. This page is the short version; `CLAUDE.md` is the long one (it is
-written for coding agents, and everything in it holds for people too), and
-`docs/SYSTEM.md` is the system on one page.
+Thank you for looking. This page is the practical guide; `CLAUDE.md` holds the mission
+and the principles behind every change (it is written for coding agents, and everything in
+it holds for people too), and `docs/REFERENCE.md` is the full reference.
 
 ## Setup
 
@@ -57,8 +57,7 @@ acceptance.
   never type a number in.
 - Generated files are regenerated, not edited: `references/controls.md` (severity,
   mapping and leaves-open text, `scripts/controls_md.py`), `references/levels.md` (the
-  whole file, `scripts/levels_md.py`), and the three skill mirrors (`.claude/skills/`,
-  `.agents/skills/`, `plugins/ai-safety-audit/skills/`, `scripts/sync_skill.py`).
+  whole file, `scripts/levels_md.py`), and the plugin's skill mirror (`plugins/aisafe/skills/`, `scripts/sync_skill.py`).
 - `# aisafe-audit: ignore-file` sits only on the files that are the audit's vocabulary; a
   real finding anywhere else goes in the baseline with a reason. The same holds for the
   `euaiact-lint` and `misalignment-check` markers.
@@ -67,10 +66,13 @@ acceptance.
 
 ## Adding things
 
-- **A guard**: `.claude/skills/add-guard/SKILL.md` is the checklist (subclass, register,
-  all four presets, export, probe cases with `seed_pattern`, the audit's name tables, an
-  AUD-801 acceptance in the baseline, `CLASS_SYMBOLS` and an `apply/python.md` heading when
-  a rule names it).
+- **A guard**: subclass `GuardrailBase`, set `name` and `stage`, decorate it with
+  `@register_guard("name")`, wire the name into all four presets (`config/` and
+  `src/aisafe/config/`), export it from `src/aisafe/__init__.py`, add tests and a probe case
+  per detection pattern with its `seed_pattern`, teach the audit the name
+  (`discover._AISAFE_GUARD_RE`, `rules/guards._GUARD_CLASSES`), accept its AUD-801 group in
+  `audit-baseline.json` with a reason, and, when a rule names the class, add it to
+  `CLASS_SYMBOLS` and give `apply/python.md` a heading.
 - **An audit rule**: a class under `src/aisafe/devtools/audit/rules/`, a row in
   `SUBSYSTEM_OF_RULE`, a `recommendation.package` with `leaves_open` text whenever the
   mechanism is not `none`, a hand-written section in `references/controls.md` followed by

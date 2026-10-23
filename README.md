@@ -268,7 +268,7 @@ For Claude Code, install the plugin. It brings the skill and the hooks:
 
 ```bash
 claude plugin marketplace add ai-safe-earth/AnyAISafe
-claude plugin install ai-safety-audit@ai-safe-earth
+claude plugin install aisafe@ai-safe-earth
 ```
 
 For other agents, copy the skill into the host's skill folder:
@@ -592,8 +592,8 @@ reports 33 findings, all already in `audit-baseline.json` with a written reason,
   one YAML file per family, each case linked to the pattern it tests by `seed_pattern`. A
   benign case that a naive guard would block is worth more than another attack.
 - **Add a guard.** Subclass `GuardrailBase`, register it, wire it into the presets, add
-  tests and probe cases. The checklist is
-  [`.claude/skills/add-guard/SKILL.md`](https://github.com/ai-safe-earth/AnyAISafe/blob/main/.claude/skills/add-guard/SKILL.md).
+  tests and probe cases. The checklist is in
+  [`CONTRIBUTING.md`](https://github.com/ai-safe-earth/AnyAISafe/blob/main/CONTRIBUTING.md).
 - **Add an audit rule.** A rule class under `src/aisafe/devtools/audit/rules/`, a row in
   `SUBSYSTEM_OF_RULE`, a `controls.md` section, one fixture that fires and one that does
   not, and `measured_precision = None`. CONTRIBUTING.md lists every step.

@@ -73,7 +73,7 @@ SITES: tuple[Site, ...] = (
         optional=True,
     ),
     Site(
-        "plugins/ai-safety-audit/.claude-plugin/plugin.json",
+        "plugins/aisafe/.claude-plugin/plugin.json",
         re.compile(r'("version":\s*")([^"]+)(")'),
         optional=True,
     ),

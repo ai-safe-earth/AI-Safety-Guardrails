@@ -163,16 +163,16 @@ AnyAISafe/
 │   │   ├── fleet.py, _git.py    # The audit over many repositories (aisafe fleet); pinned fetch
 │   │   └── _config.py           # Reads [tool.*] defaults from pyproject.toml
 │   ├── probes/                  # Attack and benign corpora (YAML, ship in the wheel)
-│   └── skills/ai-safety-audit/  # The agent skill (canonical copy; mirrored below)
+│   └── skills/ai-safety-audit/  # The agent skill (canonical copy; the plugin carries a mirror)
 │
 ├── config/                      # Same YAML presets, for local development
 │   ├── default.yaml
 │   ├── eu_high_risk.yaml
 │   └── nemo_rails/
 │
-├── .claude/skills/, .agents/skills/, plugins/ai-safety-audit/skills/   # Byte-identical mirrors of the skill (scripts/sync_skill.py)
+├── .claude-plugin/, plugins/aisafe/   # The Claude Code plugin; its skill copy is a byte-identical mirror (scripts/sync_skill.py)
 ├── bench/                       # Precision bench: SHA-pinned corpus, labelled findings
-├── docs/                        # STATUS.md (handoff), PLAN.md, plan/, explain/
+├── docs/                        # REFERENCE.md (this file)
 ├── tests/
 │   ├── conftest.py              # Puts src/ on sys.path for uninstalled runs
 │   ├── fixtures/                # Deliberately non-compliant linter input; audit fixture trees
@@ -521,6 +521,39 @@ Or in YAML:
 pipeline:
   request_timeout: 30.0
 ```
+
+### Pipeline behaviour that surprises people
+
+- **One context dict per request, reused across stages.** Pass the same dict to
+  `run_input`, `run_processing` and `run_output`. PII tokenization (`_pii_token_map`),
+  the session tool budgets (`_tool_session_counters`) and the rate-limiter key live in it.
+  The pipeline writes `ctx["guardrail_stage"]` into it, and the EU AI Act and NIST policy
+  guards read that.
+- **`run_processing` takes the tool call** as an argument or as `context["tool_call"]`;
+  the argument wins when both are given.
+- **`parallel=True` changes the result, not just the speed.** Guards see the original
+  content and redactions are merged afterwards, so redactions do not chain; a sequential
+  pipeline stops at the first `BLOCK`, a parallel one does not. The processing stage is
+  always sequential.
+- **`Action.HUMAN` is not a block.** It sets `passed=False` but leaves `.blocked` false;
+  read `PipelineResult.requires_human` and `.human_review_reasons`. `ToolPolicyGuard`
+  (approval denied or timed out) and the EU AI Act and NIST guards return it. `run_full()`
+  raises rather than call the model past an approval gate; check
+  `exc.result.requires_human` to tell it from a block.
+- **`fail_open=True` swallows a guard's exception completely**: no `CheckResult`, no
+  finding, nothing in the audit log.
+- **Judge failures are layered.** `LLMJudgeBase.judge()` returns a safe fallback on error,
+  but `LLMToolFilter` still blocks the `high_risk_fail_closed` tools. `CachedJudge`
+  overrides `_call`, so it bypasses the wrapped judge's own error handling and timing.
+- **`PIIDetector(action="tokenize")` is regex-only**, even with `use_presidio=True`.
+- **`RateLimiter` is per process**: no coordination between workers, nothing survives a
+  restart, and "tokens" are words (`len(content.split())`).
+- **`TelemetryProvider` sets the global OpenTelemetry providers**: build at most one per
+  process.
+- **`AuditLogger.log()` is async but writes with blocking file I/O**, so it stalls the
+  event loop while it writes.
+- **`GUARDRAILS_MOCK_JUDGES` and `GUARDRAILS_DISABLE_ALL` are declared but read by
+  nothing** in `core/` or `modules/`. Setting them changes nothing.
 
 ---
 
@@ -1175,8 +1208,7 @@ approval, and finally runs `aisafe attest` so a named owner signs the level the
 criteria support (`references/levels.md` lists them). Every artefact lands
 under `.aisafe-audit/`. The intelligence stays in the CLI; the skill adds
 explanation and a gated change workflow, never edits permission files, CI or
-secrets without a per-diff approval, and never pushes. `docs/SYSTEM.md` is
-the whole flow on one page.
+secrets without a per-diff approval, and never pushes.
 
 The audit is evidence, not a compliance verdict: it lists what it found and
 what it could not check. Absence of a finding is not evidence of safety.
@@ -1223,12 +1255,12 @@ The same skill and the same hooks, with no settings file edited:
 
 ```bash
 claude plugin marketplace add ai-safe-earth/AnyAISafe
-claude plugin install ai-safety-audit@ai-safe-earth
+claude plugin install aisafe@ai-safe-earth
 ```
 
 The marketplace is `.claude-plugin/marketplace.json`; the plugin lives in
-`plugins/ai-safety-audit/` (`.claude-plugin/plugin.json`, `hooks/hooks.json`, and
-`skills/ai-safety-audit/`, the third byte-identical mirror of the canonical skill). Every
+`plugins/aisafe/` (`.claude-plugin/plugin.json`, `hooks/hooks.json`, and
+`skills/ai-safety-audit/`, a byte-identical mirror of the canonical skill). Every
 hook command runs through the pinned bootstrap inside the mirrored skill.
 
 ### GitHub Action and GitLab job
